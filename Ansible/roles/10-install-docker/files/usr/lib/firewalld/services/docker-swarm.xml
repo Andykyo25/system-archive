@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<service>
+<short>docker-swarm</short>
+<description>Default ports for docker swarm</description>
+<port protocol="tcp" port="2376"/>    <!--For Docker Machine -->
+<port protocol="tcp" port="2377"/>    <!--It only needs to be opened on manager nodes -->
+<port protocol="tcp" port="7946"/>    <!--For container network discovery -->
+<port protocol="udp" port="7946"/>    <!--For container network discovery -->
+<port protocol="udp" port="4789"/>    <!--For container ingress networking -->
+</service>

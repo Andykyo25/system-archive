@@ -1,0 +1,13 @@
+---
+
+- name: Set SELinux in permissive mode until the machine is rebooted (1/2)
+  selinux:
+    policy: targeted
+    state: permissive
+  when: ansible_selinux is defined and ansible_selinux.status != 'disabled'
+
+- name: Disable SELinux at next reboot (2/2)
+  selinux:
+    state: disabled
+  when: ansible_selinux is defined and ansible_selinux.status != 'disabled'
+  notify: ["Reboot system"]

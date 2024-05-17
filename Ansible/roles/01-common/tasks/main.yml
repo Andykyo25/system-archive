@@ -1,0 +1,51 @@
+---
+- debug:
+    msg:
+    - --------------------------------------------------------------------------------------------------------------
+    - ------------------------------------------------- Begin ------------------------------------------------------
+    - --------------------------------------------------------------------------------------------------------------
+
+######################################################### selinux ##################################################
+- name: "Get ansible_selinux status"
+  debug:
+    msg: "ansible_selinux: {{ ansible_selinux.status }}"
+
+- name: Disable selinux
+  include: 00-selinux.yml
+  tags: configure
+
+####################################################### Update kernel-lt ###############################################
+- name: "print kernel_version"
+  debug:
+    msg: "ansible_kernel: {{ ansible_kernel }}"
+
+- name: "Update kernel-lt if kernel_version lt 5"
+  include: 01-kernel-lt.yml
+  tags: install
+  when: (ansible_kernel is version("5.0", "lt")) and UPDATE_KERNEL is defined and UPDATE_KERNEL == 'yes'
+
+###################################################### Install package ###############################################
+
+- name: "Install package"
+  include: 02-package.yml
+  tags: install
+
+###################################################### Configure system ###############################################
+- name: Configure system
+  include: 03-system-config.yml
+  tags: configure
+
+###################################################### set hostname ###############################################
+- name: Set hostname
+  include: 04-set-hostname.yml
+  tags: configure
+  when:  SET_HOSTNAME
+
+###################################################### Modifying yum-corn ###############################################
+- name: Modifying yum-corn
+  include: 05-yum-cron.yml
+  tags: configure
+# when:  SET_HOSTNAME
+
+- name: " -------- flush_handlers --------"
+  meta: flush_handlers

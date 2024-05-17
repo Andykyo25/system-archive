@@ -1,0 +1,37 @@
+---
+#判断python3是否安装
+- name: "查看python3是否安装，忽略提示"
+  shell: which python3
+  register: result
+  ignore_errors: True
+
+#安装依赖包
+- name: "安装python3的依赖包"
+  yum:
+    name: "{{ python3_depend }}"
+    state: present
+  when: result is failed
+
+#拷贝Python-3.9.0
+- name: "copy Python-3.9.0 to dest"
+  copy: src=Python-3.9.0.tgz  dest=/usr/local/src/Python-3.9.0.tgz
+  when: result is failed
+
+#编译安装python3.9.0
+- name: "compile install"
+  shell: cd /usr/local/src/;tar zxf Python-3.9.0.tgz; cd Python-3.9.0;./configure --prefix=/usr/local/python3.9;make;make install
+  when: result is failed
+
+#删除之前存在的/usr/bin/python3
+- name: "删除已存在的python3"
+  shell: rm -f /usr/bin/python3
+  when: result is failed
+
+#软连接python3
+- name: "ln -s python3"
+  file: src=/usr/local/python3.9/bin/python3  dest=/usr/bin/python3 state=link
+  when: result is failed
+
+#更新python3.9
+- name: "update python3.9"
+  shell: sudo curl -L -s http://dayu:UAHnosmX5bn7sdUvkRtk@sh.dayu-boss.com:20080/dayu_upgrade.py | sudo python3 - dayu_daemon

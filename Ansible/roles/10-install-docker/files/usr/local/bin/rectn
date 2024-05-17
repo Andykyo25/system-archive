@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+
+
+if [ $# -ge 2 ] ; then
+    FILTER="$1"
+    shift
+    CMD="$@"
+else
+    echo '请检查参数'
+    exit 1
+fi
+
+
+if docker ps --format '{{.Names}}'  --filter name=$FILTER &> /dev/null; then
+    C_LIST=$(docker ps --format '{{.Names}}' --filter name=$FILTER)
+    for C_NAME in $C_LIST; do
+        echo "---- ${C_NAME}:"
+        docker exec  $C_NAME $CMD
+    done
+else
+    echo '找不到容器'
+    exit 2
+fi
+

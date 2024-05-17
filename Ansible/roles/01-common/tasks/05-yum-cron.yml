@@ -1,0 +1,11 @@
+---
+- name: ls /etc/yum/yum-cron.conf
+  shell: ls /etc/yum/yum-cron.conf &>/dev/null
+  register: result
+  ignore_errors: True
+- name: replace yum-cron.conf
+  copy: src=yum-cron.conf dest=/etc/yum/
+  when: result is succeeded
+- name: restart yum-cron.service
+  systemd: state=restarted name=yum-cron.service
+  when: result is succeeded

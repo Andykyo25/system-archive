@@ -1,0 +1,85 @@
+---
+
+- debug:
+    msg:
+    - --------------------------------------------------------------------------------------------------------------
+    - ------------------------------------------------- Begin ------------------------------------------------------
+    - --------------------------------------------------------------------------------------------------------------
+
+######################################################### Install ##################################################
+- name: Get tmp_docker_version
+  shell: "docker info | awk -F: '/Server Version/{print $2}'| tr -d ' '"
+  register: tmp_docker_version
+  ignore_errors: True
+
+- name: Debug msg
+  debug:
+    msg: "tmp_docker_version: {{ tmp_docker_version.stdout }}"
+
+- name: "Install docker-ce-{{ DOCKER_VERSION }}"
+  include: 11-yum-install-docker.yml
+  tags: install
+  when:
+  - INSTALL_DOCKER is defined
+  - INSTALL_DOCKER == 'yes'
+  - tmp_docker_version.stdout != DOCKER_VERSION
+
+######################################################### Configure ##################################################
+#- name: "Configure Docker daemon 
+#options (json) /etc/docker/daemon.json"
+#  template:
+#    src: "daemon.json.j2"
+#    dest: "/etc/docker/daemon.json"
+#    owner: "root"
+#    group: "root"
+#    mode: "0644"
+#  when: docker__default_daemon_json | d() or docker__daemon_json | d()
+#  notify: ["Restart Docker"]
+
+- name: Ensure /etc/docker/ exist
+  file: path=/etc/docker mode=0755  state=directory
+
+- name: "COPY /etc/docker/daemon.json"
+  copy:
+    src:   etc/docker/daemon.json
+    dest: /etc/docker/daemon.json
+    mode: 0644
+  notify: ["Restart Docker"]
+
+- name: "COPY /etc/sysctl.d/docker.conf"
+  copy:
+    src:   etc/sysctl.d/docker.conf
+    dest: /etc/sysctl.d/docker.conf
+    mode: 0644
+  notify: ["sysctl-load"]
+
+- name: "COPY /usr/lib/firewalld/services/docker-swarm.xml"
+  copy:
+    src:   usr/lib/firewalld/services/docker-swarm.xml
+    dest: /usr/lib/firewalld/services/docker-swarm.xml
+    mode: 0644
+
+######################################################### dayu-repo ##################################################
+
+- name: "Mkdir /root/.docker"
+  shell: "mkdir -p /root/.docker"
+
+- name: "COPY /root/.docker/config.json"
+  copy:
+    src:  files/config.json
+    dest: /root/.docker/config.json
+  register: tmp_docker_config
+  ignore_errors: True
+
+- name: "Checking jms-op user is exist"
+  shell: "id jms-op"
+  register: check_user
+  ignore_errors: True
+
+#把jms-op用户添加到docker组
+- name: "User jms-op join docker group"
+  shell: usermod -aG docker jms-op
+  when: check_user is succeeded
+
+- name: " -------- flush_handlers --------"
+  meta: flush_handlers

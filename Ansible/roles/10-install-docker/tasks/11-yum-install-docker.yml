@@ -1,0 +1,65 @@
+---
+
+- name: Remove docker if installed from CentOS repo
+  yum:
+    state: absent
+    name:
+      - docker
+      - docker-client
+      - docker-client-latest
+      - docker-common
+      - docker-latest
+      - docker-latest-logrotate
+      - docker-logrotate
+      - docker-engine
+
+- name: Ensure depend package is installed
+  yum:
+    name:  ['yum-utils', 'device-mapper-persistent-data', 'lvm2']
+    state: present
+
+- name: Add Docker-ce.repo
+  get_url:
+    url: https://download.docker.com/linux/centos/docker-ce.repo
+    dest: /etc/yum.repos.d/docer-ce.repo
+
+- name: Disable Docker Stable & Edge & Test repo
+  ini_file:
+    dest: /etc/yum.repos.d/docer-ce.repo
+    section: "{{ item }}"
+    option: enabled
+    value: '0'
+    no_extra_spaces: yes
+  become: yes
+  with_items: ['docker-ce-test', 'docker-ce-edge', 'docker-ce-stable']
+
+- name: "Install docker-ce-{{ DOCKER_VERSION }}"
+  yum:
+    name:
+      - docker-ce-{{ DOCKER_VERSION }}
+      - docker-ce-cli-{{ DOCKER_VERSION }}
+    state: present
+    enablerepo: docker-ce-stable
+    disable_excludes: all
+
+#######################################################################################
+- name: "Copy to /usr/local/bin/docker-compose"
+  copy:
+    src: usr/local/bin/docker-compose
+    dest: /usr/local/bin/docker-compose
+    mode: 0755
+
+- name: "Copy to /etc/bash_completion.d/ctn"
+  copy: src=etc/bash_completion.d/ctn dest=/etc/bash_completion.d/ctn mode=0644
+
+- name: Copy to /usr/bin/ctn
+  copy: src=usr/local/bin/ctn dest=/usr/bin/ctn mode=0755
+  notify: ["source ctn"]
+
+- name: "Copy to /usr/local/bin/rectn"
+  copy: src=usr/local/bin/rectn dest=/usr/local/bin/rectn mode=0755
+
+- name: "Starting and Enabling Docker service"
+  systemd:
+    name: docker
+    enabled: yes

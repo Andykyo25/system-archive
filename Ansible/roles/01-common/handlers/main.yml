@@ -1,0 +1,32 @@
+---
+
+- name: "Reboot system"
+  reboot:
+    reboot_timeout: 600
+
+- name: sysctl-load
+  shell: sysctl --system
+
+- name: source bashrc
+  shell: source /etc/bashrc
+
+- name: source profile
+  shell: source /etc/profile
+
+- name: source ctn
+  shell: source /etc/bash_completion.d/ctn
+
+- name: Restarted systemd-journald service
+  systemd:
+    name: systemd-journald
+    state: restarted
+
+- name: Restarted rsyslog service
+  systemd:
+    name: rsyslog
+    state: restarted
+
+- name: Restarted crond service
+  systemd:
+    name: crond
+    state: restarted

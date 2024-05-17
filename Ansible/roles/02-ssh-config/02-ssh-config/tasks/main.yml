@@ -1,0 +1,8 @@
+---
+
+- name: copy sshd_config
+  copy: src=sshd_config dest=/etc/ssh/sshd_config mode=0600
+  notify: sshd-reload
+
+- name: "------- flush_handlers -------"
+  meta: flush_handlers

@@ -1,0 +1,17 @@
+---
+
+- name: "Reboot system"
+  reboot:
+    reboot_timeout: 600
+
+- name: sysctl-load
+  shell: sysctl --system
+
+- name: source ctn
+  shell: source /etc/bash_completion.d/ctn
+
+- name: Restart Docker
+  systemd:
+    name: docker
+    state: restarted
+    enabled: true

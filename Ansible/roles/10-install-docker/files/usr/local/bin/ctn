@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+if [ $# -ne 1 ];then
+    echo  -e "
+        Usage:  $0 {Container_name | Container ID}
+        "
+    exit 1
+fi
+docker exec -it $1 /bin/sh

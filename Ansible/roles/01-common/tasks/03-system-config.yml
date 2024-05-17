@@ -1,0 +1,79 @@
+---
+
+- name: Copy to /etc/sysctl.d/00-base.conf
+  copy: src=etc/sysctl.d/00-base.conf dest=/etc/sysctl.d/00-base.conf mode=0644
+  notify: ["sysctl-load"]
+
+- name: "Set PS1 for ttl"
+  lineinfile:
+    dest: /etc/profile
+    state: present
+    regexp: '^PS1=.*'
+    line: PS1='[\[\e[36m\]\#::\[\e[31m\]\u@\[\e[32m\]\h\[\e[36m\]::\w]\$ >>>\[\e[m\]'
+  notify: ["source profile"]
+
+- name: Copy to /etc/bashrc
+  copy: src=etc/bashrc dest=/etc/bashrc mode=0644
+  notify: ["source bashrc"]
+
+- name: Copy to /etc/security/limits.conf
+  copy: src=etc/security/limits.conf dest=/etc/security/limits.conf mode=0644
+
+- name: Copy to /etc/vimrc
+  copy: src=etc/vimrc dest=/etc/vimrc mode=0644
+
+- name: Disable Ctrl-Alt-Delete
+  file: src=/dev/null dest=/etc/systemd/system/ctrl-alt-del.target state=link
+
+######################################################  ###############################################
+#- name: Get hugepages_total
+#  shell: "awk '/HugePages_Total/{print $2}' /proc/meminfo"
+#  register: hugepages_total
+#  ignore_errors: True
+#
+#- name: "临时取消透明大页警告，不用重启"
+#  shell: echo never > /sys/kernel/mm/transparent_hugepage/enabled
+#  ignore_errors: True
+#  when: hugepages_total.stdout != "0"
+#
+#- name: "永久取消透明大页警告，重启生效"
+#  copy: src=etc/rc.local  dest=/etc/rc.local mode=0755
+
+######################################################  ###############################################
+
+- name: Set timezone to Asia/Shanghai
+  timezone:
+    name: Asia/Shanghai
+  notify: ["Restarted rsyslog service", "Restarted crond service"]
+
+- name: Starting and Enabling chronyd service
+  systemd:
+    name: chronyd
+    state: started
+    enabled: yes
+
+- name: Stopped and Disabled systemd service
+  systemd:
+    name: "{{ item }}"
+    state: stopped
+    enabled: no
+  with_items:
+    - postfix
+    - dnsmasq
+  ignore_errors: True
+
+- name: Ensure systemd-journald log_dir exist
+  file: path=/var/log/journal mode=0755  state=directory
+
+- name: Ensure systemd-journald conf_dir exist
+  file: path=/etc/systemd/journald.conf.d mode=0755  state=directory
+
+- name: Copy to /etc/systemd/journald.conf.d/99-prophet.conf
+  copy:
+    src:   etc/systemd/journald.conf.d/99-prophet.conf
+    dest: /etc/systemd/journald.conf.d/99-prophet.conf
+    mode: 0644
+  notify: ["Restarted systemd-journald service"]
+
+- name: Chmod /usr/bin/pkexec to 775
+  file: path=/usr/bin/pkexec mode=0755

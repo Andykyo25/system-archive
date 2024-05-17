@@ -1,0 +1,4 @@
+---
+
+dependencies:
+  - role: 01-common

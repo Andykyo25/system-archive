@@ -1,0 +1,14 @@
+---
+
+- hosts: '{{ remote_host }}'
+  become: yes
+  become_user: root
+  become_method: sudo
+  gather_facts: true     # 收集客户端状态信息
+ 
+  roles:
+  - 00-system-info
+  - 01-common
+  - 10-install-docker
+  - 12-python3
+  - test-out

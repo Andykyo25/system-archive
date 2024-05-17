@@ -1,0 +1,114 @@
+if v:progname =~? "evim"
+  finish
+endif
+
+set nocompatible
+
+set backspace=indent,eol,start
+
+if has("vms")
+  set nobackup
+else
+  set backup
+endif
+set history=50
+set ruler
+set showcmd
+set incsearch
+
+map Q gq
+
+inoremap <C-U> <C-G>u<C-U>
+
+"if has('mouse')
+""  set mouse=a
+"endif
+
+if &t_Co > 2 || has("gui_running")
+  syntax on
+  set hlsearch
+endif
+
+if has("autocmd")
+
+  filetype plugin indent on
+
+  augroup vimrcEx
+  au!
+
+  autocmd FileType text setlocal textwidth=78
+
+  autocmd BufReadPost *
+    \ if line("'\"") > 1 && line("'\"") <= line("$") |
+    \   exe "normal! g`\"" |
+    \ endif
+
+  augroup END
+
+else
+
+  set autoindent
+
+endif " has("autocmd")
+
+if !exists(":DiffOrig")
+  command DiffOrig vert new | set bt=nofile | r ++edit # | 0d_ | diffthis
+          \ | wincmd p | diffthis
+endif
+
+" ---------------------------------------------------------------------------
+"colors
+set t_Co=256
+syntax enable
+syntax on
+"colorscheme molokai
+
+" 不备份文件
+set nobackup
+
+" 自动格式化
+set formatoptions=tcrqn
+
+" 继承前一行的缩进方式，特别适用于多行注释
+set autoindent
+
+" 为C程序提供自动缩进
+set smartindent
+
+" 使用C样式的缩进
+set cindent
+
+" 设置以缩进的方式自动折叠和设置快捷方式
+" set foldmethod=indent
+
+" 统一缩进为4
+set softtabstop=4
+set shiftwidth=4
+
+" 在行和段开始处使用制表符
+set smarttab
+
+" 制表符为4
+set tabstop=4
+
+" 用空格代替制表符
+set expandtab
+
+" 不要换行
+set nowrap
+
+" 粘贴模式
+set paste
+
+" 我的状态行显示的内容（包括文件类型和解码）
+set statusline=%F%m%r%h%w\[POS=%l,%v][%p%%]\%{strftime(\"%d/%m/%y\ -\ %H:%M\")}
+
+" 总是显示状态行
+set laststatus=2
+
+" 高亮显示匹配的括号
+set showmatch
+
+set fileencodings=utf-8,ucs-bom,gb18030,gbk,gb2312,cp936
+set termencoding=utf-8
+set encoding=utf-8
