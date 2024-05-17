@@ -1,13 +1,13 @@
 # This is the sshd server system-wide configuration file.  See
 # sshd_config(5) for more information.
 
-Port 6343
+Port 22
 HostKey /etc/ssh/ssh_host_rsa_key
 HostKey /etc/ssh/ssh_host_ecdsa_key
 HostKey /etc/ssh/ssh_host_ed25519_key
 
 SyslogFacility AUTHPRIV
-PermitRootLogin no
+PermitRootLogin yes
 PubkeyAuthentication yes
 AuthorizedKeysFile	.ssh/authorized_keys
 PasswordAuthentication yes
