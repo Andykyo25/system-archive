@@ -48,11 +48,17 @@ async def on_ready():
 @bot.command(name="add_order")
 async def add_order(ctx, order_id: str, product: str, quantity: int):
     user = ctx.author.name
-    new_order = Order(order_id, user, product, quantity)
 
     # 讀取現有訂單
     with open(ORDER_FILE, 'r') as f:
         orders = json.load(f)
+
+    # 檢查是否有重複的訂單ID
+    if any(order['order_id'] == order_id for order in orders):
+        await ctx.send(f"訂單ID: {order_id} 已存在，無法添加重複的訂單ID。")
+        return
+
+    new_order = Order(order_id, user, product, quantity)
 
     # 添加新訂單
     orders.append(new_order.to_dict())
