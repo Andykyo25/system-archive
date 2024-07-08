@@ -7,6 +7,10 @@ import os
 BOT_PREFIX = "!"
 TOKEN = "MTI1OTc2MDkyNTgwMDQwMjk2NA.Gi-ZFe.bAiun25MtuIV8PaFRS9lKF-IBrbka7xGjStmls"
 
+# 設置機器人意圖
+intents = discord.Intents.default()
+intents.messages = True  # 啟用接收消息的意圖
+
 # 初始化機器人
 bot = commands.Bot(command_prefix=BOT_PREFIX)
 
