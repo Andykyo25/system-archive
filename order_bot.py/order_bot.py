@@ -5,7 +5,7 @@ import os
 
 # 機器人前綴和Token
 BOT_PREFIX = "!"
-TOKEN = "YOUR_DISCORD_BOT_TOKEN"
+TOKEN = "MTI1OTc2MDkyNTgwMDQwMjk2NA.Gi-ZFe.bAiun25MtuIV8PaFRS9lKF-IBrbka7xGjStmls"
 
 # 設置機器人意圖
 intents = discord.Intents.default()
