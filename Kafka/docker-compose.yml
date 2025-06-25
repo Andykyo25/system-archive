@@ -1,0 +1,163 @@
+version: '3.7'
+services:
+  logstash:
+    image: docker.elastic.co/logstash/logstash:8.17.3
+    container_name: logstash
+    volumes:
+      - /home/ai/kafka/pipelines.yml:/usr/share/logstash/config/pipelines.yml  # 掛載 pipelines.yml
+      - /home/ai/kafka/pipeline-ibfd.conf:/usr/share/logstash/pipeline/pipeline-ibfd.conf  # 掛載各個 pipeline 配置文件
+      - /home/ai/kafka/pipeline-ato1.conf:/usr/share/logstash/pipeline/pipeline-ato1.conf
+      - /home/ai/kafka/pipeline-ato2.conf:/usr/share/logstash/pipeline/pipeline-ato2.conf
+      - /home/ai/kafka/pipeline-ato3.conf:/usr/share/logstash/pipeline/pipeline-ato3.conf
+      - /home/ai/kafka/pipeline-fd1.conf:/usr/share/logstash/pipeline/pipeline-fd1.conf
+      - /home/ai/kafka/pipeline-fd2.conf:/usr/share/logstash/pipeline/pipeline-fd2.conf
+      - /home/ai/kafka/logstash.yml:/usr/share/logstash/config/logstash.yml  # 掛載 logstash.yml
+    environment:
+      - XPACK_MONITORING_ENABLED=false
+      - LOG_LEVEL=info
+      - LS_JAVA_OPTS=-Xms2g -Xmx2g
+    entrypoint: ["/usr/share/logstash/bin/logstash"]  # 直接執行 logstash 二進制文件，繞過預設入口點
+    command: []  # 清空 command，避免附加額外選項
+    depends_on:
+      - kafka-1
+      - kafka-2
+    restart: always
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.0.1
+    container_name: zookeeper
+    restart: always
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+    ports:
+      - "2181:2181"
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "2181"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 2G
+
+  # ---- Kafka Broker 1 ----
+  kafka-1:
+    image: confluentinc/cp-kafka:7.0.1
+    container_name: kafka-1
+    restart: always
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+      - "9093:9093"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: "zookeeper:2181"
+      # 內部容器監聽埠
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,PLAINTEXT_HOST://0.0.0.0:9093
+      # broker1 廣播名
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-1:9092,PLAINTEXT_HOST://localhost:9093
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      # 若要使集群副本更完整，可將副本因子改成 2
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 2
+      KAFKA_DELETE_TOPIC_ENABLE: "true"
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "9092"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 2G
+
+  # ---- Kafka Broker 2 ----
+  kafka-2:
+    image: confluentinc/cp-kafka:7.0.1
+    container_name: kafka-2
+    restart: always
+    depends_on:
+      - zookeeper
+    ports:
+      - "9094:9092"
+      - "9095:9093"
+    environment:
+      KAFKA_BROKER_ID: 2
+      KAFKA_ZOOKEEPER_CONNECT: "zookeeper:2181"
+      # 內部容器監聽埠
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,PLAINTEXT_HOST://0.0.0.0:9093
+      # broker2 廣播名
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-2:9092,PLAINTEXT_HOST://localhost:9095
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      # 若要使集群副本更完整，可將副本因子改成 2
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 2
+      KAFKA_DELETE_TOPIC_ENABLE: "true"
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "9092"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 2G
+
+  kafdrop:
+    image: obsidiandynamics/kafdrop
+    container_name: kafdrop
+    restart: always
+    depends_on:
+      - kafka-1
+      - kafka-2
+    ports:
+      - "9000:9000"
+    environment:
+      # 同時連到兩個 broker
+      KAFKA_BROKERCONNECT: "kafka-1:9092,kafka-2:9092"
+
+  debezium-connect:
+    image: quay.io/debezium/connect:3.0
+    container_name: debezium-connect
+    restart: always
+    depends_on:
+      - kafka-1
+      - kafka-2
+    ports:
+      - "8083:8083"
+    environment:
+      BOOTSTRAP_SERVERS: "kafka-1:9092,kafka-2:9092"
+      GROUP_ID: "debezium-group"
+      CONFIG_STORAGE_TOPIC: "debezium-configs"
+      OFFSET_STORAGE_TOPIC: "debezium-offsets"
+      STATUS_STORAGE_TOPIC: "debezium-status"
+      CONNECT_KEY_CONVERTER: "org.apache.kafka.connect.json.JsonConverter"
+      CONNECT_VALUE_CONVERTER: "org.apache.kafka.connect.json.JsonConverter"
+      CONNECT_KEY_CONVERTER_SCHEMAS_ENABLE: "false"
+      CONNECT_VALUE_CONVERTER_SCHEMAS_ENABLE: "false"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8083"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 4G
+
+  kafka-exporter:
+    image: danielqsj/kafka-exporter:latest
+    container_name: kafka-exporter
+    restart: always
+    depends_on:
+      - kafka-1
+      - kafka-2
+    ports:
+      - "9308:9308"
+    command:
+      - --kafka.server=kafka-1:9092
+      - --kafka.server=kafka-2:9092

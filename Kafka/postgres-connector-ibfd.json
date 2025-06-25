@@ -1,0 +1,32 @@
+{
+  "name": "postgres-connector-ibfd",
+  "config": {
+    "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
+    "database.hostname": "192.168.10.209",
+    "database.port": "5432",
+    "database.user": "veriid",
+    "database.password": "veriid16313302",
+    "database.dbname": "smartfds_trans",
+    "topic.prefix": "pg-server",
+    "snapshot.mode": "never",
+    "table.include.list": "public.t_inbound_ibfd",
+    "plugin.name": "pgoutput",
+    "slot.name": "debezium_ibfd",
+
+    "transforms": "route,unwrap,dropfields",
+
+    "transforms.route.type": "org.apache.kafka.connect.transforms.RegexRouter",
+    "transforms.route.regex": "(.*)",
+    "transforms.route.replacement": "$1",
+
+    "transforms.unwrap.type": "io.debezium.transforms.ExtractNewRecordState",
+    "transforms.unwrap.drop.tombstones": "true",
+    "transforms.unwrap.delete.handling.mode": "drop",
+    "transforms.unwrap.add.fields": "source.table",
+    "transforms.unwrap.add.fields.name": "source_table",
+
+    "transforms.dropfields.type": "org.apache.kafka.connect.transforms.ReplaceField$Value",
+    "transforms.dropfields.blacklist": "op,ts_ms,ts_ns,ts_us,source"
+
+  }
+}

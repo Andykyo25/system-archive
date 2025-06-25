@@ -1,0 +1,31 @@
+{
+  "name": "postgres-connector",
+  "config": {
+    "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
+    "database.hostname": "192.168.10.209",
+    "database.port": "5432",
+    "database.user": "veriid",
+    "database.password": "veriid16313302",
+    "database.dbname": "dev_service_report",
+    "topic.prefix": "pg-server",
+    "snapshot.mode": "never",
+    "table.include.list": "public.tb_account_takeover_info,public.tb_account_takeover_predict_abnormalLogin_result,public.tb_account_takeover_predict_accountTest_result,public.tb_fraud_detect_info,public.tb_fraud_detect_predict_result_v2",
+    "plugin.name": "pgoutput",
+
+    "transforms": "route,unwrap,dropfields",
+
+    "transforms.route.type": "org.apache.kafka.connect.transforms.RegexRouter",
+    "transforms.route.regex": "(.*)",
+    "transforms.route.replacement": "$1",
+
+    "transforms.unwrap.type": "io.debezium.transforms.ExtractNewRecordState",
+    "transforms.unwrap.drop.tombstones": "true",
+    "transforms.unwrap.delete.handling.mode": "drop",
+    "transforms.unwrap.add.fields": "source.table",
+    "transforms.unwrap.add.fields.name": "source_table",
+
+    "transforms.dropfields.type": "org.apache.kafka.connect.transforms.ReplaceField$Value",
+    "transforms.dropfields.blacklist": "op,ts_ms,ts_ns,ts_us,source"
+
+  }
+}

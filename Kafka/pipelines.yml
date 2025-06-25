@@ -1,0 +1,12 @@
+ - pipeline.id: ato1
+   path.config: "/usr/share/logstash/pipeline/pipeline-ato1.conf"
+ - pipeline.id: ato2
+   path.config: "/usr/share/logstash/pipeline/pipeline-ato2.conf"
+ - pipeline.id: ato3
+   path.config: "/usr/share/logstash/pipeline/pipeline-ato3.conf"
+ - pipeline.id: fd1
+   path.config: "/usr/share/logstash/pipeline/pipeline-fd1.conf"
+ - pipeline.id: fd2
+   path.config: "/usr/share/logstash/pipeline/pipeline-fd2.conf"
+ - pipeline.id: ibfd
+   path.config: "/usr/share/logstash/pipeline/pipeline-ibfd.conf"
