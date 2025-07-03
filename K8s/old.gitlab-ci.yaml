@@ -1,0 +1,1001 @@
+stages:
+  - dev-k8s-build
+  - dev-k8s-check
+  - dev-k8s-checkdependency
+  - dev-k8s-deploy
+  - dev-k8s-test
+  - dev-k8s-rollback
+  - dev-k8s-rollback-test
+  - vv-k8s-build
+  - vv-k8s-deploy
+  - vv-k8s-test
+  - vv-k8s-rollback
+  - vv-k8s-rollback-test
+  - sit-mix-build
+  - sit-mix-deploy
+  - sit-mix-test
+  - sit-mix-rollback
+  - sit-mix-rollback-test
+  - uat-mix-build
+  - uat-mix-deploy
+  - uat-mix-test
+  - uat-mix-rollback
+  - uat-mix-rollback-test
+  - demo-mix-build
+  - demo-mix-deploy
+  - demo-mix-test
+  - demo-mix-rollback
+  - demo-mix-rollback-test
+  - sit-eks-build
+  - sit-eks-deploy
+  - sit-eks-test
+  - sit-eks-rollback
+  - sit-eks-rollback-test
+  - uat-eks-build
+  - uat-eks-deploy
+  - uat-eks-test
+  - uat-eks-rollback
+  - uat-eks-rollback-test
+  - demo-eks-build
+  - demo-eks-deploy
+  - demo-eks-test
+  - demo-eks-rollback
+  - demo-eks-rollback-test
+  - prd-eks-build
+  - prd-eks-deploy
+  - prd-eks-test
+  - prd-eks-rollback
+  - prd-eks-rollback-test
+  - tag-build-ws-k8s-mix-dev
+  - tag-deploy-ws-k8s-mix-dev
+  - tag-test-ws-k8s-mix-dev
+  - tag-build-aws-eks-mix-sit
+  - tag-deploy-aws-eks-mix-sit
+  - tag-test-aws-eks-mix-sit
+  - tag-build-aws-eks-mix-uat
+  - tag-deploy-aws-eks-mix-uat
+  - tag-test-aws-eks-mix-uat
+  - tag-build-aws-eks-mix-demo
+  - tag-deploy-aws-eks-mix-demo
+  - tag-test-aws-eks-mix-demo
+  - tag-build-aws-eks-prd
+  - tag-deploy-aws-eks-prd
+  - tag-test-aws-eks-prd
+
+variables:
+  TAG: ""
+
+dev-k8s-build:
+  stage: dev-k8s-build
+  tags:
+    - ws-dev-k8s-runner
+  rules:
+    - if: $CI_MERGE_REQUEST_LABELS == 'ws-k8s-dev' && $CI_PIPELINE_SOURCE == 'merge_request_event'
+  script:
+    - now=$(date +'%Y-%m-%d-%H-%M')
+    - echo $now
+    - echo "now=$now" > build.env
+    - cd ./ws-dev-k8s-spring
+    - bash build.sh ws-k8s-dev $now
+    - echo "k8s-dev build"
+  artifacts:
+    reports:
+      dotenv: build.env
+    expire_in: 1 week
+    paths:
+      - build.env
+
+dev-k8s-check:
+  stage: dev-k8s-check
+  tags:
+      - ws-sonar-qube-runner
+  rules:
+    - if: $CI_MERGE_REQUEST_LABELS == 'ws-k8s-dev' && $CI_PIPELINE_SOURCE == 'merge_request_event'
+  image: 
+    name: sonarsource/sonar-scanner-cli:5.0
+    entrypoint: [""]
+  variables:
+    GIT_DEPTH: 0
+  cache:
+    key: "${CI_JOB_NAME}"
+    paths:
+      - .sonar/cache
+  script: 
+    - sonar-scanner
+  allow_failure: true
+  needs:
+    - dev-k8s-build
+
+dev-k8s-checkdependency:
+  stage: dev-k8s-checkdependency
+  tags:
+    - ws-sonar-qube-runner
+  rules:
+    - if: $CI_MERGE_REQUEST_LABELS == 'ws-k8s-dev' && $CI_PIPELINE_SOURCE == 'merge_request_event'
+  image: 
+    name: aquasec/trivy:latest
+    entrypoint: [""]
+  script:
+    - trivy fs --scanners vuln --exit-code 0 --severity CRITICAL,HIGH . --format json --output trivy-report.json
+  allow_failure: true
+  artifacts:
+    paths:
+      - trivy-report.json
+  needs:
+    - dev-k8s-build
+    - dev-k8s-check
+
+dev-k8s-deploy:
+  stage: dev-k8s-deploy
+  tags:
+    - ws-dev-k8s-runner
+  rules:
+    - if: $CI_MERGE_REQUEST_LABELS == 'ws-k8s-dev' && $CI_PIPELINE_SOURCE == 'merge_request_event'
+  script:
+    - source build.env
+    - echo $now
+    - cd ./ws-dev-k8s-spring
+    - bash deploy.sh dev-k8s $now
+    - echo "k8s-dev deploy"
+  needs:
+    - dev-k8s-build
+    - dev-k8s-check
+  artifacts:
+    paths:
+      - build.env
+
+dev-k8s-test:
+  stage: dev-k8s-test
+  tags:
+    - ws-dev-k8s-runner
+  rules:
+    - if: $CI_MERGE_REQUEST_LABELS == 'ws-k8s-dev' && $CI_PIPELINE_SOURCE == 'merge_request_event'
+  script:
+    - cd ./ws-dev-k8s-spring
+    - bash unit-test.sh dev-k8s
+    - echo "dev testing"
+  needs:
+    - dev-k8s-deploy
+
+dev-k8s-rollback:
+  stage: dev-k8s-rollback
+  tags:
+    - ws-dev-k8s-runner
+  rules:
+    - if: $CI_COMMIT_BRANCH == 'ws-k8s-dev' && $TAG != ''
+  script:
+    - if [ ${#TAG} -eq 16 ]; then
+    -   echo "TAG is correct format."
+    - else
+    -   echo "TAG is incorrect format. EX. 2023-18-10-10-03"        
+    - fi
+    - cd ./ws-dev-k8s-spring
+    - bash deploy.sh dev-k8s $TAG
+    - echo "dev-k8s-rollback done"
+    
+dev-k8s-rollback-test:
+  stage: dev-k8s-rollback-test
+  tags:
+    - ws-dev-k8s-runner
+  rules:
+    - if: $CI_COMMIT_BRANCH == 'ws-k8s-dev' && $TAG != ''
+  script:
+    - sleep 60
+    - cd ./ws-dev-k8s-spring
+    - bash unit-test.sh dev-k8s
+    - echo "rollback health-checking"
+  needs:
+    - dev-k8s-rollback
+
+vv-k8s-build:
+  stage: vv-k8s-build
+  tags:
+    - ws-dev-k8s-runner
+  rules:
+    - if: $CI_MERGE_REQUEST_LABELS == 'ws-k8s-vv' && $CI_PIPELINE_SOURCE == 'merge_request_event'
+  script:
+    - now=$(date +'%Y-%m-%d-%H-%M')
+    - echo $now
+    - echo "now=$now" > build.env
+    - cd ./ws-vv-k8s-spring
+    - bash build.sh ws-k8s-vv $now
+    - echo "k8s-vv build"
+  artifacts:
+    reports:
+      dotenv: build.env
+    expire_in: 1 week
+
+vv-k8s-deploy:
+  stage: vv-k8s-deploy
+  tags:
+    - ws-dev-k8s-runner
+  rules:
+    - if: $CI_MERGE_REQUEST_LABELS == 'ws-k8s-vv' && $CI_PIPELINE_SOURCE == 'merge_request_event'
+  script:
+    - echo $now
+    - cd ./ws-vv-k8s-spring
+    - bash deploy.sh vv-k8s $now
+    - echo "k8s-vv deploy"
+  needs:
+    - vv-k8s-build
+
+vv-k8s-test:
+  stage: vv-k8s-test
+  tags:
+    - ws-dev-k8s-runner
+  rules:
+    - if: $CI_MERGE_REQUEST_LABELS == 'ws-k8s-vv' && $CI_PIPELINE_SOURCE == 'merge_request_event'
+  script:
+    - cd ./ws-vv-k8s-spring
+    - bash unit-test.sh vv-k8s
+    - echo "vv testing"
+  needs:
+    - vv-k8s-deploy
+
+vv-k8s-rollback:
+  stage: vv-k8s-rollback
+  tags:
+    - ws-dev-k8s-runner
+  rules:
+    - if: $CI_COMMIT_BRANCH == 'ws-k8s-vv' && $TAG != ''
+  script:
+    - if [ ${#TAG} -eq 16 ]; then
+    -   echo "TAG is correct format."
+    - else
+    -   echo "TAG is incorrect format. EX. 2023-18-10-10-03"        
+    - fi
+    - cd ./ws-vv-k8s-spring
+    - bash deploy.sh vv-k8s $TAG
+    - echo "vv-k8s-rollback done"
+
+vv-k8s-rollback-test:
+  stage: vv-k8s-rollback-test
+  tags:
+    - ws-dev-k8s-runner
+  rules:
+    - if: $CI_COMMIT_BRANCH == 'ws-k8s-vv' && $TAG != ''
+  script:
+    - sleep 60
+    - cd ./ws-vv-k8s-spring
+    - bash unit-test.sh vv-k8s
+    - echo "rollback health-checking"
+  needs:
+    - vv-k8s-rollback
+
+sit-mix-build:
+  stage: sit-mix-build
+  tags:
+    - aws-cloud-eks-mix-runner
+  rules:
+    - if: $CI_MERGE_REQUEST_LABELS == 'aws-mix-eks-sit' && $CI_PIPELINE_SOURCE == 'merge_request_event'
+  script:
+    - now=$(date +'%Y-%m-%d-%H-%M')
+    - echo $now
+    - echo "now=$now" > build.env
+    - cd ./aws-mix-sit-spring
+    - bash build.sh aws-mix-eks-sit $now
+    - echo "aws-sit-mix build"
+  artifacts:
+    reports:
+      dotenv: build.env
+    expire_in: 1 week
+
+sit-mix-deploy:
+  stage: sit-mix-deploy
+  tags:
+    - aws-cloud-eks-mix-runner
+  rules:
+    - if: $CI_MERGE_REQUEST_LABELS == 'aws-mix-eks-sit' && $CI_PIPELINE_SOURCE == 'merge_request_event'
+  script:
+    - cd ./aws-mix-sit-spring
+    - bash deploy.sh sit-eks $now
+    - echo "sit deploy"
+  needs:
+    - sit-mix-build
+
+sit-mix-test:
+  stage: sit-mix-test
+  tags:
+    - aws-cloud-eks-mix-runner
+  rules:
+    - if: $CI_MERGE_REQUEST_LABELS == 'aws-mix-eks-sit' && $CI_PIPELINE_SOURCE == 'merge_request_event'
+  script:
+    - cd ./aws-mix-sit-spring
+    - bash unit-test.sh sit-eks
+    - echo "sit testing"
+  needs:
+    - sit-mix-deploy
+
+sit-mix-rollback:
+  stage: sit-mix-rollback
+  tags:
+    - aws-cloud-eks-mix-runner
+  rules:
+    - if: $CI_COMMIT_BRANCH == 'aws-mix-eks-sit' && $TAG != ''
+  script:
+    - if [ ${#TAG} -eq 16 ]; then
+    -   echo "TAG is correct format."
+    - else
+    -   echo "TAG is incorrect format. EX. 2023-18-10-10-03"        
+    - fi
+    - cd ./aws-mix-sit-spring
+    - bash deploy.sh sit-eks $TAG
+    - echo "sit-mix-rollback done"
+
+sit-mix-rollback-test:
+  stage: sit-mix-rollback-test
+  tags:
+    - aws-cloud-eks-mix-runner
+  rules:
+    - if: $CI_COMMIT_BRANCH == 'aws-mix-eks-sit' && $TAG != ''
+  script:
+    - sleep 60
+    - cd ./aws-sit-eks-spring
+    - bash unit-test.sh sit-eks
+    - echo "rollback health-checking"
+  needs:
+    - sit-mix-rollback
+
+demo-mix-build:
+  stage: demo-mix-build
+  tags:
+    - aws-cloud-eks-mix-runner
+  rules:
+    - if: $CI_MERGE_REQUEST_LABELS == 'aws-mix-eks-demo' && $CI_PIPELINE_SOURCE == 'merge_request_event'
+  script:
+    - now=$(date +'%Y-%m-%d-%H-%M')
+    - echo $now
+    - echo "now=$now" > build.env
+    - cd ./aws-mix-demo-spring
+    - bash build.sh aws-mix-eks-demo $now
+    - echo "aws-demo-mix build"
+  artifacts:
+    reports:
+      dotenv: build.env
+    expire_in: 1 week
+
+demo-mix-deploy:
+  stage: demo-mix-deploy
+  tags:
+    - aws-cloud-eks-mix-runner
+  rules:
+    - if: $CI_MERGE_REQUEST_LABELS == 'aws-mix-eks-demo' && $CI_PIPELINE_SOURCE == 'merge_request_event'
+  script:
+    - cd ./aws-mix-demo-spring
+    - bash deploy.sh demo-eks $now
+    - echo "demo deploy"
+  needs:
+    - demo-mix-build
+
+demo-mix-test:
+  stage: demo-mix-test
+  tags:
+    - aws-cloud-eks-mix-runner
+  rules:
+    - if: $CI_MERGE_REQUEST_LABELS == 'aws-mix-eks-demo' && $CI_PIPELINE_SOURCE == 'merge_request_event'
+  script:
+    - cd ./aws-mix-demo-spring
+    - bash unit-test.sh demo-eks
+    - echo "demo testing"
+  needs:
+    - demo-mix-deploy
+
+demo-mix-rollback:
+  stage: demo-mix-rollback
+  tags:
+    - aws-cloud-eks-mix-runner
+  rules:
+    - if: $CI_COMMIT_BRANCH == 'aws-mix-eks-demo' && $TAG != ''
+  script:
+    - if [ ${#TAG} -eq 16 ]; then
+    -   echo "TAG is correct format."
+    - else
+    -   echo "TAG is incorrect format. EX. 2023-18-10-10-03"        
+    - fi
+    - cd ./aws-mix-demo-spring
+    - bash deploy.sh demo-eks $TAG
+    - echo "demo-mix-rollback done"
+
+demo-mix-rollback-test:
+  stage: demo-mix-rollback-test
+  tags:
+    - aws-cloud-eks-mix-runner
+  rules:
+    - if: $CI_COMMIT_BRANCH == 'aws-mix-eks-demo' && $TAG != ''
+  script:
+    - sleep 60
+    - cd ./aws-demo-eks-spring
+    - bash unit-test.sh demo-eks
+    - echo "rollback health-checking"
+  needs:
+    - demo-mix-rollback
+
+uat-mix-build:
+  stage: uat-mix-build
+  tags:
+    - aws-cloud-eks-mix-runner
+  rules:
+    - if: $CI_MERGE_REQUEST_LABELS == 'aws-mix-eks-uat' && $CI_PIPELINE_SOURCE == 'merge_request_event'
+  script:
+    - now=$(date +'%Y-%m-%d-%H-%M')
+    - echo $now
+    - echo "now=$now" > build.env
+    - cd ./aws-mix-uat-spring
+    - bash build.sh aws-mix-eks-uat $now
+    - echo "aws-uat-mix build"
+  artifacts:
+    reports:
+      dotenv: build.env
+    expire_in: 1 week
+
+uat-mix-deploy:
+  stage: uat-mix-deploy
+  tags:
+    - aws-cloud-eks-mix-runner
+  rules:
+    - if: $CI_MERGE_REQUEST_LABELS == 'aws-mix-eks-uat' && $CI_PIPELINE_SOURCE == 'merge_request_event'
+  script:
+    - cd ./aws-mix-uat-spring
+    - bash deploy.sh uat-eks $now
+    - echo "uat deploy"
+  needs:
+    - uat-mix-build
+
+uat-mix-test:
+  stage: uat-eks-test
+  tags:
+    - aws-cloud-eks-mix-runner
+  rules:
+    - if: $CI_MERGE_REQUEST_LABELS == 'aws-mix-eks-uat' && $CI_PIPELINE_SOURCE == 'merge_request_event'
+  script:
+    - cd ./aws-mix-uat-spring
+    - bash unit-test.sh uat-eks
+    - echo "uat testing"
+  needs:
+    - uat-mix-deploy
+
+uat-mix-rollback:
+  stage: uat-eks-rollback
+  tags:
+    - aws-cloud-eks-mix-runner
+  rules:
+    - if: $CI_COMMIT_BRANCH == 'aws-mix-eks-uat' && $TAG != ''
+  script:
+    - if [ ${#TAG} -eq 16 ]; then
+    -   echo "TAG is correct format."
+    - else
+    -   echo "TAG is incorrect format. EX. 2023-18-10-10-03"        
+    - fi
+    - cd ./aws-mix-uat-spring
+    - bash deploy.sh uat-eks $TAG
+    - echo "uat-mix-rollback done"
+
+uat-mix-rollback-test:
+  stage: uat-eks-rollback-test
+  tags:
+    - aws-cloud-eks-mix-runner
+  rules:
+    - if: $CI_COMMIT_BRANCH == 'aws-cloud-eks-uat' && $TAG != ''
+  script:
+    - sleep 60
+    - cd ./aws-uat-eks-spring
+    - bash unit-test.sh uat-eks
+    - echo "rollback health-checking"
+  needs:
+    - uat-mix-rollback
+
+sit-eks-build:
+  stage: sit-eks-build
+  tags:
+    - aws-cloud-eks-sit-runner
+  rules:
+    - if: $CI_MERGE_REQUEST_LABELS == 'aws-cloud-eks-sit' && $CI_PIPELINE_SOURCE == 'merge_request_event'
+  script:
+    - now=$(date +'%Y-%m-%d-%H-%M')
+    - echo $now
+    - echo "now=$now" > build.env
+    - cd ./aws-sit-eks-spring
+    - bash build.sh sit $now
+    - echo "aws-sit-eks build"
+  artifacts:
+    reports:
+      dotenv: build.env
+    expire_in: 1 week
+
+sit-eks-deploy:
+  stage: sit-eks-deploy
+  tags:
+    - aws-cloud-eks-sit-runner
+  rules:
+    - if: $CI_MERGE_REQUEST_LABELS == 'aws-cloud-eks-sit' && $CI_PIPELINE_SOURCE == 'merge_request_event'
+  script:
+    - echo $now
+    - cd ./aws-sit-eks-spring
+    - bash deploy.sh sit-k8s $now
+    - echo "sit deploy"
+  needs:
+    - sit-eks-build
+
+sit-eks-test:
+  stage: sit-eks-test
+  tags:
+    - aws-cloud-eks-sit-runner
+  rules:
+    - if: $CI_MERGE_REQUEST_LABELS == 'aws-cloud-eks-sit' && $CI_PIPELINE_SOURCE == 'merge_request_event'
+  script:
+    - cd ./aws-sit-eks-spring
+    - bash unit-test.sh sit-k8s
+    - echo "sit testing"
+  needs:
+    - sit-eks-deploy
+
+sit-eks-rollback:
+  stage: sit-eks-rollback
+  tags:
+    - aws-cloud-eks-sit-runner
+  rules:
+    - if: $CI_COMMIT_BRANCH == 'aws-cloud-eks-sit' && $TAG != ''
+  script:
+    - if [ ${#TAG} -eq 16 ]; then
+    -   echo "TAG is correct format."
+    - else
+    -   echo "TAG is incorrect format. EX. 2023-18-10-10-03"        
+    - fi
+    - cd ./aws-sit-eks-spring
+    - bash deploy.sh sit-k8s $TAG
+    - echo "sit-eks-rollback done"
+
+sit-eks-rollback-test:
+  stage: sit-eks-rollback-test
+  tags:
+    - aws-cloud-eks-sit-runner
+  rules:
+    - if: $CI_COMMIT_BRANCH == 'aws-cloud-eks-sit' && $TAG != ''
+  script:
+    - sleep 60
+    - cd ./aws-sit-eks-spring
+    - bash unit-test.sh sit-k8s
+    - echo "rollback health-checking"
+  needs:
+    - sit-eks-rollback
+
+uat-eks-build:
+  stage: uat-eks-build
+  tags:
+    - aws-cloud-eks-uat-runner
+  rules:
+    - if: $CI_MERGE_REQUEST_LABELS == 'aws-cloud-eks-uat' && $CI_PIPELINE_SOURCE == 'merge_request_event'
+  script:
+    - now=$(date +'%Y-%m-%d-%H-%M')
+    - echo $now
+    - echo "now=$now" > build.env
+    - cd ./aws-uat-eks-spring
+    - bash build.sh sit $now
+    - echo "aws-uat-eks build"
+  artifacts:
+    reports:
+      dotenv: build.env
+    expire_in: 1 week
+
+uat-eks-deploy:
+  stage: uat-eks-deploy
+  tags:
+    - aws-cloud-eks-uat-runner
+  rules:
+    - if: $CI_MERGE_REQUEST_LABELS == 'aws-cloud-eks-uat' && $CI_PIPELINE_SOURCE == 'merge_request_event'
+  script:
+    - echo $now
+    - cd ./aws-uat-eks-spring
+    - bash deploy.sh sit-k8s $now
+    - echo "uat deploy"
+  needs:
+    - uat-eks-build
+
+uat-eks-test:
+  stage: uat-eks-test
+  tags:
+    - aws-cloud-eks-uat-runner
+  rules:
+    - if: $CI_MERGE_REQUEST_LABELS == 'aws-cloud-eks-uat' && $CI_PIPELINE_SOURCE == 'merge_request_event'
+  script:
+    - cd ./aws-uat-eks-spring
+    - bash unit-test.sh sit-k8s
+    - echo "uat testing"
+  needs:
+    - uat-eks-deploy
+
+uat-eks-rollback:
+  stage: uat-eks-rollback
+  tags:
+    - aws-cloud-eks-uat-runner
+  rules:
+    - if: $CI_COMMIT_BRANCH == 'aws-cloud-eks-uat' && $TAG != ''
+  script:
+    - if [ ${#TAG} -eq 16 ]; then
+    -   echo "TAG is correct format."
+    - else
+    -   echo "TAG is incorrect format. EX. 2023-18-10-10-03"        
+    - fi
+
+    - cd ./aws-uat-eks-spring
+    - bash deploy.sh sit-k8s $TAG
+    - echo "uat-eks-rollback done"
+
+uat-eks-rollback-test:
+  stage: uat-eks-rollback-test
+  tags:
+    - aws-cloud-eks-uat-runner
+  rules:
+    - if: $CI_COMMIT_BRANCH == 'aws-cloud-eks-uat' && $TAG != ''
+  script:
+    - sleep 60
+    - cd ./aws-uat-eks-spring
+    - bash unit-test.sh sit-k8s
+    - echo "rollback health-checking"
+  needs:
+    - uat-eks-rollback
+
+demo-eks-build:
+  stage: demo-eks-build
+  tags:
+    - aws-cloud-eks-demo-runner
+  rules:
+    - if: $CI_MERGE_REQUEST_LABELS == 'aws-cloud-eks-demo' && $CI_PIPELINE_SOURCE == 'merge_request_event'
+  script:
+    - now=$(date +'%Y-%m-%d-%H-%M')
+    - echo $now
+    - echo "now=$now" > build.env
+    - cd ./aws-demo-eks-spring
+    - bash build.sh sit $now
+    - echo "aws-demo-eks build"
+  artifacts:
+    reports:
+      dotenv: build.env
+    expire_in: 1 week
+
+demo-eks-deploy:
+  stage: demo-eks-deploy
+  tags:
+    - aws-cloud-eks-demo-runner
+  rules:
+    - if: $CI_MERGE_REQUEST_LABELS == 'aws-cloud-eks-demo' && $CI_PIPELINE_SOURCE == 'merge_request_event'
+  script:
+    - echo $now
+    - cd ./aws-demo-eks-spring
+    - bash deploy.sh sit-k8s $now
+    - echo "demo deploy"
+  needs:
+    - demo-eks-build
+
+demo-eks-test:
+  stage: demo-eks-test
+  tags:
+    - aws-cloud-eks-demo-runner
+  rules:
+    - if: $CI_MERGE_REQUEST_LABELS == 'aws-cloud-eks-demo' && $CI_PIPELINE_SOURCE == 'merge_request_event'
+  script:
+    - cd ./aws-demo-eks-spring
+    - bash unit-test.sh sit-k8s
+    - echo "demo testing"
+  needs:
+    - demo-eks-deploy
+
+demo-eks-rollback:
+  stage: demo-eks-rollback
+  tags:
+    - aws-cloud-eks-demo-runner
+  rules:
+    - if: $CI_COMMIT_BRANCH == 'aws-cloud-eks-demo' && $TAG != ''
+  script:
+    - if [ ${#TAG} -eq 16 ]; then
+    -   echo "TAG is correct format."
+    - else
+    -   echo "TAG is incorrect format. EX. 2023-18-10-10-03"        
+    - fi
+    - cd ./aws-demo-eks-spring
+    - bash deploy.sh sit-k8s $TAG
+    - echo "demo-eks-rollback done"
+
+demo-eks-rollback-test:
+  stage: demo-eks-rollback-test
+  tags:
+    - aws-cloud-eks-demo-runner
+  rules:
+    - if: $CI_COMMIT_BRANCH == 'aws-cloud-eks-demo' && $TAG != ''
+  script:
+    - sleep 60
+    - cd ./aws-demo-eks-spring
+    - bash unit-test.sh sit-k8s
+    - echo "rollback health-checking"
+  needs:
+    - demo-eks-rollback
+
+prd-eks-build:
+  stage: prd-eks-build
+  tags:
+    - aws-cloud-eks-prd-runner
+  rules:
+    - if: $CI_MERGE_REQUEST_LABELS == 'aws-cloud-eks-prd' && $CI_PIPELINE_SOURCE == 'merge_request_event'
+  script:
+    - now=$(date +'%Y-%m-%d-%H-%M')
+    - echo $now
+    - echo "now=$now" > build.env
+    - cd ./aws-prd-eks-spring
+    - bash build.sh sit $now
+    - echo "aws-prd-eks build"
+  artifacts:
+    reports:
+      dotenv: build.env
+    expire_in: 1 week
+
+prd-eks-deploy:
+  stage: prd-eks-deploy
+  tags:
+    - aws-cloud-eks-prd-runner
+  rules:
+    - if: $CI_MERGE_REQUEST_LABELS == 'aws-cloud-eks-prd' && $CI_PIPELINE_SOURCE == 'merge_request_event'
+  script:
+    - echo $now
+    - cd ./aws-prd-eks-spring
+    - bash deploy.sh sit-k8s $now
+    - echo "prd deploy"
+  needs:
+    - prd-eks-build
+
+prd-eks-test:
+  stage: prd-eks-test
+  tags:
+    - aws-cloud-eks-prd-runner
+  rules:
+    - if: $CI_MERGE_REQUEST_LABELS == 'aws-cloud-eks-prd' && $CI_PIPELINE_SOURCE == 'merge_request_event'
+  script:
+    - cd ./aws-prd-eks-spring
+    - bash unit-test.sh sit-k8s
+    - echo "prd testing"
+  needs:
+    - prd-eks-deploy
+
+prd-eks-rollback:
+  stage: prd-eks-rollback
+  tags:
+    - aws-cloud-eks-prd-runner
+  rules:
+    - if: $CI_COMMIT_BRANCH == 'aws-cloud-eks-prd' && $TAG != ''
+  script:
+    - if [ ${#TAG} -eq 16 ]; then
+    -   echo "TAG is correct format."
+    - else
+    -   echo "TAG is incorrect format. EX. 2023-18-10-10-03"        
+    - fi
+    - cd ./aws-prd-eks-spring
+    - bash deploy.sh sit-k8s $TAG
+    - echo "prd-eks-rollback done"
+
+prd-eks-rollback-test:
+  stage: prd-eks-rollback-test
+  tags:
+    - aws-cloud-eks-prd-runner
+  rules:
+    - if: $CI_COMMIT_BRANCH == 'aws-cloud-eks-prd' && $TAG != ''
+  script:
+    - sleep 60
+    - cd ./aws-prd-eks-spring
+    - bash unit-test.sh sit-k8s
+    - echo "rollback health-checking"
+  needs:
+    - prd-eks-rollback
+
+tag-build-ws-k8s-mix-dev:
+  stage: tag-build-ws-k8s-mix-dev
+  tags:
+    - ws-dev-k8s-runner
+  rules:
+    - if: $CI_COMMIT_TAG_ENV == 'ws-k8s-dev'
+  script:
+    - echo "CI_COMMIT_TAG=$CI_COMMIT_TAG"
+    - echo "CI_COMMIT_TAG_ENV=$CI_COMMIT_TAG_ENV" 
+    - cd ./ws-dev-k8s-spring
+    - bash build.sh ws-k8s-dev $CI_COMMIT_TAG
+    - echo "build $CI_PROJECT_NAME $CI_COMMIT_TAG_ENV $CI_COMMIT_TAG Succeed"
+
+tag-deploy-ws-k8s-mix-dev:
+  stage: tag-deploy-ws-k8s-mix-dev
+  tags:
+    - ws-dev-k8s-runner
+  rules:
+    - if: $CI_COMMIT_TAG_ENV == 'ws-k8s-dev'
+  script:
+    - echo "CI_COMMIT_TAG=$CI_COMMIT_TAG"
+    - echo "CI_COMMIT_TAG_ENV=$CI_COMMIT_TAG_ENV" 
+    - cd ./ws-dev-k8s-spring
+    - bash deploy.sh dev-k8s $CI_COMMIT_TAG
+    - echo "deploy $CI_PROJECT_NAME $CI_COMMIT_TAG_ENV $CI_COMMIT_TAG Succeed"
+  needs:
+    - tag-build-ws-k8s-mix-dev
+
+tag-test-ws-k8s-mix-dev:
+  stage: tag-test-ws-k8s-mix-dev
+  tags:
+    - ws-dev-k8s-runner
+  rules:
+    - if: $CI_COMMIT_TAG_ENV == 'ws-k8s-dev'
+  script:
+    - echo "CI_COMMIT_TAG=$CI_COMMIT_TAG"
+    - echo "CI_COMMIT_TAG_ENV=$CI_COMMIT_TAG_ENV"
+    - cd ./ws-dev-k8s-spring
+    - bash unit-test.sh dev-k8s $CI_COMMIT_TAG
+    - echo "test $CI_PROJECT_NAME $CI_COMMIT_TAG_ENV $CI_COMMIT_TAG Succeed"
+  needs:
+    - tag-deploy-ws-k8s-mix-dev
+
+tag-build-aws-eks-mix-sit:
+  stage: tag-build-aws-eks-mix-sit
+  tags:
+    - aws-cloud-eks-mix-runner
+  rules:
+    - if: $CI_COMMIT_TAG_ENV == 'aws-eks-mix-sit'
+  script:
+    - echo "CI_COMMIT_TAG=$CI_COMMIT_TAG" 
+    - echo "CI_COMMIT_TAG_ENV=$CI_COMMIT_TAG_ENV"
+    - cd ./aws-mix-sit-spring
+    - bash build.sh aws-cloud-eks-sit $CI_COMMIT_TAG
+    - echo "build $CI_PROJECT_NAME $CI_COMMIT_TAG_ENV $CI_COMMIT_TAG Succeed"
+
+tag-deploy-aws-eks-mix-sit:
+  stage: tag-deploy-aws-eks-mix-sit
+  tags:
+    - aws-cloud-eks-mix-runner
+  rules:
+    - if: $CI_COMMIT_TAG_ENV == 'aws-eks-mix-sit'
+  script:
+    - echo "CI_COMMIT_TAG=" && echo $CI_COMMIT_TAG
+    - echo "CI_COMMIT_TAG_ENV=" && echo $CI_COMMIT_TAG_ENV
+    - cd ./aws-mix-sit-spring
+    - bash deploy.sh sit-eks $CI_COMMIT_TAG
+    - echo "deploy $CI_PROJECT_NAME $CI_COMMIT_TAG_ENV $CI_COMMIT_TAG Succeed"
+  needs:
+    - tag-build-aws-eks-mix-sit
+
+tag-test-aws-eks-mix-sit:
+  stage: tag-test-aws-eks-mix-sit
+  tags:
+    - aws-cloud-eks-mix-runner
+  rules:
+    - if: $CI_COMMIT_TAG_ENV == 'aws-eks-mix-sit'
+  script:
+    - echo "CI_COMMIT_TAG=" && echo $CI_COMMIT_TAG
+    - echo "CI_COMMIT_TAG_ENV=" && echo $CI_COMMIT_TAG_ENV
+    - cd ./aws-mix-sit-spring
+    - bash unit-test.sh sit-eks $CI_COMMIT_TAG
+    - echo "test $CI_PROJECT_NAME $CI_COMMIT_TAG_ENV $CI_COMMIT_TAG Succeed"
+  needs:
+    - tag-deploy-aws-eks-mix-sit
+
+tag-build-aws-eks-mix-uat:
+  stage: tag-build-aws-eks-mix-uat
+  tags:
+    - aws-cloud-eks-mix-runner
+  rules:
+    - if: $CI_COMMIT_TAG_ENV == 'aws-eks-mix-uat'
+  script:
+    - echo "CI_COMMIT_TAG=$CI_COMMIT_TAG" 
+    - echo "CI_COMMIT_TAG_ENV=$CI_COMMIT_TAG_ENV"
+    - cd ./aws-mix-uat-spring
+    - bash build.sh aws-mix-eks-uat $CI_COMMIT_TAG
+    - echo "build $CI_PROJECT_NAME $CI_COMMIT_TAG_ENV $CI_COMMIT_TAG Succeed"
+
+tag-deploy-aws-eks-mix-uat:
+  stage: tag-deploy-aws-eks-mix-uat
+  tags:
+    - aws-cloud-eks-mix-runner
+  rules:
+    - if: $CI_COMMIT_TAG_ENV == 'aws-eks-mix-uat'
+  script:
+    - echo "CI_COMMIT_TAG=" && echo $CI_COMMIT_TAG
+    - echo "CI_COMMIT_TAG_ENV=" && echo $CI_COMMIT_TAG_ENV
+    - cd ./aws-mix-uat-spring
+    - bash deploy.sh uat-eks $CI_COMMIT_TAG
+    - echo "deploy $CI_PROJECT_NAME $CI_COMMIT_TAG_ENV $CI_COMMIT_TAG Succeed"
+  needs:
+    - tag-build-aws-eks-mix-uat
+
+tag-test-aws-eks-mix-uat:
+  stage: tag-test-aws-eks-mix-uat
+  tags:
+    - aws-cloud-eks-mix-runner
+  rules:
+    - if: $CI_COMMIT_TAG_ENV == 'aws-eks-mix-uat'
+  script:
+    - echo "CI_COMMIT_TAG=" && echo $CI_COMMIT_TAG
+    - echo "CI_COMMIT_TAG_ENV=" && echo $CI_COMMIT_TAG_ENV
+    - cd ./aws-mix-uat-spring
+    - bash unit-test.sh uat-eks $CI_COMMIT_TAG
+    - echo "test $CI_PROJECT_NAME $CI_COMMIT_TAG_ENV $CI_COMMIT_TAG Succeed"
+  needs:
+    - tag-deploy-aws-eks-mix-uat
+
+tag-build-aws-eks-mix-demo:
+  stage: tag-build-aws-eks-mix-demo
+  tags:
+    - aws-cloud-eks-mix-runner
+  rules:
+    - if: $CI_COMMIT_TAG_ENV == 'aws-eks-mix-demo'
+  script:
+    - echo "CI_COMMIT_TAG=$CI_COMMIT_TAG" 
+    - echo "CI_COMMIT_TAG_ENV=$CI_COMMIT_TAG_ENV"
+    - cd ./aws-mix-demo-spring
+    - bash build.sh aws-cloud-eks-demo $CI_COMMIT_TAG
+    - echo "build $CI_PROJECT_NAME $CI_COMMIT_TAG_ENV $CI_COMMIT_TAG Succeed"
+
+tag-deploy-aws-eks-mix-demo:
+  stage: tag-deploy-aws-eks-mix-demo
+  tags:
+    - aws-cloud-eks-mix-runner
+  rules:
+    - if: $CI_COMMIT_TAG_ENV == 'aws-eks-mix-demo'
+  script:
+    - echo "CI_COMMIT_TAG=" && echo $CI_COMMIT_TAG
+    - echo "CI_COMMIT_TAG_ENV=" && echo $CI_COMMIT_TAG_ENV
+    - cd ./aws-mix-demo-spring
+    - bash deploy.sh demo-eks $CI_COMMIT_TAG
+    - echo "deploy $CI_PROJECT_NAME $CI_COMMIT_TAG_ENV $CI_COMMIT_TAG Succeed"
+  needs:
+    - tag-build-aws-eks-mix-demo
+
+tag-test-aws-eks-mix-demo:
+  stage: tag-test-aws-eks-mix-demo
+  tags:
+    - aws-cloud-eks-mix-runner
+  rules:
+    - if: $CI_COMMIT_TAG_ENV == 'aws-eks-mix-demo'
+  script:
+    - echo "CI_COMMIT_TAG=" && echo $CI_COMMIT_TAG
+    - echo "CI_COMMIT_TAG_ENV=" && echo $CI_COMMIT_TAG_ENV
+    - cd ./aws-mix-demo-spring
+    - bash unit-test.sh demo-eks $CI_COMMIT_TAG
+    - echo "test $CI_PROJECT_NAME $CI_COMMIT_TAG_ENV $CI_COMMIT_TAG Succeed"
+  needs:
+    - tag-deploy-aws-eks-mix-demo
+
+tag-build-aws-eks-prd:
+  stage: tag-build-aws-eks-prd
+  tags:
+    - aws-cloud-eks-prd-runner
+  rules:
+    - if: $CI_COMMIT_TAG_ENV == 'aws-eks-prd'
+  script:
+    - echo "CI_COMMIT_TAG=$CI_COMMIT_TAG" 
+    - echo "CI_COMMIT_TAG_ENV=$CI_COMMIT_TAG_ENV"
+    - cd ./aws-prd-eks-spring
+    - bash build.sh sit $CI_COMMIT_TAG
+    - echo "build $CI_PROJECT_NAME $CI_COMMIT_TAG_ENV $CI_COMMIT_TAG Succeed"
+
+tag-deploy-aws-eks-prd:
+  stage: tag-deploy-aws-eks-prd
+  tags:
+    - aws-cloud-eks-prd-runner
+  rules:
+    - if: $CI_COMMIT_TAG_ENV == 'aws-eks-prd'
+  script:
+    - echo "CI_COMMIT_TAG=" && echo $CI_COMMIT_TAG
+    - echo "CI_COMMIT_TAG_ENV=" && echo $CI_COMMIT_TAG_ENV
+    - cd ./aws-prd-eks-spring
+    - bash deploy.sh sit-k8s $CI_COMMIT_TAG
+    - echo "deploy $CI_PROJECT_NAME $CI_COMMIT_TAG_ENV $CI_COMMIT_TAG Succeed"
+  needs:
+    - tag-build-aws-eks-prd
+
+tag-test-aws-eks-prd:
+  stage: tag-test-aws-eks-prd
+  tags:
+    - aws-cloud-eks-prd-runner
+  rules:
+    - if: $CI_COMMIT_TAG_ENV == 'aws-eks-prd'
+  script:
+    - echo "CI_COMMIT_TAG=" && echo $CI_COMMIT_TAG
+    - echo "CI_COMMIT_TAG_ENV=" && echo $CI_COMMIT_TAG_ENV
+    - cd ./aws-prd-eks-spring
+    - bash unit-test.sh sit-k8s $CI_COMMIT_TAG
+    - echo "test $CI_PROJECT_NAME $CI_COMMIT_TAG_ENV $CI_COMMIT_TAG Succeed"
+  needs:
+    - tag-deploy-aws-eks-prd

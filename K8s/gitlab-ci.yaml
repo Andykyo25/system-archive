@@ -1,7 +1,8 @@
 stages:
   - build
-  - test
+  - sonar
   - deploy
+  - test
 
 variables:
   DOCKER_DRIVER: overlay2
@@ -20,14 +21,16 @@ variables:
     paths:
       - build.env
 
-.test_template: &test_template
-  stage: test
+.sonar_template: &sonar_template
+  stage: sonar
   allow_failure: true
 
 .deploy_template: &deploy_template
   stage: deploy
-  dependencies:
-    - build
+
+.test_template: &test_template
+  stage: test
+  allow_failure: true
 
 # 開發環境 (Merge Request 觸發)
 dev-build:
@@ -42,7 +45,7 @@ dev-build:
     - echo "✅ K8s Dev 建置完成"
 
 dev-sonar-check:
-  <<: *test_template
+  <<: *sonar_template
   tags:
     - ws-sonar-qube-runner
   rules:
@@ -75,6 +78,8 @@ dev-deploy:
   needs:
     - dev-build
     - dev-sonar-check
+  dependencies:
+    - dev-build
 
 dev-test:
   stage: test
@@ -89,63 +94,9 @@ dev-test:
   needs:
     - dev-deploy
 
-# 環境配置映射
-.env_config:
-  - &sit_config
-    env: "sit"
-    runner: "aws-cloud-eks-mix-runner"
-    folder: "aws-mix-sit-spring"
-    build_param: "aws-cloud-eks-sit"
-    deploy_param: "sit-eks"
-  - &uat_config
-    env: "uat"
-    runner: "aws-cloud-eks-mix-runner"
-    folder: "aws-mix-uat-spring"
-    build_param: "aws-cloud-eks-uat"
-    deploy_param: "uat-eks"
-  - &demo_config
-    env: "demo"
-    runner: "aws-cloud-eks-mix-runner"
-    folder: "aws-mix-demo-spring"
-    build_param: "aws-cloud-eks-demo"
-    deploy_param: "demo-eks"
-  - &prd_config
-    env: "prd"
-    runner: "aws-cloud-eks-prd-runner"
-    folder: "aws-prd-eks-spring"
-    build_param: "sit"
-    deploy_param: "sit-k8s"
-
-# 動態產生環境任務的模板
-.env_build_template: &env_build_template
-  stage: build
-  script:
-    - echo "🏗️  建置環境: $ENV_NAME"
-    - echo "標籤: $CI_COMMIT_TAG"
-    - cd ./$FOLDER_NAME
-    - bash build.sh $BUILD_PARAM $CI_COMMIT_TAG
-    - echo "✅ $ENV_NAME 建置完成"
-
-.env_deploy_template: &env_deploy_template
-  stage: deploy
-  script:
-    - echo "🚀 部署環境: $ENV_NAME"
-    - echo "標籤: $CI_COMMIT_TAG"
-    - cd ./$FOLDER_NAME
-    - bash deploy.sh $DEPLOY_PARAM $CI_COMMIT_TAG
-    - echo "✅ $ENV_NAME 部署完成"
-
-.env_test_template: &env_test_template
-  stage: test
-  script:
-    - echo "🧪 測試環境: $ENV_NAME"
-    - cd ./$FOLDER_NAME
-    - bash unit-test.sh $DEPLOY_PARAM $CI_COMMIT_TAG
-    - echo "✅ $ENV_NAME 測試完成"
-
 # SIT 環境
 sit-build:
-  <<: *env_build_template
+  stage: build
   tags:
     - aws-cloud-eks-mix-runner
   rules:
@@ -154,9 +105,15 @@ sit-build:
     ENV_NAME: "SIT"
     FOLDER_NAME: "aws-mix-sit-spring"
     BUILD_PARAM: "aws-cloud-eks-sit"
+  script:
+    - echo "🏗️ 建置環境 $ENV_NAME"
+    - echo "標籤 $CI_COMMIT_TAG"
+    - cd ./$FOLDER_NAME
+    - bash build.sh $BUILD_PARAM $CI_COMMIT_TAG
+    - echo "✅ $ENV_NAME 建置完成"
 
 sit-deploy:
-  <<: *env_deploy_template
+  stage: deploy
   tags:
     - aws-cloud-eks-mix-runner
   rules:
@@ -165,11 +122,15 @@ sit-deploy:
     ENV_NAME: "SIT"
     FOLDER_NAME: "aws-mix-sit-spring"
     DEPLOY_PARAM: "sit-eks"
-  needs:
-    - sit-build
+  script:
+    - echo "🚀 部署環境 $ENV_NAME"
+    - echo "標籤 $CI_COMMIT_TAG"
+    - cd ./$FOLDER_NAME
+    - bash deploy.sh $DEPLOY_PARAM $CI_COMMIT_TAG
+    - echo "✅ $ENV_NAME 部署完成"
 
 sit-test:
-  <<: *env_test_template
+  stage: test
   tags:
     - aws-cloud-eks-mix-runner
   rules:
@@ -178,12 +139,15 @@ sit-test:
     ENV_NAME: "SIT"
     FOLDER_NAME: "aws-mix-sit-spring"
     DEPLOY_PARAM: "sit-eks"
-  needs:
-    - sit-deploy
+  script:
+    - echo "🧪 測試環境 $ENV_NAME"
+    - cd ./$FOLDER_NAME
+    - bash unit-test.sh $DEPLOY_PARAM $CI_COMMIT_TAG
+    - echo "✅ $ENV_NAME 測試完成"
 
 # UAT 環境
 uat-build:
-  <<: *env_build_template
+  stage: build
   tags:
     - aws-cloud-eks-mix-runner
   rules:
@@ -192,9 +156,15 @@ uat-build:
     ENV_NAME: "UAT"
     FOLDER_NAME: "aws-mix-uat-spring"
     BUILD_PARAM: "aws-cloud-eks-uat"
+  script:
+    - echo "🏗️ 建置環境 $ENV_NAME"
+    - echo "標籤 $CI_COMMIT_TAG"
+    - cd ./$FOLDER_NAME
+    - bash build.sh $BUILD_PARAM $CI_COMMIT_TAG
+    - echo "✅ $ENV_NAME 建置完成"
 
 uat-deploy:
-  <<: *env_deploy_template
+  stage: deploy
   tags:
     - aws-cloud-eks-mix-runner
   rules:
@@ -203,11 +173,15 @@ uat-deploy:
     ENV_NAME: "UAT"
     FOLDER_NAME: "aws-mix-uat-spring"
     DEPLOY_PARAM: "uat-eks"
-  needs:
-    - uat-build
+  script:
+    - echo "🚀 部署環境 $ENV_NAME"
+    - echo "標籤 $CI_COMMIT_TAG"
+    - cd ./$FOLDER_NAME
+    - bash deploy.sh $DEPLOY_PARAM $CI_COMMIT_TAG
+    - echo "✅ $ENV_NAME 部署完成"
 
 uat-test:
-  <<: *env_test_template
+  stage: test
   tags:
     - aws-cloud-eks-mix-runner
   rules:
@@ -216,12 +190,15 @@ uat-test:
     ENV_NAME: "UAT"
     FOLDER_NAME: "aws-mix-uat-spring"
     DEPLOY_PARAM: "uat-eks"
-  needs:
-    - uat-deploy
+  script:
+    - echo "🧪 測試環境 $ENV_NAME"
+    - cd ./$FOLDER_NAME
+    - bash unit-test.sh $DEPLOY_PARAM $CI_COMMIT_TAG
+    - echo "✅ $ENV_NAME 測試完成"
 
 # DEMO 環境
 demo-build:
-  <<: *env_build_template
+  stage: build
   tags:
     - aws-cloud-eks-mix-runner
   rules:
@@ -230,9 +207,15 @@ demo-build:
     ENV_NAME: "DEMO"
     FOLDER_NAME: "aws-mix-demo-spring"
     BUILD_PARAM: "aws-cloud-eks-demo"
+  script:
+    - echo "🏗️ 建置環境 $ENV_NAME"
+    - echo "標籤 $CI_COMMIT_TAG"
+    - cd ./$FOLDER_NAME
+    - bash build.sh $BUILD_PARAM $CI_COMMIT_TAG
+    - echo "✅ $ENV_NAME 建置完成"
 
 demo-deploy:
-  <<: *env_deploy_template
+  stage: deploy
   tags:
     - aws-cloud-eks-mix-runner
   rules:
@@ -241,11 +224,15 @@ demo-deploy:
     ENV_NAME: "DEMO"
     FOLDER_NAME: "aws-mix-demo-spring"
     DEPLOY_PARAM: "demo-eks"
-  needs:
-    - demo-build
+  script:
+    - echo "🚀 部署環境 $ENV_NAME"
+    - echo "標籤 $CI_COMMIT_TAG"
+    - cd ./$FOLDER_NAME
+    - bash deploy.sh $DEPLOY_PARAM $CI_COMMIT_TAG
+    - echo "✅ $ENV_NAME 部署完成"
 
 demo-test:
-  <<: *env_test_template
+  stage: test
   tags:
     - aws-cloud-eks-mix-runner
   rules:
@@ -254,12 +241,15 @@ demo-test:
     ENV_NAME: "DEMO"
     FOLDER_NAME: "aws-mix-demo-spring"
     DEPLOY_PARAM: "demo-eks"
-  needs:
-    - demo-deploy
+  script:
+    - echo "🧪 測試環境 $ENV_NAME"
+    - cd ./$FOLDER_NAME
+    - bash unit-test.sh $DEPLOY_PARAM $CI_COMMIT_TAG
+    - echo "✅ $ENV_NAME 測試完成"
 
 # 生產環境
 prd-build:
-  <<: *env_build_template
+  stage: build
   tags:
     - aws-cloud-eks-prd-runner
   rules:
@@ -268,9 +258,15 @@ prd-build:
     ENV_NAME: "PRODUCTION"
     FOLDER_NAME: "aws-prd-eks-spring"
     BUILD_PARAM: "sit"
+  script:
+    - echo "🏗️ 建置環境 $ENV_NAME"
+    - echo "標籤 $CI_COMMIT_TAG"
+    - cd ./$FOLDER_NAME
+    - bash build.sh $BUILD_PARAM $CI_COMMIT_TAG
+    - echo "✅ $ENV_NAME 建置完成"
 
 prd-deploy:
-  <<: *env_deploy_template
+  stage: deploy
   tags:
     - aws-cloud-eks-prd-runner
   rules:
@@ -279,11 +275,15 @@ prd-deploy:
     ENV_NAME: "PRODUCTION"
     FOLDER_NAME: "aws-prd-eks-spring"
     DEPLOY_PARAM: "sit-k8s"
-  needs:
-    - prd-build
+  script:
+    - echo "🚀 部署環境 $ENV_NAME"
+    - echo "標籤 $CI_COMMIT_TAG"
+    - cd ./$FOLDER_NAME
+    - bash deploy.sh $DEPLOY_PARAM $CI_COMMIT_TAG
+    - echo "✅ $ENV_NAME 部署完成"
 
 prd-test:
-  <<: *env_test_template
+  stage: test
   tags:
     - aws-cloud-eks-prd-runner
   rules:
@@ -292,5 +292,8 @@ prd-test:
     ENV_NAME: "PRODUCTION"
     FOLDER_NAME: "aws-prd-eks-spring"
     DEPLOY_PARAM: "sit-k8s"
-  needs:
-    - prd-deploy
+  script:
+    - echo "🧪 測試環境 $ENV_NAME"
+    - cd ./$FOLDER_NAME
+    - bash unit-test.sh $DEPLOY_PARAM $CI_COMMIT_TAG
+    - echo "✅ $ENV_NAME 測試完成"
