@@ -1,0 +1,296 @@
+stages:
+  - build
+  - test
+  - deploy
+
+variables:
+  DOCKER_DRIVER: overlay2
+  BUILD_TIME: ""
+
+# 模板定義
+.build_template: &build_template
+  stage: build
+  before_script:
+    - export BUILD_TIME=$(date +'%Y-%m-%d-%H-%M')
+    - echo "BUILD_TIME=$BUILD_TIME" > build.env
+  artifacts:
+    reports:
+      dotenv: build.env
+    expire_in: 1 week
+    paths:
+      - build.env
+
+.test_template: &test_template
+  stage: test
+  allow_failure: true
+
+.deploy_template: &deploy_template
+  stage: deploy
+  dependencies:
+    - build
+
+# 開發環境 (Merge Request 觸發)
+dev-build:
+  <<: *build_template
+  tags:
+    - ws-dev-k8s-runner
+  rules:
+    - if: $CI_MERGE_REQUEST_LABELS == 'ws-k8s-dev' && $CI_PIPELINE_SOURCE == 'merge_request_event'
+  script:
+    - cd ./ws-dev-k8s-spring
+    - bash build.sh ws-k8s-dev $BUILD_TIME
+    - echo "✅ K8s Dev 建置完成"
+
+dev-sonar-check:
+  <<: *test_template
+  tags:
+    - ws-sonar-qube-runner
+  rules:
+    - if: $CI_MERGE_REQUEST_LABELS == 'ws-k8s-dev' && $CI_PIPELINE_SOURCE == 'merge_request_event'
+  image: 
+    name: sonarsource/sonar-scanner-cli:5.0
+    entrypoint: [""]
+  variables:
+    GIT_DEPTH: 0
+  cache:
+    key: "${CI_JOB_NAME}"
+    paths:
+      - .sonar/cache
+  script: 
+    - sonar-scanner
+  needs:
+    - dev-build
+
+dev-deploy:
+  <<: *deploy_template
+  tags:
+    - ws-dev-k8s-runner
+  rules:
+    - if: $CI_MERGE_REQUEST_LABELS == 'ws-k8s-dev' && $CI_PIPELINE_SOURCE == 'merge_request_event'
+  script:
+    - source build.env
+    - cd ./ws-dev-k8s-spring
+    - bash deploy.sh dev-k8s $BUILD_TIME
+    - echo "✅ K8s Dev 部署完成"
+  needs:
+    - dev-build
+    - dev-sonar-check
+
+dev-test:
+  stage: test
+  tags:
+    - ws-dev-k8s-runner
+  rules:
+    - if: $CI_MERGE_REQUEST_LABELS == 'ws-k8s-dev' && $CI_PIPELINE_SOURCE == 'merge_request_event'
+  script:
+    - cd ./ws-dev-k8s-spring
+    - bash unit-test.sh dev-k8s
+    - echo "✅ 開發環境測試完成"
+  needs:
+    - dev-deploy
+
+# 環境配置映射
+.env_config:
+  - &sit_config
+    env: "sit"
+    runner: "aws-cloud-eks-mix-runner"
+    folder: "aws-mix-sit-spring"
+    build_param: "aws-cloud-eks-sit"
+    deploy_param: "sit-eks"
+  - &uat_config
+    env: "uat"
+    runner: "aws-cloud-eks-mix-runner"
+    folder: "aws-mix-uat-spring"
+    build_param: "aws-cloud-eks-uat"
+    deploy_param: "uat-eks"
+  - &demo_config
+    env: "demo"
+    runner: "aws-cloud-eks-mix-runner"
+    folder: "aws-mix-demo-spring"
+    build_param: "aws-cloud-eks-demo"
+    deploy_param: "demo-eks"
+  - &prd_config
+    env: "prd"
+    runner: "aws-cloud-eks-prd-runner"
+    folder: "aws-prd-eks-spring"
+    build_param: "sit"
+    deploy_param: "sit-k8s"
+
+# 動態產生環境任務的模板
+.env_build_template: &env_build_template
+  stage: build
+  script:
+    - echo "🏗️  建置環境: $ENV_NAME"
+    - echo "標籤: $CI_COMMIT_TAG"
+    - cd ./$FOLDER_NAME
+    - bash build.sh $BUILD_PARAM $CI_COMMIT_TAG
+    - echo "✅ $ENV_NAME 建置完成"
+
+.env_deploy_template: &env_deploy_template
+  stage: deploy
+  script:
+    - echo "🚀 部署環境: $ENV_NAME"
+    - echo "標籤: $CI_COMMIT_TAG"
+    - cd ./$FOLDER_NAME
+    - bash deploy.sh $DEPLOY_PARAM $CI_COMMIT_TAG
+    - echo "✅ $ENV_NAME 部署完成"
+
+.env_test_template: &env_test_template
+  stage: test
+  script:
+    - echo "🧪 測試環境: $ENV_NAME"
+    - cd ./$FOLDER_NAME
+    - bash unit-test.sh $DEPLOY_PARAM $CI_COMMIT_TAG
+    - echo "✅ $ENV_NAME 測試完成"
+
+# SIT 環境
+sit-build:
+  <<: *env_build_template
+  tags:
+    - aws-cloud-eks-mix-runner
+  rules:
+    - if: $CI_COMMIT_TAG_ENV == 'aws-eks-mix-sit'
+  variables:
+    ENV_NAME: "SIT"
+    FOLDER_NAME: "aws-mix-sit-spring"
+    BUILD_PARAM: "aws-cloud-eks-sit"
+
+sit-deploy:
+  <<: *env_deploy_template
+  tags:
+    - aws-cloud-eks-mix-runner
+  rules:
+    - if: $CI_COMMIT_TAG_ENV == 'aws-eks-mix-sit'
+  variables:
+    ENV_NAME: "SIT"
+    FOLDER_NAME: "aws-mix-sit-spring"
+    DEPLOY_PARAM: "sit-eks"
+  needs:
+    - sit-build
+
+sit-test:
+  <<: *env_test_template
+  tags:
+    - aws-cloud-eks-mix-runner
+  rules:
+    - if: $CI_COMMIT_TAG_ENV == 'aws-eks-mix-sit'
+  variables:
+    ENV_NAME: "SIT"
+    FOLDER_NAME: "aws-mix-sit-spring"
+    DEPLOY_PARAM: "sit-eks"
+  needs:
+    - sit-deploy
+
+# UAT 環境
+uat-build:
+  <<: *env_build_template
+  tags:
+    - aws-cloud-eks-mix-runner
+  rules:
+    - if: $CI_COMMIT_TAG_ENV == 'aws-eks-mix-uat'
+  variables:
+    ENV_NAME: "UAT"
+    FOLDER_NAME: "aws-mix-uat-spring"
+    BUILD_PARAM: "aws-cloud-eks-uat"
+
+uat-deploy:
+  <<: *env_deploy_template
+  tags:
+    - aws-cloud-eks-mix-runner
+  rules:
+    - if: $CI_COMMIT_TAG_ENV == 'aws-eks-mix-uat'
+  variables:
+    ENV_NAME: "UAT"
+    FOLDER_NAME: "aws-mix-uat-spring"
+    DEPLOY_PARAM: "uat-eks"
+  needs:
+    - uat-build
+
+uat-test:
+  <<: *env_test_template
+  tags:
+    - aws-cloud-eks-mix-runner
+  rules:
+    - if: $CI_COMMIT_TAG_ENV == 'aws-eks-mix-uat'
+  variables:
+    ENV_NAME: "UAT"
+    FOLDER_NAME: "aws-mix-uat-spring"
+    DEPLOY_PARAM: "uat-eks"
+  needs:
+    - uat-deploy
+
+# DEMO 環境
+demo-build:
+  <<: *env_build_template
+  tags:
+    - aws-cloud-eks-mix-runner
+  rules:
+    - if: $CI_COMMIT_TAG_ENV == 'aws-eks-mix-demo'
+  variables:
+    ENV_NAME: "DEMO"
+    FOLDER_NAME: "aws-mix-demo-spring"
+    BUILD_PARAM: "aws-cloud-eks-demo"
+
+demo-deploy:
+  <<: *env_deploy_template
+  tags:
+    - aws-cloud-eks-mix-runner
+  rules:
+    - if: $CI_COMMIT_TAG_ENV == 'aws-eks-mix-demo'
+  variables:
+    ENV_NAME: "DEMO"
+    FOLDER_NAME: "aws-mix-demo-spring"
+    DEPLOY_PARAM: "demo-eks"
+  needs:
+    - demo-build
+
+demo-test:
+  <<: *env_test_template
+  tags:
+    - aws-cloud-eks-mix-runner
+  rules:
+    - if: $CI_COMMIT_TAG_ENV == 'aws-eks-mix-demo'
+  variables:
+    ENV_NAME: "DEMO"
+    FOLDER_NAME: "aws-mix-demo-spring"
+    DEPLOY_PARAM: "demo-eks"
+  needs:
+    - demo-deploy
+
+# 生產環境
+prd-build:
+  <<: *env_build_template
+  tags:
+    - aws-cloud-eks-prd-runner
+  rules:
+    - if: $CI_COMMIT_TAG_ENV == 'aws-eks-prd'
+  variables:
+    ENV_NAME: "PRODUCTION"
+    FOLDER_NAME: "aws-prd-eks-spring"
+    BUILD_PARAM: "sit"
+
+prd-deploy:
+  <<: *env_deploy_template
+  tags:
+    - aws-cloud-eks-prd-runner
+  rules:
+    - if: $CI_COMMIT_TAG_ENV == 'aws-eks-prd'
+  variables:
+    ENV_NAME: "PRODUCTION"
+    FOLDER_NAME: "aws-prd-eks-spring"
+    DEPLOY_PARAM: "sit-k8s"
+  needs:
+    - prd-build
+
+prd-test:
+  <<: *env_test_template
+  tags:
+    - aws-cloud-eks-prd-runner
+  rules:
+    - if: $CI_COMMIT_TAG_ENV == 'aws-eks-prd'
+  variables:
+    ENV_NAME: "PRODUCTION"
+    FOLDER_NAME: "aws-prd-eks-spring"
+    DEPLOY_PARAM: "sit-k8s"
+  needs:
+    - prd-deploy
