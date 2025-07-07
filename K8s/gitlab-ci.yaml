@@ -1,53 +1,48 @@
 stages:
-  - build
-  - sonar
-  - deploy
-  - test
+  - dev-k8s-build
+  - dev-k8s-check
+  - dev-k8s-checkdependency
+  - dev-k8s-deploy
+  - dev-k8s-test
+  - sonarqube-check
+  - tag-build-aws-eks-mix-sit
+  - tag-deploy-aws-eks-mix-sit
+  - tag-test-aws-eks-mix-sit
+  - tag-build-aws-eks-mix-uat
+  - tag-deploy-aws-eks-mix-uat
+  - tag-test-aws-eks-mix-uat
+  - tag-build-aws-eks-prd
+  - tag-deploy-aws-eks-prd
+  - tag-test-aws-eks-prd
+
 
 variables:
-  DOCKER_DRIVER: overlay2
-  BUILD_TIME: ""
+  TAG: ""
 
-# 模板定義
-.build_template: &build_template
-  stage: build
-  before_script:
-    - export BUILD_TIME=$(date +'%Y-%m-%d-%H-%M')
-    - echo "BUILD_TIME=$BUILD_TIME" > build.env
-  artifacts:
-    reports:
-      dotenv: build.env
-    expire_in: 1 week
-    paths:
-      - build.env
-
-.sonar_template: &sonar_template
-  stage: sonar
-  allow_failure: true
-
-.deploy_template: &deploy_template
-  stage: deploy
-
-.test_template: &test_template
-  stage: test
-  allow_failure: true
-
-# 開發環境 (Merge Request 觸發)
-dev-build:
-  <<: *build_template
+dev-k8s-build:
+  stage: dev-k8s-build
   tags:
     - ws-dev-k8s-runner
   rules:
     - if: $CI_MERGE_REQUEST_LABELS == 'ws-k8s-dev' && $CI_PIPELINE_SOURCE == 'merge_request_event'
   script:
+    - version=$(date +'%Y-%m-%d-%H-%M')
+    - echo $version
+    - echo "VERSION=$version" > build.env
     - cd ./ws-dev-k8s-spring
-    - bash build.sh ws-k8s-dev $BUILD_TIME
-    - echo "✅ K8s Dev 建置完成"
+    - bash ../spring/build.sh dev $version
+    - echo "k8s-dev build"
+  artifacts:
+    paths:
+      - ./**/target/classes
+    reports:
+      dotenv: build.env
+    expire_in: 1 week
 
-dev-sonar-check:
-  <<: *sonar_template
+dev-k8s-check:
+  stage: dev-k8s-check
   tags:
-    - ws-sonar-qube-runner
+      - ws-sonar-qube-runner  # name of gitlab runner tag
   rules:
     - if: $CI_MERGE_REQUEST_LABELS == 'ws-k8s-dev' && $CI_PIPELINE_SOURCE == 'merge_request_event'
   image: 
@@ -61,244 +56,188 @@ dev-sonar-check:
       - .sonar/cache
   script: 
     - sonar-scanner
+  allow_failure: true
   needs:
-    - dev-build
+    - dev-k8s-build
 
-dev-deploy:
-  <<: *deploy_template
+dev-k8s-checkdependency:
+  stage: dev-k8s-checkdependency
+  tags:
+    - ws-sonar-qube-runner
+  rules:
+    - if: $CI_MERGE_REQUEST_LABELS == 'ws-k8s-dev' && $CI_PIPELINE_SOURCE == 'merge_request_event'
+  image: 
+    name: aquasec/trivy:latest
+    entrypoint: [""]
+  script:
+    - trivy fs --scanners vuln --exit-code 0 --severity CRITICAL,HIGH . --format json --output trivy-report.json
+  allow_failure: true
+  artifacts:
+    paths:
+      - trivy-report.json
+  needs:
+    - dev-k8s-build
+    - dev-k8s-check
+
+dev-k8s-deploy:
+  stage: dev-k8s-deploy
   tags:
     - ws-dev-k8s-runner
   rules:
     - if: $CI_MERGE_REQUEST_LABELS == 'ws-k8s-dev' && $CI_PIPELINE_SOURCE == 'merge_request_event'
   script:
-    - source build.env
+    - echo "VERSION:" $VERSION
     - cd ./ws-dev-k8s-spring
-    - bash deploy.sh dev-k8s $BUILD_TIME
-    - echo "✅ K8s Dev 部署完成"
+    - bash ../spring/deploy.sh dev-k8s $VERSION
+    - echo "k8s-dev deploy"
   needs:
-    - dev-build
-    - dev-sonar-check
-  dependencies:
-    - dev-build
+    - dev-k8s-build
+    - dev-k8s-check
 
-dev-test:
-  stage: test
+dev-k8s-test:
+  stage: dev-k8s-test
   tags:
     - ws-dev-k8s-runner
   rules:
     - if: $CI_MERGE_REQUEST_LABELS == 'ws-k8s-dev' && $CI_PIPELINE_SOURCE == 'merge_request_event'
   script:
-    - sleep 60
+    - echo "VERSION:" $VERSION
     - cd ./ws-dev-k8s-spring
-    - bash unit-test.sh dev-k8s
-    - echo "✅ 開發環境測試完成"
+    - bash ../spring/unit-test.sh dev-k8s $VERSION
+    - echo "dev testing"
   needs:
-    - dev-deploy
+    - dev-k8s-build
+    - dev-k8s-deploy
 
-# SIT 環境
-sit-build:
-  stage: build
+sit-mix-build:
+  stage: sit-mix-build
   tags:
     - aws-cloud-eks-mix-runner
   rules:
-    - if: $CI_COMMIT_TAG_ENV == 'aws-eks-mix-sit'
-  variables:
-    ENV_NAME: "SIT"
-    FOLDER_NAME: "aws-mix-sit-spring"
-    BUILD_PARAM: "aws-cloud-eks-sit"
+    - if: $CI_MERGE_REQUEST_LABELS == 'aws-mix-eks-sit' && $CI_PIPELINE_SOURCE == 'merge_request_event'
   script:
-    - echo "🏗️ 建置環境 $ENV_NAME"
-    - echo "標籤 $CI_COMMIT_TAG"
-    - cd ./$FOLDER_NAME
-    - bash build.sh $BUILD_PARAM $CI_COMMIT_TAG
-    - echo "✅ $ENV_NAME 建置完成"
+    - now=$(date +'%Y-%m-%d-%H-%M')
+    - echo $now
+    - echo "now=$now" > build.env
+    - cd ./aws-mix-sit-spring
+    - bash build.sh aws-mix-eks-sit $now
+    - echo "aws-sit-mix build"
+  artifacts:
+    reports:
+      dotenv: build.env
+    expire_in: 1 week
 
-sit-deploy:
-  stage: deploy
+sit-mix-deploy:
+  stage: sit-mix-deploy
   tags:
     - aws-cloud-eks-mix-runner
   rules:
-    - if: $CI_COMMIT_TAG_ENV == 'aws-eks-mix-sit'
-  variables:
-    ENV_NAME: "SIT"
-    FOLDER_NAME: "aws-mix-sit-spring"
-    DEPLOY_PARAM: "sit-eks"
+    - if: $CI_MERGE_REQUEST_LABELS == 'aws-mix-eks-sit' && $CI_PIPELINE_SOURCE == 'merge_request_event'
   script:
-    - echo "🚀 部署環境 $ENV_NAME"
-    - echo "標籤 $CI_COMMIT_TAG"
-    - cd ./$FOLDER_NAME
-    - bash deploy.sh $DEPLOY_PARAM $CI_COMMIT_TAG
-    - echo "✅ $ENV_NAME 部署完成"
+    - cd ./aws-mix-sit-spring
+    - bash deploy.sh sit-eks $now
+    - echo "sit deploy"
+  needs:
+    - sit-mix-build
 
-sit-test:
-  stage: test
+sit-mix-test:
+  stage: sit-mix-test
   tags:
     - aws-cloud-eks-mix-runner
   rules:
-    - if: $CI_COMMIT_TAG_ENV == 'aws-eks-mix-sit'
-  variables:
-    ENV_NAME: "SIT"
-    FOLDER_NAME: "aws-mix-sit-spring"
-    DEPLOY_PARAM: "sit-eks"
+    - if: $CI_MERGE_REQUEST_LABELS == 'aws-mix-eks-sit' && $CI_PIPELINE_SOURCE == 'merge_request_event'
   script:
-    - sleep 60
-    - echo "🧪 測試環境 $ENV_NAME"
-    - cd ./$FOLDER_NAME
-    - bash unit-test.sh $DEPLOY_PARAM $CI_COMMIT_TAG
-    - echo "✅ $ENV_NAME 測試完成"
+    - cd ./aws-mix-sit-spring
+    - bash unit-test.sh sit-eks
+    - echo "sit testing"
+  needs:
+    - sit-mix-deploy
 
-# UAT 環境
-uat-build:
-  stage: build
+tag-build-aws-eks-mix-uat:
+  stage: tag-build-aws-eks-mix-uat
   tags:
     - aws-cloud-eks-mix-runner
   rules:
     - if: $CI_COMMIT_TAG_ENV == 'aws-eks-mix-uat'
-  variables:
-    ENV_NAME: "UAT"
-    FOLDER_NAME: "aws-mix-uat-spring"
-    BUILD_PARAM: "aws-cloud-eks-uat"
   script:
-    - echo "🏗️ 建置環境 $ENV_NAME"
-    - echo "標籤 $CI_COMMIT_TAG"
-    - cd ./$FOLDER_NAME
-    - bash build.sh $BUILD_PARAM $CI_COMMIT_TAG
-    - echo "✅ $ENV_NAME 建置完成"
+    - echo "CI_COMMIT_TAG=$CI_COMMIT_TAG" 
+    - echo "CI_COMMIT_TAG_ENV=$CI_COMMIT_TAG_ENV"
+    - echo "CI_MOD=$CI_MOD" 
+    - cd ./aws-mix-uat-spring
+    - bash ../spring/build.sh uat $CI_COMMIT_TAG
+    - echo "build $CI_PROJECT_NAME $CI_COMMIT_TAG_ENV $CI_COMMIT_TAG Succeed"
 
-uat-deploy:
-  stage: deploy
+tag-deploy-aws-eks-mix-uat:
+  stage: tag-deploy-aws-eks-mix-uat
   tags:
     - aws-cloud-eks-mix-runner
   rules:
-    - if: $CI_COMMIT_TAG_ENV == 'aws-eks-mix-uat'
-  variables:
-    ENV_NAME: "UAT"
-    FOLDER_NAME: "aws-mix-uat-spring"
-    DEPLOY_PARAM: "uat-eks"
+    - if: $CI_COMMIT_TAG_ENV == 'aws-eks-mix-uat' && $CI_MOD != 'build_only'
   script:
-    - echo "🚀 部署環境 $ENV_NAME"
-    - echo "標籤 $CI_COMMIT_TAG"
-    - cd ./$FOLDER_NAME
-    - bash deploy.sh $DEPLOY_PARAM $CI_COMMIT_TAG
-    - echo "✅ $ENV_NAME 部署完成"
+    - echo "CI_COMMIT_TAG=" && echo $CI_COMMIT_TAG
+    - echo "CI_COMMIT_TAG_ENV=" && echo $CI_COMMIT_TAG_ENV
+    - cd ./aws-mix-uat-spring
+    - bash ../spring/deploy.sh uat-eks $CI_COMMIT_TAG
+    - echo "deploy $CI_PROJECT_NAME $CI_COMMIT_TAG_ENV $CI_COMMIT_TAG Succeed"
+  needs:
+    - tag-build-aws-eks-mix-uat
 
-uat-test:
-  stage: test
+tag-test-aws-eks-mix-uat:
+  stage: tag-test-aws-eks-mix-uat
   tags:
     - aws-cloud-eks-mix-runner
   rules:
-    - if: $CI_COMMIT_TAG_ENV == 'aws-eks-mix-uat'
-  variables:
-    ENV_NAME: "UAT"
-    FOLDER_NAME: "aws-mix-uat-spring"
-    DEPLOY_PARAM: "uat-eks"
+    - if: $CI_COMMIT_TAG_ENV == 'aws-eks-mix-uat' && $CI_MOD != 'build_only'
   script:
-    - sleep 60
-    - echo "🧪 測試環境 $ENV_NAME"
-    - cd ./$FOLDER_NAME
-    - bash unit-test.sh $DEPLOY_PARAM $CI_COMMIT_TAG
-    - echo "✅ $ENV_NAME 測試完成"
+    - echo "CI_COMMIT_TAG=" && echo $CI_COMMIT_TAG
+    - echo "CI_COMMIT_TAG_ENV=" && echo $CI_COMMIT_TAG_ENV
+    - cd ./aws-mix-uat-spring
+    - bash ../spring/unit-test.sh uat-eks $CI_COMMIT_TAG
+    - echo "test $CI_PROJECT_NAME $CI_COMMIT_TAG_ENV $CI_COMMIT_TAG Succeed"
+  needs:
+    - tag-deploy-aws-eks-mix-uat
 
-# DEMO 環境
-demo-build:
-  stage: build
-  tags:
-    - aws-cloud-eks-mix-runner
-  rules:
-    - if: $CI_COMMIT_TAG_ENV == 'aws-eks-mix-demo'
-  variables:
-    ENV_NAME: "DEMO"
-    FOLDER_NAME: "aws-mix-demo-spring"
-    BUILD_PARAM: "aws-cloud-eks-demo"
-  script:
-    - echo "🏗️ 建置環境 $ENV_NAME"
-    - echo "標籤 $CI_COMMIT_TAG"
-    - cd ./$FOLDER_NAME
-    - bash build.sh $BUILD_PARAM $CI_COMMIT_TAG
-    - echo "✅ $ENV_NAME 建置完成"
 
-demo-deploy:
-  stage: deploy
-  tags:
-    - aws-cloud-eks-mix-runner
-  rules:
-    - if: $CI_COMMIT_TAG_ENV == 'aws-eks-mix-demo'
-  variables:
-    ENV_NAME: "DEMO"
-    FOLDER_NAME: "aws-mix-demo-spring"
-    DEPLOY_PARAM: "demo-eks"
-  script:
-    - echo "🚀 部署環境 $ENV_NAME"
-    - echo "標籤 $CI_COMMIT_TAG"
-    - cd ./$FOLDER_NAME
-    - bash deploy.sh $DEPLOY_PARAM $CI_COMMIT_TAG
-    - echo "✅ $ENV_NAME 部署完成"
-
-demo-test:
-  stage: test
-  tags:
-    - aws-cloud-eks-mix-runner
-  rules:
-    - if: $CI_COMMIT_TAG_ENV == 'aws-eks-mix-demo'
-  variables:
-    ENV_NAME: "DEMO"
-    FOLDER_NAME: "aws-mix-demo-spring"
-    DEPLOY_PARAM: "demo-eks"
-  script:
-    - sleep 60
-    - echo "🧪 測試環境 $ENV_NAME"
-    - cd ./$FOLDER_NAME
-    - bash unit-test.sh $DEPLOY_PARAM $CI_COMMIT_TAG
-    - echo "✅ $ENV_NAME 測試完成"
-
-# 生產環境
-prd-build:
-  stage: build
+tag-build-aws-eks-prd:
+  stage: tag-build-aws-eks-prd
   tags:
     - aws-cloud-eks-prd-runner
   rules:
     - if: $CI_COMMIT_TAG_ENV == 'aws-eks-prd'
-  variables:
-    ENV_NAME: "PRODUCTION"
-    FOLDER_NAME: "aws-prd-eks-spring"
-    BUILD_PARAM: "sit"
   script:
-    - echo "🏗️ 建置環境 $ENV_NAME"
-    - echo "標籤 $CI_COMMIT_TAG"
-    - cd ./$FOLDER_NAME
-    - bash build.sh $BUILD_PARAM $CI_COMMIT_TAG
-    - echo "✅ $ENV_NAME 建置完成"
+    - echo "CI_COMMIT_TAG=$CI_COMMIT_TAG" 
+    - echo "CI_COMMIT_TAG_ENV=$CI_COMMIT_TAG_ENV"
+    - echo "CI_MOD=$CI_MOD" 
+    - cd ./aws-prd-eks-spring
+    - bash ../spring/build.sh prd $CI_COMMIT_TAG
+    - echo "build $CI_PROJECT_NAME $CI_COMMIT_TAG_ENV $CI_COMMIT_TAG Succeed"
 
-prd-deploy:
-  stage: deploy
+tag-deploy-aws-eks-prd:
+  stage: tag-deploy-aws-eks-prd
   tags:
     - aws-cloud-eks-prd-runner
   rules:
-    - if: $CI_COMMIT_TAG_ENV == 'aws-eks-prd'
-  variables:
-    ENV_NAME: "PRODUCTION"
-    FOLDER_NAME: "aws-prd-eks-spring"
-    DEPLOY_PARAM: "sit-k8s"
+    - if: $CI_COMMIT_TAG_ENV == 'aws-eks-prd' && $CI_MOD != 'build_only'
   script:
-    - echo "🚀 部署環境 $ENV_NAME"
-    - echo "標籤 $CI_COMMIT_TAG"
-    - cd ./$FOLDER_NAME
-    - bash deploy.sh $DEPLOY_PARAM $CI_COMMIT_TAG
-    - echo "✅ $ENV_NAME 部署完成"
+    - echo "CI_COMMIT_TAG=" && echo $CI_COMMIT_TAG
+    - echo "CI_COMMIT_TAG_ENV=" && echo $CI_COMMIT_TAG_ENV
+    - cd ./aws-prd-eks-spring
+    - bash ../spring/deploy.sh sit-k8s $CI_COMMIT_TAG
+    - echo "deploy $CI_PROJECT_NAME $CI_COMMIT_TAG_ENV $CI_COMMIT_TAG Succeed"
+  needs:
+    - tag-build-aws-eks-prd
 
-prd-test:
-  stage: test
+tag-test-aws-eks-prd:
+  stage: tag-test-aws-eks-prd
   tags:
     - aws-cloud-eks-prd-runner
   rules:
-    - if: $CI_COMMIT_TAG_ENV == 'aws-eks-prd'
-  variables:
-    ENV_NAME: "PRODUCTION"
-    FOLDER_NAME: "aws-prd-eks-spring"
-    DEPLOY_PARAM: "sit-k8s"
+    - if: $CI_COMMIT_TAG_ENV == 'aws-eks-prd' && $CI_MOD != 'build_only'
   script:
-    - sleep 60
-    - echo "🧪 測試環境 $ENV_NAME"
-    - cd ./$FOLDER_NAME
-    - bash unit-test.sh $DEPLOY_PARAM $CI_COMMIT_TAG
-    - echo "✅ $ENV_NAME 測試完成"
+    - echo "CI_COMMIT_TAG=" && echo $CI_COMMIT_TAG
+    - echo "CI_COMMIT_TAG_ENV=" && echo $CI_COMMIT_TAG_ENV
+    - cd ./aws-prd-eks-spring
+    - bash ../spring/unit-test.sh sit-k8s $CI_COMMIT_TAG
+    - echo "test $CI_PROJECT_NAME $CI_COMMIT_TAG_ENV $CI_COMMIT_TAG Succeed"
+  needs:
+    - tag-deploy-aws-eks-prd
