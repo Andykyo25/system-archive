@@ -4,7 +4,9 @@ stages:
   - dev-k8s-checkdependency
   - dev-k8s-deploy
   - dev-k8s-test
-  - sonarqube-check
+  - tag-build-aws-eks-mix-demo
+  - tag-deploy-aws-eks-mix-demo
+  - tag-test-aws-eks-mix-demo
   - tag-build-aws-eks-mix-sit
   - tag-deploy-aws-eks-mix-sit
   - tag-test-aws-eks-mix-sit
@@ -14,7 +16,6 @@ stages:
   - tag-build-aws-eks-prd
   - tag-deploy-aws-eks-prd
   - tag-test-aws-eks-prd
-
 
 variables:
   TAG: ""
@@ -109,49 +110,92 @@ dev-k8s-test:
     - dev-k8s-build
     - dev-k8s-deploy
 
-sit-mix-build:
-  stage: sit-mix-build
+tag-build-aws-eks-mix-demo:
+  stage: tag-build-aws-eks-mix-demo
   tags:
     - aws-cloud-eks-mix-runner
   rules:
-    - if: $CI_MERGE_REQUEST_LABELS == 'aws-mix-eks-sit' && $CI_PIPELINE_SOURCE == 'merge_request_event'
+    - if: $CI_COMMIT_TAG_ENV == 'aws-eks-mix-demo'
   script:
-    - now=$(date +'%Y-%m-%d-%H-%M')
-    - echo $now
-    - echo "now=$now" > build.env
-    - cd ./aws-mix-sit-spring
-    - bash build.sh aws-mix-eks-sit $now
-    - echo "aws-sit-mix build"
-  artifacts:
-    reports:
-      dotenv: build.env
-    expire_in: 1 week
+    - echo "CI_COMMIT_TAG=$CI_COMMIT_TAG" 
+    - echo "CI_COMMIT_TAG_ENV=$CI_COMMIT_TAG_ENV"
+    - cd ./aws-mix-demo-spring
+    - bash build.sh aws-cloud-eks-demo $CI_COMMIT_TAG
+    - echo "build $CI_PROJECT_NAME $CI_COMMIT_TAG_ENV $CI_COMMIT_TAG Succeed"
 
-sit-mix-deploy:
-  stage: sit-mix-deploy
+tag-deploy-aws-eks-mix-demo:
+  stage: tag-deploy-aws-eks-mix-demo
   tags:
     - aws-cloud-eks-mix-runner
   rules:
-    - if: $CI_MERGE_REQUEST_LABELS == 'aws-mix-eks-sit' && $CI_PIPELINE_SOURCE == 'merge_request_event'
+    - if: $CI_COMMIT_TAG_ENV == 'aws-eks-mix-demo'
   script:
-    - cd ./aws-mix-sit-spring
-    - bash deploy.sh sit-eks $now
-    - echo "sit deploy"
+    - echo "CI_COMMIT_TAG=" && echo $CI_COMMIT_TAG
+    - echo "CI_COMMIT_TAG_ENV=" && echo $CI_COMMIT_TAG_ENV
+    - cd ./aws-mix-demo-spring
+    - bash deploy.sh demo-eks $CI_COMMIT_TAG
+    - echo "deploy $CI_PROJECT_NAME $CI_COMMIT_TAG_ENV $CI_COMMIT_TAG Succeed"
   needs:
-    - sit-mix-build
+    - tag-build-aws-eks-mix-demo
 
-sit-mix-test:
-  stage: sit-mix-test
+tag-test-aws-eks-mix-demo:
+  stage: tag-test-aws-eks-mix-demo
   tags:
     - aws-cloud-eks-mix-runner
   rules:
-    - if: $CI_MERGE_REQUEST_LABELS == 'aws-mix-eks-sit' && $CI_PIPELINE_SOURCE == 'merge_request_event'
+    - if: $CI_COMMIT_TAG_ENV == 'aws-eks-mix-demo'
   script:
-    - cd ./aws-mix-sit-spring
-    - bash unit-test.sh sit-eks
-    - echo "sit testing"
+    - echo "CI_COMMIT_TAG=" && echo $CI_COMMIT_TAG
+    - echo "CI_COMMIT_TAG_ENV=" && echo $CI_COMMIT_TAG_ENV
+    - cd ./aws-mix-demo-spring
+    - bash unit-test.sh demo-eks $CI_COMMIT_TAG
+    - echo "test $CI_PROJECT_NAME $CI_COMMIT_TAG_ENV $CI_COMMIT_TAG Succeed"
   needs:
-    - sit-mix-deploy
+    - tag-deploy-aws-eks-mix-demo
+
+tag-build-aws-eks-mix-sit:
+  stage: tag-build-aws-eks-mix-sit
+  tags:
+    - aws-cloud-eks-mix-runner
+  rules:
+    - if: $CI_COMMIT_TAG_ENV == 'aws-eks-mix-sit'
+  script:
+    - echo "CI_COMMIT_TAG=$CI_COMMIT_TAG" 
+    - echo "CI_COMMIT_TAG_ENV=$CI_COMMIT_TAG_ENV"
+    - echo "CI_MOD=$CI_MOD" 
+    - cd ./aws-mix-sit-spring
+    - bash ../spring/build.sh sit $CI_COMMIT_TAG
+    - echo "build $CI_PROJECT_NAME $CI_COMMIT_TAG_ENV $CI_COMMIT_TAG Succeed"
+
+tag-deploy-aws-eks-mix-sit:
+  stage: tag-deploy-aws-eks-mix-sit
+  tags:
+    - aws-cloud-eks-mix-runner
+  rules:
+    - if: $CI_COMMIT_TAG_ENV == 'aws-eks-mix-sit'
+  script:
+    - echo "CI_COMMIT_TAG=" && echo $CI_COMMIT_TAG
+    - echo "CI_COMMIT_TAG_ENV=" && echo $CI_COMMIT_TAG_ENV
+    - cd ./aws-mix-sit-spring
+    - bash deploy.sh sit-eks $CI_COMMIT_TAG
+    - echo "deploy $CI_PROJECT_NAME $CI_COMMIT_TAG_ENV $CI_COMMIT_TAG Succeed"
+  needs:
+    - tag-build-aws-eks-mix-sit
+
+tag-test-aws-eks-mix-sit:
+  stage: tag-test-aws-eks-mix-sit
+  tags:
+    - aws-cloud-eks-mix-runner
+  rules:
+    - if: $CI_COMMIT_TAG_ENV == 'aws-eks-mix-sit'
+  script:
+    - echo "CI_COMMIT_TAG=" && echo $CI_COMMIT_TAG
+    - echo "CI_COMMIT_TAG_ENV=" && echo $CI_COMMIT_TAG_ENV
+    - cd ./aws-mix-sit-spring
+    - bash unit-test.sh sit-eks $CI_COMMIT_TAG
+    - echo "test $CI_PROJECT_NAME $CI_COMMIT_TAG_ENV $CI_COMMIT_TAG Succeed"
+  needs:
+    - tag-deploy-aws-eks-mix-sit
 
 tag-build-aws-eks-mix-uat:
   stage: tag-build-aws-eks-mix-uat

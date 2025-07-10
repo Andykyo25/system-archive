@@ -1,0 +1,306 @@
+stages:
+  - dev-k8s-build
+  - dev-k8s-check
+  - dev-k8s-checkdependency
+  - dev-k8s-deploy
+  - dev-k8s-test
+  - tag-build-aws-eks-mix-demo
+  - tag-deploy-aws-eks-mix-demo
+  - tag-test-aws-eks-mix-demo
+  - tag-build-aws-eks-mix-sit
+  - tag-deploy-aws-eks-mix-sit
+  - tag-test-aws-eks-mix-sit
+  - tag-build-aws-eks-mix-uat
+  - tag-deploy-aws-eks-mix-uat
+  - tag-test-aws-eks-mix-uat
+  - tag-build-aws-eks-prd
+  - tag-deploy-aws-eks-prd
+  - tag-test-aws-eks-prd
+
+variables:
+  TAG: ""
+
+# 定義統一的rules
+.dev_k8s_rules: &dev_k8s_rules
+  rules:
+    - if: $CI_MERGE_REQUEST_LABELS == 'ws-k8s-dev' && $CI_PIPELINE_SOURCE == 'merge_request_event'
+
+.tag_rules_demo: &tag_rules_demo
+  rules:
+    - if: $CI_COMMIT_TAG_ENV == 'aws-eks-mix-demo'
+
+.tag_rules_sit: &tag_rules_sit
+  rules:
+    - if: $CI_COMMIT_TAG_ENV == 'aws-eks-mix-sit'
+
+.tag_rules_uat: &tag_rules_uat
+  rules:
+    - if: $CI_COMMIT_TAG_ENV == 'aws-eks-mix-uat' && $CI_MOD != 'build_only'
+
+.tag_rules_prd: &tag_rules_prd
+  rules:
+    - if: $CI_COMMIT_TAG_ENV == 'aws-eks-prd' && $CI_MOD != 'build_only'
+
+# 定義統一的tag腳本
+.tag_build_script: &tag_build_script
+  script:
+    - echo "CI_COMMIT_TAG=$CI_COMMIT_TAG"
+    - echo "CI_COMMIT_TAG_ENV=$CI_COMMIT_TAG_ENV"
+    - echo "CI_MOD=$CI_MOD"
+    - cd "${BUILD_DIR}"
+    - bash "${BUILD_PATH}" "${BUILD_ENV}" $CI_COMMIT_TAG
+    - echo "build $CI_PROJECT_NAME $CI_COMMIT_TAG_ENV $CI_COMMIT_TAG Succeed"
+
+.tag_deploy_script: &tag_deploy_script
+  script:
+    - echo "CI_COMMIT_TAG=" && echo $CI_COMMIT_TAG
+    - echo "CI_COMMIT_TAG_ENV=" && echo $CI_COMMIT_TAG_ENV
+    - cd "${DEPLOY_DIR}"
+    - bash "${DEPLOY_PATH}" "${DEPLOY_ENV}" $CI_COMMIT_TAG
+    - echo "deploy $CI_PROJECT_NAME $CI_COMMIT_TAG_ENV $CI_COMMIT_TAG Succeed"
+
+.tag_test_script: &tag_test_script
+  script:
+    - echo "CI_COMMIT_TAG=" && echo $CI_COMMIT_TAG
+    - echo "CI_COMMIT_TAG_ENV=" && echo $CI_COMMIT_TAG_ENV
+    - cd "${TEST_DIR}"
+    - bash "${TEST_PATH}" "${TEST_ENV}" $CI_COMMIT_TAG
+    - echo "test $CI_PROJECT_NAME $CI_COMMIT_TAG_ENV $CI_COMMIT_TAG Succeed"
+
+# Dev階段的job
+dev-k8s-build:
+  stage: dev-k8s-build
+  tags:
+    - ws-dev-k8s-runner
+  <<: *dev_k8s_rules
+  script:
+    - version=$(date +'%Y-%m-%d-%H-%M')
+    - echo $version
+    - echo "VERSION=$version" > build.env
+    - cd ./ws-dev-k8s-spring
+    - bash ../spring/build.sh dev $version
+    - echo "k8s-dev build"
+  artifacts:
+    paths:
+      - ./**/target/classes
+    reports:
+      dotenv: build.env
+    expire_in: 1 week
+
+dev-k8s-check:
+  stage: dev-k8s-check
+  tags:
+    - ws-sonar-qube-runner
+  <<: *dev_k8s_rules
+  image:
+    name: sonarsource/sonar-scanner-cli:5.0
+    entrypoint: [""]
+  variables:
+    GIT_DEPTH: 0
+  cache:
+    key: "${CI_JOB_NAME}"
+    paths:
+      - .sonar/cache
+  script:
+    - sonar-scanner
+  allow_failure: true
+  needs:
+    - dev-k8s-build
+
+dev-k8s-checkdependency:
+  stage: dev-k8s-checkdependency
+  tags:
+    - ws-sonar-qube-runner
+  <<: *dev_k8s_rules
+  image:
+    name: aquasec/trivy:latest
+    entrypoint: [""]
+  script:
+    - trivy fs --scanners vuln --exit-code 0 --severity CRITICAL,HIGH . --format json --output trivy-report.json
+  allow_failure: true
+  artifacts:
+    paths:
+      - trivy-report.json
+  needs:
+    - dev-k8s-build
+    - dev-k8s-check
+
+dev-k8s-deploy:
+  stage: dev-k8s-deploy
+  tags:
+    - ws-dev-k8s-runner
+  <<: *dev_k8s_rules
+  script:
+    - echo "VERSION:" $VERSION
+    - cd ./ws-dev-k8s-spring
+    - bash ../spring/deploy.sh dev-k8s $VERSION
+    - echo "k8s-dev deploy"
+  needs:
+    - dev-k8s-build
+    - dev-k8s-check
+
+dev-k8s-test:
+  stage: dev-k8s-test
+  tags:
+    - ws-dev-k8s-runner
+  <<: *dev_k8s_rules
+  script:
+    - echo "VERSION:" $VERSION
+    - cd ./ws-dev-k8s-spring
+    - bash ../spring/unit-test.sh dev-k8s $VERSION
+    - echo "dev testing"
+  needs:
+    - dev-k8s-build
+    - dev-k8s-deploy
+
+# Tag階段的job（以demo為例，其他環境類似）
+tag-build-aws-eks-mix-demo:
+  stage: tag-build-aws-eks-mix-demo
+  tags:
+    - aws-cloud-eks-mix-runner
+  <<: *tag_rules_demo
+  variables:
+    BUILD_DIR: ./aws-mix-demo-spring
+    BUILD_PATH: build.sh
+    BUILD_ENV: aws-cloud-eks-demo
+  <<: *tag_build_script
+
+tag-deploy-aws-eks-mix-demo:
+  stage: tag-deploy-aws-eks-mix-demo
+  tags:
+    - aws-cloud-eks-mix-runner
+  <<: *tag_rules_demo
+  variables:
+    DEPLOY_DIR: ./aws-mix-demo-spring
+    DEPLOY_PATH: deploy.sh
+    DEPLOY_ENV: demo-eks
+  <<: *tag_deploy_script
+  needs:
+    - tag-build-aws-eks-mix-demo
+
+tag-test-aws-eks-mix-demo:
+  stage: tag-test-aws-eks-mix-demo
+  tags:
+    - aws-cloud-eks-mix-runner
+  <<: *tag_rules_demo
+  variables:
+    TEST_DIR: ./aws-mix-demo-spring
+    TEST_PATH: unit-test.sh
+    TEST_ENV: demo-eks
+  <<: *tag_test_script
+  needs:
+    - tag-deploy-aws-eks-mix-demo
+
+# SIT環境
+tag-build-aws-eks-mix-sit:
+  stage: tag-build-aws-eks-mix-sit
+  tags:
+    - aws-cloud-eks-mix-runner
+  <<: *tag_rules_sit
+  variables:
+    BUILD_DIR: ./aws-mix-sit-spring
+    BUILD_PATH: ../spring/build.sh
+    BUILD_ENV: sit
+  <<: *tag_build_script
+
+tag-deploy-aws-eks-mix-sit:
+  stage: tag-deploy-aws-eks-mix-sit
+  tags:
+    - aws-cloud-eks-mix-runner
+  <<: *tag_rules_sit
+  variables:
+    DEPLOY_DIR: ./aws-mix-sit-spring
+    DEPLOY_PATH: deploy.sh
+    DEPLOY_ENV: sit-eks
+  <<: *tag_deploy_script
+  needs:
+    - tag-build-aws-eks-mix-sit
+
+tag-test-aws-eks-mix-sit:
+  stage: tag-test-aws-eks-mix-sit
+  tags:
+    - aws-cloud-eks-mix-runner
+  <<: *tag_rules_sit
+  variables:
+    TEST_DIR: ./aws-mix-sit-spring
+    TEST_PATH: unit-test.sh
+    TEST_ENV: sit-eks
+  <<: *tag_test_script
+  needs:
+    - tag-deploy-aws-eks-mix-sit
+
+# UAT環境
+tag-build-aws-eks-mix-uat:
+  stage: tag-build-aws-eks-mix-uat
+  tags:
+    - aws-cloud-eks-mix-runner
+  <<: *tag_rules_uat
+  variables:
+    BUILD_DIR: ./aws-mix-uat-spring
+    BUILD_PATH: ../spring/build.sh
+    BUILD_ENV: uat
+  <<: *tag_build_script
+
+tag-deploy-aws-eks-mix-uat:
+  stage: tag-deploy-aws-eks-mix-uat
+  tags:
+    - aws-cloud-eks-mix-runner
+  <<: *tag_rules_uat
+  variables:
+    DEPLOY_DIR: ./aws-mix-uat-spring
+    DEPLOY_PATH: ../spring/deploy.sh
+    DEPLOY_ENV: uat-eks
+  <<: *tag_deploy_script
+  needs:
+    - tag-build-aws-eks-mix-uat
+
+tag-test-aws-eks-mix-uat:
+  stage: tag-test-aws-eks-mix-uat
+  tags:
+    - aws-cloud-eks-mix-runner
+  <<: *tag_rules_uat
+  variables:
+    TEST_DIR: ./aws-mix-uat-spring
+    TEST_PATH: ../spring/unit-test.sh
+    TEST_ENV: uat-eks
+  <<: *tag_test_script
+  needs:
+    - tag-deploy-aws-eks-mix-uat
+
+# PRD環境
+tag-build-aws-eks-prd:
+  stage: tag-build-aws-eks-prd
+  tags:
+    - aws-cloud-eks-prd-runner
+  <<: *tag_rules_prd
+  variables:
+    BUILD_DIR: ./aws-prd-eks-spring
+    BUILD_PATH: ../spring/build.sh
+    BUILD_ENV: prd
+  <<: *tag_build_script
+
+tag-deploy-aws-eks-prd:
+  stage: tag-deploy-aws-eks-prd
+  tags:
+    - aws-cloud-eks-prd-runner
+  <<: *tag_rules_prd
+  variables:
+    DEPLOY_DIR: ./aws-prd-eks-spring
+    DEPLOY_PATH: ../spring/deploy.sh
+    DEPLOY_ENV: sit-k8s
+  <<: *tag_deploy_script
+  needs:
+    - tag-build-aws-eks-prd
+
+tag-test-aws-eks-prd:
+  stage: tag-test-aws-eks-prd
+  tags:
+    - aws-cloud-eks-prd-runner
+  <<: *tag_rules_prd
+  variables:
+    TEST_DIR: ./aws-prd-eks-spring
+    TEST_PATH: ../spring/unit-test.sh
+    TEST_ENV: sit-k8s
+  <<: *tag_test_script
+  needs:
+    - tag-deploy-aws-eks-prd
