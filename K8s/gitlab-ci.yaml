@@ -43,7 +43,7 @@ dev-k8s-build:
 dev-k8s-check:
   stage: dev-k8s-check
   tags:
-      - ws-sonar-qube-runner  # name of gitlab runner tag
+      - ws-sonar-qube-runner
   rules:
     - if: $CI_MERGE_REQUEST_LABELS == 'ws-k8s-dev' && $CI_PIPELINE_SOURCE == 'merge_request_event'
   image: 
