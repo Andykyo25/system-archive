@@ -71,9 +71,9 @@ deploy:
   containerLogPath: /home/veriid/log
   logPath: /data/log/${IMAGE_NAME}
   limits:
-    memory: 4G
+    memory: 4Gi
   requests:
-    memory: 512M
+    memory: 512Mi
   liveness:
     scope:
       - dev1
