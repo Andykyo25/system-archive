@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AWS 費用視覺化 (V12 智能診斷版)</title>
+    <title>AWS 費用視覺化 (V15 統計版)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
@@ -25,17 +25,27 @@
         .drag-area { border: 2px dashed #a78bfa; background-color: #f5f3ff; transition: all 0.2s; }
         .drag-area:hover, .drag-area.active { border-color: #7c3aed; background-color: #ede9fe; transform: scale(1.01); }
 
-        .trend-up { color: #f43f5e; font-weight: 700; background: #fff1f2; padding: 2px 6px; border-radius: 4px; }
-        .trend-down { color: #10b981; font-weight: 700; background: #ecfdf5; padding: 2px 6px; border-radius: 4px; }
+        .trend-up { color: #f43f5e; font-weight: 700; } 
+        .trend-down { color: #10b981; font-weight: 700; }
         
-        /* 月份篩選按鈕樣式 */
         .month-btn { transition: all 0.2s; border: 1px solid #e2e8f0; }
         .month-btn:hover { background-color: #f1f5f9; }
         .month-btn.active { background-color: #6366f1; color: white; border-color: #6366f1; box-shadow: 0 2px 4px rgba(99, 102, 241, 0.3); }
 
-        /* 建議卡片動畫 */
-        @keyframes slideIn { from { opacity: 0; transform: translateX(10px); } to { opacity: 1; transform: translateX(0); } }
-        .insight-item { animation: slideIn 0.3s ease-out forwards; }
+        .view-switch {
+            background: #f1f5f9; border-radius: 999px; padding: 4px; display: flex; align-items: center; border: 1px solid #e2e8f0;
+        }
+        .view-btn {
+            padding: 6px 16px; border-radius: 999px; font-size: 13px; font-weight: 600; color: #64748b; transition: all 0.3s;
+        }
+        .view-btn.active {
+            background: white; color: #6366f1; box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+
+        /* 表格固定表頭 */
+        .detail-table th { position: sticky; top: 0; background: #f8fafc; z-index: 10; font-size: 11px; text-transform: uppercase; color: #64748b; padding: 12px; border-bottom: 2px solid #e2e8f0; }
+        .detail-table td { padding: 10px 12px; border-bottom: 1px solid #f1f5f9; font-size: 13px; }
+        .detail-table tr:hover { background-color: #f8fafc; }
 
         ::-webkit-scrollbar { width: 8px; height: 8px; }
         ::-webkit-scrollbar-track { background: #f1f1f1; }
@@ -47,173 +57,203 @@
 <body class="text-slate-700 h-screen flex flex-col overflow-hidden">
 
     <!-- 頂部導航 -->
-    <div class="bg-white/90 backdrop-blur-md border-b border-indigo-100 sticky top-0 z-50">
+    <div class="bg-white/90 backdrop-blur-md border-b border-indigo-100 sticky top-0 z-50 shadow-sm flex-none">
         <div class="max-w-7xl mx-auto px-4 py-3 flex flex-col md:flex-row items-center justify-between gap-4">
             
             <div class="flex items-center gap-3 w-full md:w-auto">
                 <div class="bg-gradient-brand text-white p-2.5 rounded-xl shadow-lg shadow-indigo-200">
-                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path></svg>
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
                 </div>
                 <div>
-                    <h1 class="text-xl font-bold text-slate-800 tracking-tight">AWS 費用視覺化 <span class="text-xs bg-indigo-100 text-indigo-600 px-2 py-0.5 rounded-full ml-1">V12</span></h1>
-                    <p class="text-xs text-slate-500 font-medium">✨ 智能診斷 • 自動分析帳單異常</p>
+                    <h1 class="text-xl font-bold text-slate-800 tracking-tight">AWS 費用視覺化 <span class="text-xs bg-indigo-100 text-indigo-600 px-2 py-0.5 rounded-full ml-1">V15</span></h1>
+                    <p class="text-xs text-slate-500 font-medium">統計分析版</p>
                 </div>
             </div>
 
-            <div class="flex flex-wrap items-center gap-3 w-full md:w-auto justify-end" id="control-panel">
-                <button onclick="exportReport()" class="h-10 px-4 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-sm font-bold shadow-md transition flex items-center gap-2">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4-4m0 0l-4 4m4-4v12"></path></svg>
-                    匯出唯讀報表
-                </button>
-                <button onclick="clearAllData()" class="h-10 px-3 border border-red-200 text-red-500 hover:bg-red-50 rounded-xl text-xs font-bold transition">清除</button>
-                <div class="w-px h-8 bg-slate-300 mx-1"></div>
-                <div class="flex items-center gap-2 text-xs font-medium text-slate-500 bg-slate-50 px-3 py-2 rounded-lg border border-slate-200">
-                    <input type="checkbox" id="use-big5" class="rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer">
-                    <label for="use-big5" class="cursor-pointer">Excel (Big5)</label>
+            <div class="flex flex-wrap items-center gap-4 w-full md:w-auto justify-end" id="control-panel">
+                
+                <!-- 視角切換器 -->
+                <div class="view-switch">
+                    <button onclick="switchView('dashboard')" id="btn-dashboard" class="view-btn active">📊 管理總覽</button>
+                    <button onclick="switchView('detail')" id="btn-detail" class="view-btn">🔎 細項比對</button>
                 </div>
-                <div id="drop-zone" class="drag-area relative w-full md:w-48 h-10 rounded-xl flex items-center justify-center cursor-pointer group">
+
+                <div class="h-6 w-px bg-slate-200"></div>
+
+                <button onclick="exportReport()" class="h-9 px-3 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-bold transition">匯出報表</button>
+                <button onclick="clearAllData()" class="h-9 px-3 border border-red-200 text-red-500 hover:bg-red-50 rounded-lg text-xs font-bold transition">清除</button>
+                
+                <div id="drop-zone" class="drag-area relative w-36 h-9 rounded-lg flex items-center justify-center cursor-pointer group">
                     <input type="file" id="fileInput" accept=".csv" multiple class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10">
-                    <div class="flex items-center gap-2 text-sm font-bold text-indigo-500 group-hover:text-indigo-700 transition">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
+                    <div class="flex items-center gap-2 text-xs font-bold text-indigo-500 group-hover:text-indigo-700 transition">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
                         <span>匯入 CSV</span>
                     </div>
                 </div>
-                <button onclick="document.getElementById('manual-panel').classList.toggle('hidden')" class="h-10 px-4 bg-gradient-to-r from-orange-400 to-pink-500 hover:from-orange-500 hover:to-pink-600 text-white rounded-xl text-sm font-bold shadow-md transition transform hover:scale-105">+ 手動</button>
+                <button onclick="document.getElementById('manual-panel').classList.toggle('hidden')" class="h-9 px-3 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 rounded-lg text-xs font-bold transition">+ 手動</button>
             </div>
         </div>
         
         <div id="manual-panel" class="hidden bg-slate-50 border-b border-indigo-100 p-4 animate-fade-in">
             <div class="max-w-7xl mx-auto flex flex-wrap items-center gap-3">
                 <span class="text-xs font-bold bg-slate-200 text-slate-600 px-2 py-1 rounded">手動輸入</span>
-                <input type="month" id="man-month" class="px-3 py-1.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:border-indigo-500">
+                <input type="month" id="man-month" class="px-3 py-1.5 border border-slate-300 rounded-lg text-sm">
                 <input type="number" id="man-mix" placeholder="MIX 金額" class="px-3 py-1.5 border border-slate-300 rounded-lg text-sm w-32">
                 <input type="number" id="man-prd" placeholder="PRD 金額" class="px-3 py-1.5 border border-slate-300 rounded-lg text-sm w-32">
-                <button onclick="addManualData()" class="px-4 py-1.5 bg-indigo-600 text-white text-sm rounded-lg font-bold hover:bg-indigo-700 shadow">確認新增</button>
+                <div class="flex items-center gap-2 text-xs text-slate-500 ml-4"><input type="checkbox" id="use-big5"><label for="use-big5">Big5</label></div>
+                <button onclick="addManualData()" class="px-4 py-1.5 bg-indigo-600 text-white text-sm rounded-lg font-bold hover:bg-indigo-700 shadow ml-auto">確認新增</button>
             </div>
         </div>
     </div>
 
     <!-- 主內容區 -->
     <div class="flex-1 overflow-y-auto p-4 md:p-6 bg-slate-50/50">
-        <div class="max-w-7xl mx-auto space-y-8 pb-10">
+        
+        <!-- Empty State -->
+        <div id="empty-state" class="flex flex-col items-center justify-center py-24 text-center">
+            <div class="w-24 h-24 bg-white rounded-full shadow-xl flex items-center justify-center mb-6 animate-bounce">
+                <span class="text-5xl">📊</span>
+            </div>
+            <h2 class="text-3xl font-bold text-slate-800 mb-2">資料載入與智能分析</h2>
+            <p class="text-slate-500 max-w-md mx-auto">匯入帳單後，可切換至「細項比對」查看具體費用增減項目。</p>
+        </div>
 
-            <div id="empty-state" class="flex flex-col items-center justify-center py-24 text-center">
-                <div class="w-24 h-24 bg-white rounded-full shadow-xl flex items-center justify-center mb-6 animate-bounce">
-                    <span class="text-5xl">🤖</span>
+        <!-- VIEW 1: 管理總覽 -->
+        <div id="view-dashboard" class="hidden max-w-7xl mx-auto space-y-8 pb-10 animate-fade-in">
+            
+            <!-- KPI -->
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-5">
+                <div class="card p-6 relative overflow-hidden group">
+                    <div class="absolute -right-4 -top-4 w-24 h-24 bg-indigo-50 rounded-full group-hover:scale-110 transition duration-500"></div>
+                    <p class="text-xs font-bold text-indigo-500 uppercase tracking-wider relative z-10">年度總支出</p>
+                    <h3 class="text-3xl font-bold text-slate-800 mt-2 relative z-10" id="kpi-total">-</h3>
+                    <div class="mt-2 text-xs text-slate-400 relative z-10">Total Cost (NTD)</div>
                 </div>
-                <h2 class="text-3xl font-bold text-slate-800 mb-2">資料載入與智能診斷</h2>
-                <p class="text-slate-500 max-w-md mx-auto">系統將自動分析匯入的帳單，找出潛在的節費機會與異常項目。</p>
+                <div class="card p-6 relative overflow-hidden group">
+                    <div class="absolute -right-4 -top-4 w-24 h-24 bg-purple-50 rounded-full group-hover:scale-110 transition duration-500"></div>
+                    <p class="text-xs font-bold text-purple-500 uppercase tracking-wider relative z-10">PRD 環境佔比</p>
+                    <h3 class="text-3xl font-bold text-slate-800 mt-2 relative z-10" id="kpi-ratio">-</h3>
+                    <div class="mt-2 text-xs text-slate-400 relative z-10">Production Usage</div>
+                </div>
+                <div class="card p-6 relative overflow-hidden group">
+                    <div class="absolute -right-4 -top-4 w-24 h-24 bg-pink-50 rounded-full group-hover:scale-110 transition duration-500"></div>
+                    <p class="text-xs font-bold text-pink-500 uppercase tracking-wider relative z-10">最貴服務</p>
+                    <h3 class="text-2xl font-bold text-slate-800 mt-2 truncate relative z-10" id="kpi-top-svc">-</h3>
+                    <div class="mt-2 text-xs text-slate-400 relative z-10">Highest Spend Service</div>
+                </div>
+                <div class="card p-6 relative overflow-hidden group">
+                    <div class="absolute -right-4 -top-4 w-24 h-24 bg-orange-50 rounded-full group-hover:scale-110 transition duration-500"></div>
+                    <p class="text-xs font-bold text-orange-500 uppercase tracking-wider relative z-10">最高月費</p>
+                    <h3 class="text-2xl font-bold text-slate-800 mt-2 relative z-10" id="kpi-max-month">-</h3>
+                    <div class="mt-2 text-xs text-slate-400 relative z-10">Peak Spending Month</div>
+                </div>
             </div>
 
-            <div id="dashboard" class="hidden space-y-8 animate-fade-in-up">
-                
-                <!-- KPI Cards -->
-                <div class="grid grid-cols-1 md:grid-cols-4 gap-5">
-                    <div class="card p-6 relative overflow-hidden group">
-                        <div class="absolute -right-4 -top-4 w-24 h-24 bg-indigo-50 rounded-full group-hover:scale-110 transition duration-500"></div>
-                        <p class="text-xs font-bold text-indigo-500 uppercase tracking-wider relative z-10">年度總支出</p>
-                        <h3 class="text-3xl font-bold text-slate-800 mt-2 relative z-10" id="kpi-total">-</h3>
-                        <div class="mt-2 text-xs text-slate-400 relative z-10">Total Cost (NTD)</div>
-                    </div>
-                    <div class="card p-6 relative overflow-hidden group">
-                        <div class="absolute -right-4 -top-4 w-24 h-24 bg-purple-50 rounded-full group-hover:scale-110 transition duration-500"></div>
-                        <p class="text-xs font-bold text-purple-500 uppercase tracking-wider relative z-10">PRD 環境佔比</p>
-                        <h3 class="text-3xl font-bold text-slate-800 mt-2 relative z-10" id="kpi-ratio">-</h3>
-                        <div class="mt-2 text-xs text-slate-400 relative z-10">Production Usage</div>
-                    </div>
-                    <div class="card p-6 relative overflow-hidden group">
-                        <div class="absolute -right-4 -top-4 w-24 h-24 bg-pink-50 rounded-full group-hover:scale-110 transition duration-500"></div>
-                        <p class="text-xs font-bold text-pink-500 uppercase tracking-wider relative z-10">最貴服務</p>
-                        <h3 class="text-2xl font-bold text-slate-800 mt-2 truncate relative z-10" id="kpi-top-svc">-</h3>
-                        <div class="mt-2 text-xs text-slate-400 relative z-10">Highest Spend Service</div>
-                    </div>
-                    <div class="card p-6 relative overflow-hidden group">
-                        <div class="absolute -right-4 -top-4 w-24 h-24 bg-orange-50 rounded-full group-hover:scale-110 transition duration-500"></div>
-                        <p class="text-xs font-bold text-orange-500 uppercase tracking-wider relative z-10">最高月費</p>
-                        <h3 class="text-2xl font-bold text-slate-800 mt-2 relative z-10" id="kpi-max-month">-</h3>
-                        <div class="mt-2 text-xs text-slate-400 relative z-10">Peak Spending Month</div>
-                    </div>
+            <!-- Trend Chart -->
+            <div class="card p-6">
+                <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 gap-4">
+                    <h3 class="text-lg font-bold text-slate-800 flex items-center gap-2">
+                        <span class="text-2xl">📈</span> 月度費用趨勢
+                    </h3>
+                    <div id="month-selector" class="flex flex-wrap gap-2"></div>
                 </div>
+                <div class="h-80"><canvas id="trendChart"></canvas></div>
+            </div>
 
-                <!-- Trend Chart Section with Month Filter -->
+            <!-- NEW: Pie Charts Section (Replaces Deep Dive & Diagnosis) -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <!-- Service Distribution -->
                 <div class="card p-6">
-                    <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 gap-4">
-                        <h3 class="text-lg font-bold text-slate-800 flex items-center gap-2">
-                            <span class="text-2xl">📈</span> 月度費用趨勢
-                        </h3>
-                        <div id="month-selector" class="flex flex-wrap gap-2"></div>
-                    </div>
-                    <div class="h-80"><canvas id="trendChart"></canvas></div>
-                </div>
-
-                <!-- Deep Dive & Insights -->
-                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                    
-                    <!-- Left: Deep Dive Chart (2/3) -->
-                    <div class="lg:col-span-2 bg-gradient-to-br from-white to-indigo-50 rounded-2xl border border-indigo-100 p-6 shadow-sm">
-                        <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
-                            <div>
-                                <h3 class="text-lg font-bold text-slate-700 flex items-center gap-2">🔍 深度挖掘</h3>
-                                <p class="text-xs text-slate-400 mt-1">追蹤特定服務或關鍵字</p>
-                            </div>
-                            <div class="flex flex-wrap gap-2 bg-white/80 backdrop-blur p-1.5 rounded-lg border border-indigo-100 shadow-sm">
-                                <select id="dd-service" class="text-xs bg-transparent border-none focus:ring-0 font-bold text-slate-600 outline-none" onchange="updateDeepDive()"><option value="ALL">全部服務</option></select>
-                                <div class="w-px h-5 bg-slate-200"></div>
-                                <input type="text" id="dd-keyword" placeholder="關鍵字..." class="text-xs bg-transparent border-none focus:ring-0 w-24 outline-none" oninput="updateDeepDive()">
-                                <div class="w-px h-5 bg-slate-200"></div>
-                                <label class="flex items-center gap-1 cursor-pointer select-none px-2"><input type="checkbox" id="dd-smooth" class="rounded text-indigo-600 focus:ring-0" checked onchange="updateDeepDive()"><span class="text-xs font-bold text-indigo-600">連線</span></label>
-                            </div>
-                        </div>
-                        <div class="h-64"><canvas id="deepDiveChart"></canvas></div>
-                    </div>
-
-                    <!-- Right: Dynamic Insights (1/3) -->
-                    <div class="card p-5 border-l-4 border-yellow-400 flex flex-col">
-                        <div class="flex items-center gap-2 mb-4">
-                            <span class="text-xl">🤖</span>
-                            <h3 class="text-lg font-bold text-slate-800">智能費用診斷</h3>
-                        </div>
-                        <!-- Dynamic Insights Container -->
-                        <div id="insights-container" class="space-y-3 overflow-y-auto max-h-72 custom-scrollbar">
-                            <!-- JS將會自動生成內容 -->
-                            <div class="text-center text-xs text-slate-400 py-4">正在分析帳單數據...</div>
-                        </div>
+                    <h3 class="text-lg font-bold text-slate-800 flex items-center gap-2 mb-4">
+                        <span class="text-xl">🍰</span> 服務費用佔比 (Top Services)
+                    </h3>
+                    <div class="h-64 relative flex justify-center">
+                        <canvas id="servicePieChart"></canvas>
                     </div>
                 </div>
 
-                <!-- Table -->
-                <div class="card overflow-hidden">
-                    <div class="px-6 py-4 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
-                        <h3 class="font-bold text-slate-800">📋 月度詳細報表</h3>
+                <!-- Environment Distribution -->
+                <div class="card p-6">
+                    <h3 class="text-lg font-bold text-slate-800 flex items-center gap-2 mb-4">
+                        <span class="text-xl">☯️</span> 環境費用佔比 (MIX vs PRD)
+                    </h3>
+                    <div class="h-64 relative flex justify-center">
+                        <canvas id="envPieChart"></canvas>
                     </div>
-                    <div class="overflow-x-auto">
-                        <table class="w-full text-sm text-right whitespace-nowrap">
-                            <thead class="bg-slate-100/80 text-slate-500 font-bold uppercase text-[10px] tracking-wider">
-                                <tr>
-                                    <th class="px-6 py-3 text-left">月份</th>
-                                    <th class="px-6 py-3">MIX</th>
-                                    <th class="px-6 py-3">PRD</th>
-                                    <th class="px-6 py-3">MIX 差異</th>
-                                    <th class="px-6 py-3">PRD 差異</th>
-                                    <th class="px-6 py-3 bg-indigo-50 text-indigo-900">總金額</th>
-                                    <th class="px-6 py-3">總差異 (MoM)</th>
-                                    <th class="px-6 py-3 text-center">操作</th>
-                                </tr>
-                            </thead>
-                            <tbody id="report-table-body" class="divide-y divide-slate-100 bg-white"></tbody>
-                        </table>
-                    </div>
+                </div>
+            </div>
+
+            <!-- Table -->
+            <div class="card overflow-hidden">
+                <div class="px-6 py-4 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
+                    <h3 class="font-bold text-slate-800">📋 月度詳細報表</h3>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm text-right whitespace-nowrap">
+                        <thead class="bg-slate-100/80 text-slate-500 font-bold uppercase text-[10px] tracking-wider">
+                            <tr><th class="px-6 py-3 text-left">月份</th><th>MIX</th><th>PRD</th><th>MIX 差</th><th>PRD 差</th><th class="bg-indigo-50 text-indigo-900">總金額</th><th>總差異 (MoM)</th><th class="text-center">操作</th></tr>
+                        </thead>
+                        <tbody id="report-table-body" class="divide-y divide-slate-100 bg-white"></tbody>
+                    </table>
                 </div>
             </div>
         </div>
+
+        <!-- VIEW 2: 細項比對分析 -->
+        <div id="view-detail" class="hidden max-w-7xl mx-auto h-full flex flex-col gap-4 animate-fade-in">
+            
+            <!-- Toolbar -->
+            <div class="card p-4 flex flex-wrap items-center gap-4 bg-white sticky top-0 z-10">
+                <div class="flex items-center gap-2">
+                    <span class="text-xs font-bold text-slate-400 uppercase">比較區間</span>
+                    <select id="dt-month-curr" class="text-sm font-bold text-indigo-600 bg-indigo-50 border-none rounded px-3 py-1.5 cursor-pointer outline-none hover:bg-indigo-100 transition" onchange="renderDetailView()"></select>
+                    <span class="text-slate-400">vs</span>
+                    <select id="dt-month-prev" class="text-sm font-bold text-slate-600 bg-slate-100 border-none rounded px-3 py-1.5 cursor-pointer outline-none hover:bg-slate-200 transition" onchange="renderDetailView()"></select>
+                </div>
+                <div class="h-6 w-px bg-slate-200"></div>
+                <div class="flex items-center gap-2 flex-1">
+                    <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                    <input type="text" id="dt-search" placeholder="搜尋服務 (如 EC2), 關鍵字, 環境..." class="text-sm w-full outline-none text-slate-600 placeholder-slate-300" oninput="renderDetailView()">
+                </div>
+                <div class="flex gap-2 text-xs">
+                    <div class="bg-red-50 text-red-600 px-3 py-1.5 rounded-lg font-bold border border-red-100" id="dt-stat-inc">增加: $0</div>
+                    <div class="bg-green-50 text-green-600 px-3 py-1.5 rounded-lg font-bold border border-green-100" id="dt-stat-dec">減少: $0</div>
+                </div>
+            </div>
+
+            <!-- Detail Table -->
+            <div class="card flex-1 overflow-hidden flex flex-col shadow-sm">
+                <div class="overflow-auto flex-1 custom-scrollbar">
+                    <table class="w-full text-left detail-table whitespace-nowrap">
+                        <thead>
+                            <tr>
+                                <th>環境</th>
+                                <th>服務 (Service)</th>
+                                <th>細項 (Usage Type)</th>
+                                <th class="text-right cursor-pointer hover:text-indigo-600" onclick="dtSort='usage';renderDetailView()">用量差異 ↕</th>
+                                <th class="text-right">本月費用</th>
+                                <th class="text-right">上月費用</th>
+                                <th class="text-right cursor-pointer hover:text-indigo-600" onclick="dtSort='diff';renderDetailView()">費用差異 ($) ▼</th>
+                                <th class="text-right">變化幅度 (%)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="dt-table-body" class="bg-white divide-y divide-slate-100"></tbody>
+                    </table>
+                </div>
+                <div class="p-3 text-center text-xs text-slate-400 border-t border-slate-100 bg-slate-50" id="dt-footer">
+                    請選擇月份進行比對
+                </div>
+            </div>
+        </div>
+
     </div>
 
     <!-- Modal -->
     <div id="detail-modal" class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm hidden flex items-center justify-center z-50 p-4">
-        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col">
-            <div class="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50 rounded-t-2xl">
-                <div><h3 class="font-bold text-xl text-slate-800">📊 <span id="modal-title">分析</span></h3></div>
-                <button onclick="document.getElementById('detail-modal').classList.add('hidden')" class="w-8 h-8 rounded-full bg-slate-100 hover:bg-red-100 hover:text-red-500 text-slate-400 font-bold text-lg">&times;</button>
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col">
+            <div class="px-6 py-4 border-b flex justify-between items-center bg-slate-50 rounded-t-2xl">
+                <h3 class="font-bold text-lg text-slate-800" id="modal-title">分析</h3>
+                <button onclick="document.getElementById('detail-modal').classList.add('hidden')" class="text-2xl text-slate-400 hover:text-red-500">&times;</button>
             </div>
             <div id="modal-content-area" class="p-6 overflow-y-auto space-y-6"></div>
         </div>
@@ -222,44 +262,47 @@
 <script>
     Chart.defaults.font.family = "'Noto Sans TC', sans-serif";
     Chart.defaults.color = '#94a3b8';
-    let yearlyData = {}, allServices = new Set(), charts = {};
-    let activeMonths = new Set();
+    Chart.defaults.maintainAspectRatio = false;
+    
+    let yearlyData = {}, allServices = new Set(), charts = {}, activeMonths = new Set();
+    let dtSort = 'diff';
 
     const fmt = n => new Intl.NumberFormat('zh-TW', { maximumFractionDigits: 0 }).format(n);
     const fmtUSD = n => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(n);
-    const fmtDiff = n => (n > 0 ? '+' : '') + fmt(n);
+    const fmtDiff = n => (n > 0 ? '+' : '') + fmtUSD(n);
     const getDiffClass = n => n > 100 ? 'trend-up' : (n < -100 ? 'trend-down' : 'text-slate-300 font-bold');
+    const fmtPct = (a, b) => {
+        if(b===0) return a>0 ? 'New' : '-';
+        const p = ((a-b)/b)*100;
+        return (p>0?'+':'') + p.toFixed(1) + '%';
+    };
 
     window.onload = function() {
         if (window.PRELOADED_DATA) {
             yearlyData = window.PRELOADED_DATA;
             document.getElementById('control-panel').innerHTML = '<span class="text-xs font-bold text-indigo-600 bg-indigo-50 px-3 py-2 rounded-lg">唯讀報表模式</span>';
-            rebuildServicesSet(); render();
+            initData();
         } else {
-            const cached = localStorage.getItem('aws_dashboard_v12_data');
-            if (cached) { try { yearlyData = JSON.parse(cached); rebuildServicesSet(); render(); } catch(e) {} }
+            const cached = localStorage.getItem('aws_dashboard_v15_data');
+            if (cached) { try { yearlyData = JSON.parse(cached); initData(); } catch(e) {} }
         }
     };
 
-    const rebuildServicesSet = () => {
-        allServices = new Set();
-        Object.values(yearlyData).forEach(m => { [...m.mixI, ...m.prdI].forEach(i => allServices.add(i.s)); });
+    const initData = () => {
+        if(Object.keys(yearlyData).length === 0) return;
+        rebuildServicesSet();
+        updateDTOptions();
+        renderDashboard();
     };
 
-    const saveData = () => { if (!window.PRELOADED_DATA) localStorage.setItem('aws_dashboard_v12_data', JSON.stringify(yearlyData)); };
-    const clearAllData = () => { if(confirm("確定清除？")) { localStorage.removeItem('aws_dashboard_v12_data'); location.reload(); } };
-    
-    const exportReport = () => {
-        let html = document.documentElement.outerHTML;
-        const dataScript = `window.PRELOADED_DATA = ${JSON.stringify(yearlyData)};`;
-        const searchStr = 'window.PRELOADED_DATA = null;';
-        if (html.includes(searchStr)) {
-            html = html.replace(searchStr, dataScript);
-            const blob = new Blob([html], { type: 'text/html' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a'); a.href = url; a.download = `AWS_Report_${new Date().toISOString().slice(0,10)}.html`;
-            document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
-        } else { alert("匯出失敗"); }
+    window.switchView = (view) => {
+        document.getElementById('view-dashboard').classList.add('hidden');
+        document.getElementById('view-detail').classList.add('hidden');
+        document.getElementById('btn-dashboard').classList.remove('active');
+        document.getElementById('btn-detail').classList.remove('active');
+        document.getElementById('view-' + view).classList.remove('hidden');
+        document.getElementById('btn-' + view).classList.add('active');
+        if(view === 'detail') renderDetailView();
     };
 
     const handleFiles = async (files) => {
@@ -269,7 +312,7 @@
             Papa.parse(f, { encoding: enc, complete: r => { processFile(f.name, r.data); res(); }, error: res });
         }));
         await Promise.all(promises);
-        saveData(); render();
+        saveData(); initData();
     };
 
     const findCostValue = (row) => {
@@ -299,7 +342,12 @@
             const c0 = (r[0]||"").toString().trim();
             const v = findCostValue(r);
             if(c0.startsWith("Amazon") && v > 0) { currSvc = c0; allServices.add(c0); }
-            if(currSvc && c0!=="UsageType" && c0 && !c0.includes("Total") && v > 0) items.push({s:currSvc, t:c0, c:v});
+            if(currSvc && c0!=="UsageType" && c0 && !c0.includes("Total") && v > 0) {
+                let usage = 0;
+                const uVal = parseFloat((r[r.length-2]||"0").toString().replace(/,/g,''));
+                if(!isNaN(uVal)) usage = uVal;
+                items.push({s:currSvc, t:c0, c:v, u: usage});
+            }
         });
         if(!yearlyData[m]) yearlyData[m]={mix:0, prd:0, mixI:[], prdI:[], man:false};
         if(env==='PRD'){ yearlyData[m].prd=tot; yearlyData[m].prdI=items; }
@@ -313,114 +361,40 @@
         if(!m) return alert('請選擇月份');
         if(!yearlyData[m]) yearlyData[m]={mix:0, prd:0, mixI:[], prdI:[], man:true};
         yearlyData[m].mix=mix; yearlyData[m].prd=prd; yearlyData[m].man=true;
-        saveData(); render();
+        saveData(); initData();
     };
 
-    const toggleMonth = (m) => {
-        if (activeMonths.has(m)) activeMonths.delete(m); else activeMonths.add(m);
-        render(false);
+    const rebuildServicesSet = () => {
+        allServices = new Set();
+        Object.values(yearlyData).forEach(m => { [...m.mixI, ...m.prdI].forEach(i => allServices.add(i.s)); });
+    };
+    
+    const saveData = () => { if (!window.PRELOADED_DATA) localStorage.setItem('aws_dashboard_v15_data', JSON.stringify(yearlyData)); };
+    const clearAllData = () => { if(confirm("確定清除？")) { localStorage.removeItem('aws_dashboard_v15_data'); location.reload(); } };
+    const exportReport = () => {
+        let html = document.documentElement.outerHTML;
+        const dataScript = `window.PRELOADED_DATA = ${JSON.stringify(yearlyData)};`;
+        const searchStr = 'window.PRELOADED_DATA = null;';
+        if (html.includes(searchStr)) {
+            html = html.replace(searchStr, dataScript);
+            const blob = new Blob([html], { type: 'text/html' });
+            const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `AWS_Report_${new Date().toISOString().slice(0,10)}.html`; a.click();
+        } else alert("匯出失敗");
     };
 
-    const renderMonthSelector = (allMs) => {
-        const container = document.getElementById('month-selector'); container.innerHTML = '';
-        allMs.forEach(m => {
-            const isActive = activeMonths.size === 0 || activeMonths.has(m);
-            container.innerHTML += `<button onclick="toggleMonth('${m}')" class="month-btn px-3 py-1 rounded-full text-xs font-bold ${isActive ? 'active' : 'bg-white text-slate-500'}">${m.split('-')[1]}月</button>`;
-        });
-    };
-
-    // --- 🤖 智能診斷核心邏輯 (New Feature) ---
-    const generateInsights = (displayMs) => {
-        const container = document.getElementById('insights-container');
-        container.innerHTML = '';
-        const insights = [];
-
-        // 1. 偵測 GP2 (Cost Optimization)
-        let foundGP2 = false;
-        let gp2Months = [];
-        displayMs.forEach(m => {
-            const items = [...yearlyData[m].mixI, ...yearlyData[m].prdI];
-            if (items.some(i => i.t.toLowerCase().includes('gp2'))) {
-                foundGP2 = true; gp2Months.push(m);
-            }
-        });
-        if (foundGP2) {
-            insights.push({
-                type: 'warn', title: '發現舊版 GP2 硬碟',
-                desc: `檢測到 ${gp2Months.slice(-1)[0]} 等月份仍在使用 GP2 儲存類型。升級至 GP3 可節省約 20% 費用且效能更好。`
-            });
-        }
-
-        // 2. MIX 環境佔比過高偵測 (Anomaly)
-        let highMixMonths = [];
-        displayMs.forEach(m => {
-            const d = yearlyData[m];
-            const total = d.mix + d.prd;
-            if (total > 0 && (d.mix / total) > 0.45) { // Threshold: 45%
-                highMixMonths.push(m);
-            }
-        });
-        if (highMixMonths.length > 0) {
-            insights.push({
-                type: 'alert', title: 'MIX 測試環境費用偏高',
-                desc: `${highMixMonths.slice(-2).join(', ')} 的測試環境佔比超過 45%。建議檢查是否有閒置機器未關機。`
-            });
-        }
-
-        // 3. 流量異常偵測 (Data Transfer)
-        let highTransfer = false;
-        displayMs.slice(-1).forEach(m => { // 只看最近一個選取的月份
-            const items = [...yearlyData[m].mixI, ...yearlyData[m].prdI];
-            const transferCost = items.filter(i => i.s === 'AWSDataTransfer' || i.t.includes('DataTransfer')).reduce((a,b)=>a+b.c, 0);
-            const totalCostUSD = items.reduce((a,b)=>a+b.c, 0);
-            if (totalCostUSD > 0 && (transferCost / totalCostUSD) > 0.15) { // Threshold: 15%
-                highTransfer = true;
-            }
-        });
-        if (highTransfer) {
-            insights.push({
-                type: 'info', title: '流量費用佔比顯著',
-                desc: '本期流量費用超過總支出的 15%。若多為對外流量，建議評估 CloudFront 或檢查異常下載。'
-            });
-        }
-
-        // 4. 健康度檢查 (若無問題)
-        if (insights.length === 0) {
-            insights.push({ type: 'good', title: '費用結構健康', desc: '目前的帳單數據未發現明顯異常或過時配置。Keep going!' });
-        }
-
-        // Render Insights
-        insights.forEach(item => {
-            let colorClass = '', icon = '';
-            if (item.type === 'warn') { colorClass = 'bg-yellow-50 border-yellow-100 text-yellow-800'; icon = '⚠️'; }
-            else if (item.type === 'alert') { colorClass = 'bg-red-50 border-red-100 text-red-800'; icon = '🚨'; }
-            else if (item.type === 'good') { colorClass = 'bg-green-50 border-green-100 text-green-800'; icon = '✅'; }
-            else { colorClass = 'bg-blue-50 border-blue-100 text-blue-800'; icon = '💡'; }
-
-            container.innerHTML += `
-                <div class="insight-item p-3 rounded-lg border ${colorClass}">
-                    <h4 class="font-bold text-xs mb-1 flex items-center gap-1.5">${icon} ${item.title}</h4>
-                    <p class="text-[11px] opacity-90 leading-relaxed">${item.desc}</p>
-                </div>
-            `;
-        });
-    };
-
-    const render = (renderBtns = true) => {
-        const allMs = Object.keys(yearlyData).sort();
-        if(!allMs.length) return;
-        const displayMs = activeMonths.size === 0 ? allMs : allMs.filter(m => activeMonths.has(m));
-        if(renderBtns) renderMonthSelector(allMs);
-
+    // --- Dashboard Logic ---
+    const renderDashboard = () => {
+        const ms = Object.keys(yearlyData).sort();
+        if(!ms.length) return;
         document.getElementById('empty-state').classList.add('hidden');
-        document.getElementById('dashboard').classList.remove('hidden');
-
-        const sel = document.getElementById('dd-service');
-        if(sel.options.length===1) Array.from(allServices).sort().forEach(s => sel.innerHTML+=`<option value="${s}">${s.replace('Amazon','')}</option>`);
-
+        document.getElementById('view-dashboard').classList.remove('hidden');
+        
+        const displayMs = activeMonths.size === 0 ? ms : ms.filter(m => activeMonths.has(m));
+        
         let gTot=0, pTot=0, maxV=0, maxM='', svcMap={};
-        displayMs.forEach(m => {
-            const t=yearlyData[m].mix+yearlyData[m].prd; gTot+=t; pTot+=yearlyData[m].prd;
+        displayMs.forEach(m => { 
+            const t=yearlyData[m].mix+yearlyData[m].prd;
+            gTot+=t; pTot+=yearlyData[m].prd; 
             if(t>maxV){ maxV=t; maxM=m; }
             [...yearlyData[m].mixI, ...yearlyData[m].prdI].forEach(i=>{ svcMap[i.s]=(svcMap[i.s]||0)+i.c; });
         });
@@ -428,8 +402,8 @@
 
         document.getElementById('kpi-total').innerText = "$"+fmt(gTot);
         document.getElementById('kpi-ratio').innerText = gTot?Math.round((pTot/gTot)*100)+"%":"0%";
-        document.getElementById('kpi-max-month').innerText = maxM;
         document.getElementById('kpi-top-svc').innerText = topSvc?topSvc[0].replace('Amazon',''):'-';
+        document.getElementById('kpi-max-month').innerText = maxM;
 
         const ctx = document.getElementById('trendChart').getContext('2d');
         if(charts.trend) charts.trend.destroy();
@@ -438,64 +412,102 @@
             data: {
                 labels: displayMs,
                 datasets: [
-                    { label: 'MIX', data: displayMs.map(m=>yearlyData[m].mix), backgroundColor: '#a5b4fc', borderRadius:4, stack:'0', order: 2 },
-                    { label: 'PRD', data: displayMs.map(m=>yearlyData[m].prd), backgroundColor: '#8b5cf6', borderRadius:4, stack:'0', order: 2 },
+                    { label: 'MIX', data: displayMs.map(m=>yearlyData[m].mix), backgroundColor: '#a5b4fc', borderRadius:4, order: 2 },
+                    { label: 'PRD', data: displayMs.map(m=>yearlyData[m].prd), backgroundColor: '#8b5cf6', borderRadius:4, order: 2 },
                     { 
-                        label: '總支出', data: displayMs.map(m=>yearlyData[m].mix+yearlyData[m].prd), type: 'line', 
+                        label: '總支出', data: displayMs.map(m=>yearlyData[m].mix+yearlyData[m].prd), type:'line', 
                         borderColor: '#334155', borderWidth: 3, tension: 0.3, pointBackgroundColor: '#fff', 
                         pointBorderColor: '#334155', pointRadius: 5, fill: false, order: 1,
                         shadowColor: 'rgba(0, 0, 0, 0.3)', shadowBlur: 10, shadowOffsetY: 5
                     }
                 ]
             },
+            options: { responsive: true, maintainAspectRatio: false, scales: { x:{grid:{display:false}}, y:{border:{display:false}, grid:{color:'#f1f5f9'}, ticks:{callback:v=>fmt(v)}, grace:'10%'} } }
+        });
+
+        const mc = document.getElementById('month-selector'); mc.innerHTML='';
+        ms.forEach(m => {
+            const isActive = activeMonths.size===0 || activeMonths.has(m);
+            mc.innerHTML+=`<button onclick="toggleMonth('${m}')" class="month-btn px-3 py-1 rounded-full text-xs font-bold ${isActive ? 'active' : 'bg-white text-slate-500'}">${m.split('-')[1]}月</button>`;
+        });
+
+        const tb = document.getElementById('report-table-body'); tb.innerHTML='';
+        const allMs = Object.keys(yearlyData).sort();
+        displayMs.forEach((m)=>{
+            const d=yearlyData[m], t=d.mix+d.prd;
+            const i = allMs.indexOf(m);
+            let md=0, pd=0, td=0;
+            if(i>0){ const p=yearlyData[allMs[i-1]]; md=d.mix-p.mix; pd=d.prd-p.prd; td=t-(p.mix+p.prd); }
+            tb.innerHTML+=`<tr class="hover:bg-indigo-50/30 transition border-b border-slate-50"><td class="px-6 py-4 font-bold text-left text-slate-700">${m} ${d.man?'<span class="text-[9px] bg-slate-200 text-slate-500 px-1 rounded ml-1">手動</span>':''}</td><td class="px-6 py-4 text-slate-500 text-xs">${fmt(d.mix)}</td><td class="px-6 py-4 text-slate-500 text-xs">${fmt(d.prd)}</td><td class="px-6 py-4 text-xs ${getDiffClass(md)}">${i===0?'-':fmtDiff(md)}</td><td class="px-6 py-4 text-xs ${getDiffClass(pd)}">${i===0?'-':fmtDiff(pd)}</td><td class="px-6 py-4 font-bold text-slate-800 text-sm bg-indigo-50/50">${fmt(t)}</td><td class="px-6 py-4 text-xs ${getDiffClass(td)}">${i===0?'-':fmtDiff(td)}</td><td class="px-6 py-4 text-center"><button class="px-3 py-1 text-xs font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-full transition" onclick="openModal('${m}')">查看</button></td></tr>`;
+        });
+
+        updatePieCharts(displayMs);
+    };
+
+    const toggleMonth = (m) => { if(activeMonths.has(m)) activeMonths.delete(m); else activeMonths.add(m); renderDashboard(); };
+
+    // --- NEW: Pie Charts Function ---
+    const updatePieCharts = (displayMs) => {
+        let serviceMap = {};
+        let mixTotal = 0;
+        let prdTotal = 0;
+
+        displayMs.forEach(m => {
+            [...yearlyData[m].mixI, ...yearlyData[m].prdI].forEach(item => {
+                serviceMap[item.s] = (serviceMap[item.s] || 0) + item.c;
+            });
+            mixTotal += yearlyData[m].mix;
+            prdTotal += yearlyData[m].prd;
+        });
+
+        // Service Chart Data Prep
+        const sortedSvcs = Object.entries(serviceMap).sort((a, b) => b[1] - a[1]);
+        const top5 = sortedSvcs.slice(0, 5);
+        const others = sortedSvcs.slice(5).reduce((acc, curr) => acc + curr[1], 0);
+        
+        const svcLabels = top5.map(s => s[0].replace('Amazon', ''));
+        const svcData = top5.map(s => s[1]);
+        if(others > 0) { svcLabels.push('Others'); svcData.push(others); }
+
+        // Render Service Pie
+        const ctxSvc = document.getElementById('servicePieChart').getContext('2d');
+        if(charts.svcPie) charts.svcPie.destroy();
+        charts.svcPie = new Chart(ctxSvc, {
+            type: 'doughnut',
+            data: {
+                labels: svcLabels,
+                datasets: [{
+                    data: svcData,
+                    backgroundColor: ['#6366f1', '#8b5cf6', '#ec4899', '#f43f5e', '#f59e0b', '#cbd5e1'],
+                    borderWidth: 0,
+                    hoverOffset: 4
+                }]
+            },
             options: { 
-                responsive: true, maintainAspectRatio: false,
-                plugins: { tooltip: { mode: 'index', intersect: false } }, 
-                scales: { x: { grid: { display: false } }, y: { border: { display: false }, grid: { color: '#f1f5f9' }, ticks: { callback: v => fmt(v) }, grace: '10%' } } 
+                responsive: true, maintainAspectRatio: false, 
+                plugins: { legend: { position: 'right', labels: { boxWidth: 10, font: { size: 11 } } } } 
             }
         });
 
-        renderTable(displayMs); 
-        updateDeepDive(displayMs);
-        generateInsights(displayMs); // Call AI Analysis
-    };
-
-    const updateDeepDive = (displayMs) => {
-        const allMs = Object.keys(yearlyData).sort();
-        const ms = displayMs || (activeMonths.size === 0 ? allMs : allMs.filter(m => activeMonths.has(m)));
-        const svc = document.getElementById('dd-service').value;
-        const kw = document.getElementById('dd-keyword').value.toUpperCase();
-        const smooth = document.getElementById('dd-smooth').checked;
-
-        const data = ms.map(m => {
-            const items = [...yearlyData[m].mixI, ...yearlyData[m].prdI];
-            if(items.length === 0 && yearlyData[m].man) return smooth ? null : 0;
-            const val = items.filter(i => (svc==='ALL'||i.s===svc) && (!kw||i.t.toUpperCase().includes(kw))).reduce((a,b)=>a+b.c, 0);
-            return (val === 0 && smooth) ? null : val;
-        });
-
-        const ctx = document.getElementById('deepDiveChart').getContext('2d');
-        const gradient = ctx.createLinearGradient(0,0,0,300);
-        gradient.addColorStop(0, 'rgba(99, 102, 241, 0.5)'); gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
-
-        if(charts.dd) charts.dd.destroy();
-        charts.dd = new Chart(ctx, {
-            type: 'line',
-            data: { labels: ms, datasets: [{ label: '費用 (USD)', data: data, borderColor: '#8b5cf6', backgroundColor: gradient, borderWidth: 3, fill: true, tension: 0.4, spanGaps: true, pointBackgroundColor: '#fff' }] },
-            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x:{grid:{display:false}}, y:{beginAtZero:true, grid:{color:'#f1f5f9'}, ticks:{callback:v=>'$'+v}} } }
-        });
-    };
-
-    const renderTable = (ms) => {
-        const b = document.getElementById('report-table-body'); b.innerHTML = '';
-        const allMs = Object.keys(yearlyData).sort();
-        ms.forEach((m) => {
-            const i = allMs.indexOf(m);
-            const d=yearlyData[m], t=d.mix+d.prd;
-            let md=0, pd=0, td=0;
-            if(i>0){ const p=yearlyData[allMs[i-1]]; md=d.mix-p.mix; pd=d.prd-p.prd; td=t-(p.mix+p.prd); }
-            const btn = d.mixI.length+d.prdI.length===0 ? '<span class="text-xs text-slate-300">無細項</span>' : `<button onclick="openModal('${m}')" class="px-3 py-1 text-xs font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-full transition">查看</button>`;
-            b.innerHTML += `<tr class="hover:bg-indigo-50/30 transition border-b border-slate-50"><td class="px-6 py-4 font-bold text-left text-slate-700">${m} ${d.man?'<span class="text-[9px] bg-slate-200 text-slate-500 px-1 rounded ml-1">手動</span>':''}</td><td class="px-6 py-4 text-slate-500 text-xs">${fmt(d.mix)}</td><td class="px-6 py-4 text-slate-500 text-xs">${fmt(d.prd)}</td><td class="px-6 py-4 text-xs ${getDiffClass(md)}">${i===0?'-':fmtDiff(md)}</td><td class="px-6 py-4 text-xs ${getDiffClass(pd)}">${i===0?'-':fmtDiff(pd)}</td><td class="px-6 py-4 font-bold text-slate-800 text-sm bg-indigo-50/50">${fmt(t)}</td><td class="px-6 py-4 text-xs ${getDiffClass(td)}">${i===0?'-':fmtDiff(td)}</td><td class="px-6 py-4 text-center">${btn}</td></tr>`;
+        // Render Env Pie
+        const ctxEnv = document.getElementById('envPieChart').getContext('2d');
+        if(charts.envPie) charts.envPie.destroy();
+        charts.envPie = new Chart(ctxEnv, {
+            type: 'doughnut',
+            data: {
+                labels: ['MIX (測試)', 'PRD (正式)'],
+                datasets: [{
+                    data: [mixTotal, prdTotal],
+                    backgroundColor: ['#a5b4fc', '#7c3aed'],
+                    borderWidth: 0,
+                    hoverOffset: 4
+                }]
+            },
+            options: { 
+                responsive: true, maintainAspectRatio: false,
+                cutout: '60%',
+                plugins: { legend: { position: 'bottom', labels: { boxWidth: 10 } } } 
+            }
         });
     };
 
@@ -507,6 +519,56 @@
         new Chart(document.getElementById('modEnv'), { type:'doughnut', data:{labels:['MIX','PRD'], datasets:[{data:[d.mix, d.prd], backgroundColor:['#a5b4fc','#7c3aed'], borderWidth:0}]}, options:{cutout:'75%', plugins:{legend:{position:'bottom'}}} });
         const sMap={}; all.forEach(i=>{ sMap[i.s]=(sMap[i.s]||0)+i.c }); const topS=Object.entries(sMap).sort((a,b)=>b[1]-a[1]).slice(0,5);
         new Chart(document.getElementById('modSvc'), { type:'bar', data:{labels:topS.map(s=>s[0].replace('Amazon','')), datasets:[{label:'USD',data:topS.map(s=>s[1]), backgroundColor:'#8b5cf6', borderRadius:4}]}, options:{indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{display:false}}} });
+    };
+
+    // --- Detail View ---
+    const updateDTOptions = () => {
+        const ms = Object.keys(yearlyData).sort().reverse();
+        const sel1 = document.getElementById('dt-month-curr');
+        const sel2 = document.getElementById('dt-month-prev');
+        const v1 = sel1.value; const v2 = sel2.value;
+        sel1.innerHTML = ''; sel2.innerHTML = '';
+        ms.forEach(m => { sel1.innerHTML+=`<option value="${m}">${m}</option>`; sel2.innerHTML+=`<option value="${m}">${m}</option>`; });
+        if(ms.length>0) sel1.value = v1 || ms[0];
+        if(ms.length>1) sel2.value = v2 || ms[1];
+    };
+
+    const renderDetailView = () => {
+        const m1 = document.getElementById('dt-month-curr').value;
+        const m2 = document.getElementById('dt-month-prev').value;
+        const filterText = document.getElementById('dt-search').value.toLowerCase();
+        if (!m1 || !m2) return;
+
+        const d1 = yearlyData[m1], d2 = yearlyData[m2];
+        const items1 = [...d1.mixI.map(i=>({...i,e:'MIX'})), ...d1.prdI.map(i=>({...i,e:'PRD'}))];
+        const items2 = [...d2.mixI.map(i=>({...i,e:'MIX'})), ...d2.prdI.map(i=>({...i,e:'PRD'}))];
+        
+        const map = {};
+        const getKey = (i) => `${i.e}|${i.s}|${i.t}`;
+        items1.forEach(i => { const k=getKey(i); if(!map[k]) map[k]={e:i.e,s:i.s,t:i.t,c1:0,c2:0,u1:0,u2:0}; map[k].c1+=i.c; map[k].u1+=i.u; });
+        items2.forEach(i => { const k=getKey(i); if(!map[k]) map[k]={e:i.e,s:i.s,t:i.t,c1:0,c2:0,u1:0,u2:0}; map[k].c2+=i.c; map[k].u2+=i.u; });
+        
+        let rows = Object.values(map).filter(r => {
+            if(r.c1===0 && r.c2===0) return false;
+            if(filterText) return r.s.toLowerCase().includes(filterText) || r.t.toLowerCase().includes(filterText) || r.e.toLowerCase().includes(filterText);
+            return true;
+        });
+        
+        let inc=0, dec=0;
+        rows.forEach(r => { r.diff=r.c1-r.c2; r.uDiff=r.u1-r.u2; if(r.diff>0) inc+=r.diff; else dec+=Math.abs(r.diff); });
+        document.getElementById('dt-stat-inc').innerText = `增加: ${fmtUSD(inc)}`;
+        document.getElementById('dt-stat-dec').innerText = `減少: ${fmtUSD(dec)}`;
+        document.getElementById('dt-footer').innerText = `共 ${rows.length} 筆資料`;
+
+        rows.sort((a,b) => { if(dtSort==='usage') return Math.abs(b.uDiff) - Math.abs(a.uDiff); return b.diff - a.diff; });
+        
+        const tb = document.getElementById('dt-table-body'); tb.innerHTML = '';
+        rows.slice(0, 500).forEach(r => {
+            const diffClass = r.diff > 0.5 ? 'trend-up' : (r.diff < -0.5 ? 'trend-down' : 'text-slate-400');
+            const diffSign = r.diff > 0 ? '+' : '';
+            const uClass = r.uDiff > 0 ? 'text-red-600 font-bold' : (r.uDiff < 0 ? 'text-green-600 font-bold' : 'text-slate-400');
+            tb.innerHTML += `<tr class="hover:bg-slate-50 transition"><td class="py-3 px-3"><span class="px-2 py-0.5 rounded text-[10px] font-bold ${r.e==='PRD'?'bg-purple-100 text-purple-700':'bg-indigo-50 text-indigo-700'}">${r.e}</span></td><td class="font-bold text-slate-700">${r.s.replace('Amazon','')}</td><td class="text-xs text-slate-500 truncate max-w-[250px]" title="${r.t}">${r.t}</td><td class="text-right text-xs ${uClass}">${r.uDiff.toLocaleString('en-US', {maximumFractionDigits: 1})}</td><td class="text-right font-mono text-slate-700">${fmtUSD(r.c1)}</td><td class="text-right font-mono text-slate-400 text-xs">${fmtUSD(r.c2)}</td><td class="text-right font-mono ${diffClass}">${diffSign}${fmtUSD(r.diff)}</td><td class="text-right text-xs text-slate-500">${fmtPct(r.c1, r.c2)}</td></tr>`;
+        });
     };
 
     const dz=document.getElementById('drop-zone'); dz.ondragover=e=>{e.preventDefault();dz.classList.add('active');}; dz.ondragleave=()=>dz.classList.remove('active'); dz.ondrop=e=>{e.preventDefault();dz.classList.remove('active');handleFiles(e.dataTransfer.files);}; document.getElementById('fileInput').onchange=e=>handleFiles(e.target.files);
