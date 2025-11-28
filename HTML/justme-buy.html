@@ -63,7 +63,7 @@
         </div>
     </header>
 
-    <!-- New Dashboard Cards (Solid Style) -->
+    <!-- Dashboard Cards -->
     <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
         <!-- Revenue Card -->
         <div class="bg-gradient-to-br from-indigo-500 to-indigo-600 rounded-2xl p-6 text-white shadow-lg shadow-indigo-200 relative overflow-hidden">
@@ -130,47 +130,46 @@
         </div>
     </div>
 
-    <!-- NEW Rankings Section (Product Analysis) -->
+    <!-- Rankings Section -->
     <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-        <!-- Hot Selling Products -->
+        <!-- Best Selling Brands -->
         <div class="glass-panel p-6 bg-white">
             <h3 class="text-lg font-bold text-slate-700 mb-4 flex items-center gap-2">
-                <span class="w-1 h-6 bg-orange-400 rounded-full"></span> 熱銷排行榜 (Top 5)
+                <span class="w-1 h-6 bg-orange-400 rounded-full"></span> 熱銷品牌排行榜 (Top 5)
             </h3>
             <div class="overflow-y-auto max-h-60">
                 <table class="w-full text-sm">
                     <thead class="text-xs text-slate-400 bg-slate-50 uppercase sticky top-0">
                         <tr>
                             <th class="px-3 py-2 text-left">排名</th>
-                            <th class="px-3 py-2 text-left">品名</th>
-                            <th class="px-3 py-2 text-right">銷量</th>
+                            <th class="px-3 py-2 text-left">品牌名稱</th>
+                            <th class="px-3 py-2 text-right">銷售數量</th>
                         </tr>
                     </thead>
                     <tbody>
-                        <tr v-for="(prod, idx) in topSellingProducts" :key="idx" class="border-b border-slate-50 last:border-0 hover:bg-slate-50">
+                        <tr v-for="(brand, idx) in topSellingBrands" :key="idx" class="border-b border-slate-50 last:border-0 hover:bg-slate-50">
                             <td class="px-3 py-3 w-12">
                                 <span :class="getRankClass(idx)" class="flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold">
                                     {{ idx + 1 }}
                                 </span>
                             </td>
                             <td class="px-3 py-3">
-                                <div class="font-bold text-slate-700">{{ prod.name }}</div>
-                                <div class="text-xs text-slate-400">{{ prod.brand }}</div>
+                                <div class="font-bold text-slate-700">{{ brand.name }}</div>
                             </td>
                             <td class="px-3 py-3 text-right font-bold text-slate-600">
-                                {{ prod.count }}
+                                {{ brand.count }} <span class="text-[10px] font-normal text-slate-400">件</span>
                             </td>
                         </tr>
-                        <tr v-if="topSellingProducts.length === 0"><td colspan="3" class="text-center py-4 text-gray-400">尚無資料</td></tr>
+                        <tr v-if="topSellingBrands.length === 0"><td colspan="3" class="text-center py-4 text-gray-400">尚無資料</td></tr>
                     </tbody>
                 </table>
             </div>
         </div>
 
-        <!-- Highest Profit Products -->
+        <!-- Highest Profit Products (Items) -->
         <div class="glass-panel p-6 bg-white">
             <h3 class="text-lg font-bold text-slate-700 mb-4 flex items-center gap-2">
-                <span class="w-1 h-6 bg-emerald-500 rounded-full"></span> 利潤王排行榜 (Top 5)
+                <span class="w-1 h-6 bg-emerald-500 rounded-full"></span> 利潤王 (單品 Top 5)
             </h3>
             <div class="overflow-y-auto max-h-60">
                 <table class="w-full text-sm">
@@ -304,19 +303,12 @@
                 </thead>
                 <tbody class="divide-y divide-slate-100">
                     <tr v-for="(item, index) in items" :key="index" class="hover:bg-slate-50 transition duration-150">
-                        <!-- 日期 -->
                         <td class="px-4 py-3 whitespace-nowrap font-mono text-xs text-slate-400">{{ item.date }}</td>
-                        
-                        <!-- 品牌/品名 -->
                         <td class="px-4 py-3">
                             <div class="font-bold text-slate-700">{{ item.brand }}</div>
                             <div class="text-xs text-slate-500">{{ item.productName }} <span v-if="item.model" class="text-slate-400">({{ item.model }})</span></div>
                         </td>
-
-                        <!-- 顧客 -->
                         <td class="px-4 py-3 text-slate-600">{{ item.customer }}</td>
-                        
-                        <!-- 日幣明細 -->
                         <td class="px-4 py-3">
                             <div class="flex flex-col gap-1 items-start">
                                 <span v-if="item.priceJPY" class="text-[10px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full whitespace-nowrap">
@@ -331,21 +323,15 @@
                                 <span v-if="!item.priceJPY && !item.priceDiscountJPY && !item.priceTaxFreeJPY" class="text-slate-200 text-xs">-</span>
                             </div>
                         </td>
-
-                        <!-- 金額欄位 -->
                         <td class="px-4 py-3 font-mono text-slate-600">{{ formatCurrency(item.priceTWD) }}</td>
                         <td class="px-4 py-3 font-mono text-slate-400">{{ item.shipping ? formatCurrency(item.shipping) : '-' }}</td>
                         <td class="px-4 py-3 font-mono font-bold text-indigo-600">{{ formatCurrency(item.quotePrice) }}</td>
                         <td class="px-4 py-3 font-mono font-bold text-emerald-600">+{{ formatCurrency(item.profit) }}</td>
-                        
-                        <!-- 狀態 -->
                         <td class="px-4 py-3 text-center">
                             <span @click="togglePaid(index)" :class="item.isPaid ? 'bg-emerald-100 text-emerald-700 ring-1 ring-emerald-200' : 'bg-rose-100 text-rose-700 ring-1 ring-rose-200'" class="cursor-pointer px-3 py-1 rounded-full text-xs font-bold select-none transition hover:opacity-80">
                                 {{ item.isPaid ? '已繳清' : '未繳' }}
                             </span>
                         </td>
-                        
-                        <!-- 操作 -->
                         <td class="px-4 py-3 text-center">
                             <button @click="deleteItem(index)" class="w-8 h-8 rounded-full hover:bg-rose-50 text-slate-300 hover:text-rose-500 transition flex items-center justify-center">✕</button>
                         </td>
@@ -398,7 +384,13 @@
                 updateCharts();
             }, { deep: true });
 
-            // 計算利潤邏輯 (運費是成本)
+            // 輔助函式：標準化品牌名稱 (移除空白、轉大寫)
+            const normalizeBrand = (brand) => {
+                if (!brand) return '其他';
+                return brand.trim().toUpperCase();
+            };
+
+            // 計算利潤邏輯
             const calculateProfit = () => {
                 const quote = parseFloat(newItem.value.quotePrice) || 0;
                 const cost = parseFloat(newItem.value.priceTWD) || 0;
@@ -472,36 +464,48 @@
             const totalRevenue = computed(() => items.value.reduce((sum, item) => sum + (parseFloat(item.quotePrice) || 0), 0));
             const totalProfit = computed(() => items.value.reduce((sum, item) => sum + (parseFloat(item.profit) || 0), 0));
             const unpaidCount = computed(() => items.value.filter(item => !item.isPaid).length);
-            const uniqueBrands = computed(() => [...new Set(items.value.map(item => item.brand).filter(Boolean))]);
+            
+            // 下拉選單使用的唯一品牌清單 (也經過標準化去重)
+            const uniqueBrands = computed(() => {
+                const brandSet = new Set();
+                items.value.forEach(item => {
+                    if(item.brand) brandSet.add(normalizeBrand(item.brand));
+                });
+                return [...brandSet];
+            });
 
-            // 排行榜分析邏輯
-            const productStats = computed(() => {
+            // 熱銷品牌排行榜 (改為計算品牌數量，並標準化)
+            const topSellingBrands = computed(() => {
                 const stats = {};
                 items.value.forEach(item => {
-                    // 以 "品牌 + 品名" 作為唯一識別
-                    const key = (item.brand || 'Other') + ' - ' + item.productName;
+                    const b = normalizeBrand(item.brand);
+                    if (!stats[b]) {
+                        stats[b] = { name: b, count: 0 };
+                    }
+                    stats[b].count += 1;
+                });
+                // 排序並取前5
+                return Object.values(stats).sort((a, b) => b.count - a.count).slice(0, 5);
+            });
+
+            // 利潤王排行榜 (維持單品)
+            const topProfitProducts = computed(() => {
+                // 為避免同品牌同品名被分開算，這裡用 key 來加總，或者如果使用者想要看單筆訂單的最高利潤？
+                // 通常排行榜是看「累積」。這裡假設是看「這款商品總共幫我賺多少」
+                const stats = {};
+                items.value.forEach(item => {
+                    const b = normalizeBrand(item.brand);
+                    const key = b + ' - ' + item.productName;
                     if (!stats[key]) {
                         stats[key] = { 
                             name: item.productName, 
-                            brand: item.brand || '無品牌', 
-                            count: 0, 
+                            brand: b, 
                             totalProfit: 0 
                         };
                     }
-                    stats[key].count += 1;
                     stats[key].totalProfit += (parseFloat(item.profit) || 0);
                 });
-                return Object.values(stats);
-            });
-
-            // 熱銷排行 (銷量高 -> 低)
-            const topSellingProducts = computed(() => {
-                return [...productStats.value].sort((a, b) => b.count - a.count).slice(0, 5);
-            });
-
-            // 利潤排行 (總利潤高 -> 低)
-            const topProfitProducts = computed(() => {
-                return [...productStats.value].sort((a, b) => b.totalProfit - a.totalProfit).slice(0, 5);
+                return Object.values(stats).sort((a, b) => b.totalProfit - a.totalProfit).slice(0, 5);
             });
 
             const getRankClass = (idx) => {
@@ -543,10 +547,10 @@
             const updateCharts = () => {
                 if (!brandChartInstance || !salesChartInstance) return;
 
-                // 1. 品牌數據
+                // 1. 品牌數據 (標準化處理：轉大寫)
                 const brandCounts = {};
                 items.value.forEach(i => {
-                    const b = i.brand || '未分類';
+                    const b = normalizeBrand(i.brand);
                     brandCounts[b] = (brandCounts[b] || 0) + 1;
                 });
                 
@@ -554,7 +558,7 @@
                     labels: Object.keys(brandCounts),
                     datasets: [{
                         data: Object.values(brandCounts),
-                        backgroundColor: ['#6366f1', '#ec4899', '#10b981', '#f59e0b', '#8b5cf6', '#3b82f6'],
+                        backgroundColor: ['#6366f1', '#ec4899', '#10b981', '#f59e0b', '#8b5cf6', '#3b82f6', '#818cf8', '#f472b6'],
                         borderWidth: 0
                     }]
                 };
@@ -587,7 +591,7 @@
                 totalRevenue, totalProfit, unpaidCount, uniqueBrands,
                 formatCurrency, calculateProfit,
                 exportData, importData, triggerFileInput, fileInput,
-                topSellingProducts, topProfitProducts, getRankClass
+                topSellingBrands, topProfitProducts, getRankClass
             };
         }
     }).mount('#app');
