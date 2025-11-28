@@ -57,7 +57,7 @@
     <!-- Dashboard Cards -->
     <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
         <div class="glass-panel p-6 rounded-2xl shadow-sm border-l-4 border-indigo-500">
-            <div class="text-gray-400 text-sm font-medium mb-1">總營業額 (報價總計)</div>
+            <div class="text-gray-400 text-sm font-medium mb-1">總營業額 (含運費)</div>
             <div class="text-3xl font-bold text-gray-800">{{ formatCurrency(totalRevenue) }}</div>
         </div>
         <div class="glass-panel p-6 rounded-2xl shadow-sm border-l-4 border-emerald-500">
@@ -154,7 +154,7 @@
             </div>
             <div class="col-span-1">
                 <label class="text-xs font-bold text-gray-500 ml-1">運費 (TWD)</label>
-                <input type="number" v-model.number="newItem.shipping" @input="calculateProfit" class="form-input w-full mt-1 p-2 rounded-xl border border-gray-200 bg-gray-50 focus:bg-white focus:border-indigo-500 focus:outline-none">
+                <input type="number" v-model.number="newItem.shipping" @input="calculateProfit" placeholder="客人付則填寫" class="form-input w-full mt-1 p-2 rounded-xl border border-gray-200 bg-gray-50 focus:bg-white focus:border-indigo-500 focus:outline-none">
             </div>
             <div class="col-span-1">
                 <label class="text-xs font-bold text-indigo-600 ml-1">報價 (TWD)</label>
@@ -180,6 +180,7 @@
                         <th class="px-4 py-3">顧客</th>
                         <th class="px-4 py-3">日幣(退稅)</th>
                         <th class="px-4 py-3">台幣成本</th>
+                        <th class="px-4 py-3">運費(客付)</th>
                         <th class="px-4 py-3">報價</th>
                         <th class="px-4 py-3">利潤</th>
                         <th class="px-4 py-3 text-center">狀態</th>
@@ -196,6 +197,7 @@
                         <td class="px-4 py-3">{{ item.customer }}</td>
                         <td class="px-4 py-3 font-mono">¥{{ item.priceTaxFreeJPY || item.priceDiscountJPY || item.priceJPY }}</td>
                         <td class="px-4 py-3 font-mono">{{ formatCurrency(item.priceTWD) }}</td>
+                        <td class="px-4 py-3 font-mono text-gray-400">{{ item.shipping ? formatCurrency(item.shipping) : '-' }}</td>
                         <td class="px-4 py-3 font-mono font-bold text-indigo-600">{{ formatCurrency(item.quotePrice) }}</td>
                         <td class="px-4 py-3 font-mono text-emerald-600">+{{ formatCurrency(item.profit) }}</td>
                         <td class="px-4 py-3 text-center">
@@ -208,7 +210,7 @@
                         </td>
                     </tr>
                     <tr v-if="items.length === 0">
-                        <td colspan="9" class="px-6 py-10 text-center text-gray-400">
+                        <td colspan="10" class="px-6 py-10 text-center text-gray-400">
                             尚無資料，請由上方新增訂單
                         </td>
                     </tr>
@@ -254,14 +256,16 @@
                 updateCharts();
             }, { deep: true });
 
-            // 計算利潤邏輯
+            // 計算利潤邏輯 (修改點：運費若有輸入代表客付，不扣利潤)
             const calculateProfit = () => {
                 const quote = parseFloat(newItem.value.quotePrice) || 0;
                 const cost = parseFloat(newItem.value.priceTWD) || 0;
-                const ship = parseFloat(newItem.value.shipping) || 0;
-                // 如果都有填寫，自動計算利潤
+                
+                // 公式：利潤 = 報價 - 成本
+                // 若有運費，代表收入增加運費，支出增加運費，互相抵銷，故利潤不變
+                // 若無運費，代表吸收，這裡不計算吸收的成本(因為輸入為0或空)，依舊是 報價-成本
                 if (quote > 0) {
-                    newItem.value.profit = quote - cost - ship;
+                    newItem.value.profit = quote - cost;
                 }
             };
 
@@ -335,8 +339,8 @@
                 event.target.value = ''; // reset
             };
 
-            // 統計數據
-            const totalRevenue = computed(() => items.value.reduce((sum, item) => sum + (parseFloat(item.quotePrice) || 0), 0));
+            // 統計數據 (修改點：總營業額 = 報價 + 運費(客付))
+            const totalRevenue = computed(() => items.value.reduce((sum, item) => sum + (parseFloat(item.quotePrice) || 0) + (parseFloat(item.shipping) || 0), 0));
             const totalProfit = computed(() => items.value.reduce((sum, item) => sum + (parseFloat(item.profit) || 0), 0));
             const unpaidCount = computed(() => items.value.filter(item => !item.isPaid).length);
             const uniqueBrands = computed(() => [...new Set(items.value.map(item => item.brand).filter(Boolean))]);
@@ -398,13 +402,15 @@
                 };
                 brandChartInstance.update();
 
-                // 2. 處理月度數據
+                // 2. 處理月度數據 (修改點：銷售額含運費)
                 const monthlyData = {};
                 items.value.forEach(i => {
                     if (!i.date) return;
                     const month = i.date.substring(0, 7); // YYYY-MM
                     if (!monthlyData[month]) monthlyData[month] = { sales: 0, profit: 0 };
-                    monthlyData[month].sales += (parseFloat(i.quotePrice) || 0);
+                    
+                    // 銷售額 = 報價 + 運費(若有)
+                    monthlyData[month].sales += (parseFloat(i.quotePrice) || 0) + (parseFloat(i.shipping) || 0);
                     monthlyData[month].profit += (parseFloat(i.profit) || 0);
                 });
 
@@ -414,7 +420,7 @@
                     labels: sortedMonths,
                     datasets: [
                         {
-                            label: '營業額',
+                            label: '營業額(含運費)',
                             data: sortedMonths.map(m => monthlyData[m].sales),
                             backgroundColor: '#c7d2fe',
                             borderRadius: 4
