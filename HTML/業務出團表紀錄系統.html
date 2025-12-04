@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>業務出團表紀錄系統 v3.4</title>
+    <title>業務出團表紀錄系統 v3.5 (Fast Load)</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
@@ -18,7 +18,6 @@
             border-top: none;
         }
 
-        /* 淺色系表頭 */
         .table thead th { 
             background-color: #e9ecef !important; 
             color: #495057; 
@@ -37,7 +36,6 @@
         
         .status-v { color: #198754; font-weight: bold; background-color: #e8f5e9; padding: 2px 8px; border-radius: 4px; }
         
-        /* 統計儀表板樣式 */
         .summary-panel {
             background: #fff;
             padding: 15px;
@@ -55,7 +53,6 @@
 
         .badge-date { font-size: 0.75rem; margin-left: 5px; }
         
-        /* Tabs */
         .nav-tabs .nav-link { color: #495057; background-color: #e9ecef; margin-right: 2px; border-radius: 8px 8px 0 0; }
         .nav-tabs .nav-link.active { color: #0d6efd; background-color: white; border-top: 3px solid #0d6efd; font-weight: bold; }
         .nav-tabs { border-bottom: 1px solid #dee2e6; }
@@ -64,7 +61,6 @@
         .form-card .card-header { background-color: white; border-bottom: 1px solid #eee; color: #0d6efd; font-size: 1.1rem; }
         .form-card .card-body { background-color: #ffffff; }
 
-        /* 分頁控制項樣式 */
         .pagination-controls {
             display: flex;
             justify-content: space-between;
@@ -74,6 +70,15 @@
             background: #f8f9fa;
             border-radius: 5px;
         }
+
+        /* 同步狀態指示器 */
+        #syncStatus {
+            font-size: 0.85rem;
+            margin-right: 15px;
+            font-weight: bold;
+            color: #6c757d;
+        }
+        .fa-spin-fast { animation: fa-spin 1s infinite linear; }
     </style>
 </head>
 <body>
@@ -83,9 +88,12 @@
 
     <!-- 操作區塊 -->
     <div class="row mb-3">
-        <div class="col-md-12 text-end">
-            <button class="btn btn-outline-success btn-sm" onclick="exportToCSV()"><i class="fas fa-file-excel"></i> 匯出 Excel</button>
-            <label class="btn btn-outline-warning btn-sm btn-file">
+        <div class="col-md-12 text-end d-flex align-items-center justify-content-end">
+            <!-- 同步狀態顯示區 -->
+            <span id="syncStatus"></span>
+
+            <button class="btn btn-outline-success btn-sm me-1" onclick="exportToCSV()"><i class="fas fa-file-excel"></i> 匯出 Excel</button>
+            <label class="btn btn-outline-warning btn-sm btn-file me-1">
                 <i class="fas fa-file-upload"></i> 匯入 CSV <input type="file" id="csvFileInput" style="display: none;" onchange="importFromCSV(this)">
             </label>
             <button class="btn btn-outline-danger btn-sm" onclick="clearAllData()"><i class="fas fa-trash"></i> 清空</button>
@@ -221,7 +229,7 @@
 </div>
 
 <script>
-    // ★★★ API URL 設定 ★★★
+    // ★★★ API URL ★★★
     const API_URL = "https://script.google.com/macros/s/AKfycbw4H6vytYgQN_9i-WD6vxqm9t5D9ofQ0PLcbEXRACPIvlggeTw-Y0YEfHz1uMlbfwrM3w/exec";
     
     // 定義欄位名稱
@@ -235,37 +243,73 @@
     let currentTab = 'ALL'; 
     let isLoading = false; 
 
-    // 分頁相關變數
+    // 分頁變數
     let currentPage = 1;
     let rowsPerPage = 10;
-    let currentFilteredData = []; // 存放目前 Tab 篩選後的資料 (包含原始索引)
+    let currentFilteredData = []; 
 
+    // ★★★ 優化：載入時先讀取 LocalStorage ★★★
     window.onload = function() {
-        renderTable(); 
-        loadFromCloud(); 
+        // 1. 嘗試從 LocalStorage 讀取資料
+        const cachedData = localStorage.getItem('salesGroupData_Cache');
+        if (cachedData) {
+            console.log("Found local cache, rendering immediately...");
+            salesData = JSON.parse(cachedData);
+            sortData();
+            renderTabs();
+            renderTable();
+            // 如果有快取，背景靜默更新 (不擋畫面)
+            loadFromCloud(false); 
+        } else {
+            console.log("No cache found, full loading...");
+            // 如果沒快取，顯示遮罩並載入
+            renderTable(); // 初始空表
+            loadFromCloud(true); 
+        }
     };
 
     // --- 雲端功能區 ---
-    function loadFromCloud() {
-        toggleLoading(true, "資料讀取中...");
+    // isBlocking: true = 顯示全螢幕遮罩, false = 顯示右上角小提示
+    function loadFromCloud(isBlocking = true) {
+        if (isBlocking) {
+            toggleLoading(true, "資料讀取中...");
+        } else {
+            updateSyncStatus(true, "雲端同步中...");
+        }
+
         fetch(API_URL)
             .then(response => response.json())
             .then(data => {
                 salesData = data;
-                sortData(); // 讀取後立刻排序
+                // 更新後存入快取
+                saveToLocalCache();
+                
+                sortData();
                 renderTabs();
                 renderTable();
-                toggleLoading(false);
+
+                if (isBlocking) {
+                    toggleLoading(false);
+                } else {
+                    updateSyncStatus(false);
+                }
             })
             .catch(error => {
                 console.error('Error:', error);
-                alert("讀取失敗，請檢查網路或 API 設定。");
-                toggleLoading(false);
+                if (isBlocking) {
+                    alert("讀取失敗，請檢查網路。");
+                    toggleLoading(false);
+                } else {
+                    updateSyncStatus(false); // 失敗也移除提示
+                }
             });
     }
 
     function saveToCloud() {
+        // 儲存時，我們希望使用者知道正在存，所以使用右上的狀態提示，或者遮罩皆可
+        // 為了確保資料一致性，這裡使用遮罩比較安全，避免使用者連續按
         toggleLoading(true, "資料儲存中...");
+        
         fetch(API_URL, {
             method: "POST",
             body: JSON.stringify(salesData) 
@@ -286,6 +330,12 @@
         });
     }
 
+    // 將資料存入 LocalStorage 當作快取
+    function saveToLocalCache() {
+        localStorage.setItem('salesGroupData_Cache', JSON.stringify(salesData));
+    }
+
+    // 全螢幕遮罩
     function toggleLoading(show, msg) {
         isLoading = show;
         let loader = document.getElementById('loadingOverlay');
@@ -299,9 +349,20 @@
         loader.style.display = show ? 'flex' : 'none';
     }
 
+    // 右上角同步狀態提示
+    function updateSyncStatus(show, msg) {
+        const statusEl = document.getElementById('syncStatus');
+        if (show) {
+            statusEl.innerHTML = `<i class="fas fa-sync fa-spin-fast text-primary"></i> ${msg}`;
+        } else {
+            statusEl.innerHTML = `<i class="fas fa-check-circle text-success"></i> 已同步`;
+            // 2秒後消失
+            setTimeout(() => { statusEl.innerHTML = ''; }, 2000);
+        }
+    }
+
     // --- 核心邏輯 ---
 
-    // 排序功能：依出發日期 (舊 -> 新)
     function sortData() {
         salesData.sort((a, b) => {
             const dateA = a.date ? new Date(a.date) : new Date('9999-12-31');
@@ -333,19 +394,17 @@
 
     function switchTab(tab) {
         currentTab = tab;
-        currentPage = 1; // 切換 Tab 時重置頁碼
+        currentPage = 1; 
         renderTabs(); 
         renderTable(); 
     }
 
-    // 改變每頁顯示筆數
     function changeRowsPerPage() {
         rowsPerPage = parseInt(document.getElementById('rowsPerPage').value);
         currentPage = 1;
         renderTable();
     }
 
-    // 換頁
     function changePage(delta) {
         const totalPages = Math.ceil(currentFilteredData.length / rowsPerPage);
         let newPage = currentPage + delta;
@@ -359,7 +418,6 @@
         const tbody = document.getElementById('tableBody');
         tbody.innerHTML = '';
 
-        // 1. 篩選資料 & 統計
         let totalPax = 0;
         let totalEst = 0;
         let totalAct = 0;
@@ -372,19 +430,16 @@
             currentFilteredData = indexedData.filter(row => row.date && row.date.substring(0, 7) === currentTab);
         }
 
-        // 計算統計
         currentFilteredData.forEach(row => {
             totalPax += safeNumber(row.pax);
             totalEst += safeNumber(row.estRev);
             totalAct += safeNumber(row.actRev);
         });
 
-        // 更新統計看板
         document.getElementById('sumPax').textContent = totalPax;
         document.getElementById('sumEst').textContent = formatMoney(totalEst);
         document.getElementById('sumAct').textContent = formatMoney(totalAct);
 
-        // 2. 分頁邏輯
         const totalRows = currentFilteredData.length;
         const totalPages = Math.ceil(totalRows / rowsPerPage) || 1;
         
@@ -398,7 +453,6 @@
         document.getElementById('btnPrev').disabled = (currentPage === 1);
         document.getElementById('btnNext').disabled = (currentPage === totalPages);
 
-        // 3. 渲染表格
         const today = new Date();
         today.setHours(0,0,0,0);
 
@@ -406,7 +460,6 @@
             const index = row.originalIndex; 
             const safe = (val) => val || '';
 
-            // 日期提醒
             let dateBadge = '';
             if (row.date) {
                 const tripDate = new Date(row.date);
@@ -417,7 +470,6 @@
                 else if (diffDays <= 30) dateBadge = `<span class="badge bg-warning text-dark badge-date">剩${diffDays}天</span>`;
             }
 
-            // ★★★ 合約未簽約 紅色顯示邏輯 ★★★
             let contractDisplay = safe(row.contract);
             if (contractDisplay === '未簽約') {
                 contractDisplay = `<span class="text-danger fw-bold">${contractDisplay}</span>`;
@@ -503,6 +555,9 @@
             if(data.date) currentTab = data.date.substring(0, 7);
         }
 
+        // 儲存後立刻更新快取
+        saveToLocalCache();
+
         sortData(); 
         renderTabs(); 
         renderTable();
@@ -544,6 +599,7 @@
     function deleteData(index) {
         if(confirm('確定要刪除這筆資料嗎？刪除後會同步更新至雲端。')) {
             salesData.splice(index, 1);
+            saveToLocalCache(); // 更新快取
             renderTabs(); 
             renderTable();
             saveToCloud();
@@ -563,6 +619,7 @@
         if(confirm('警告：這將會刪除所有 Google Sheet 上的資料且無法復原！')) {
             salesData = [];
             currentTab = 'ALL';
+            saveToLocalCache();
             renderTabs();
             renderTable();
             saveToCloud();
@@ -617,6 +674,7 @@
             } else {
                 salesData = salesData.concat(newData);
             }
+            saveToLocalCache();
             sortData(); 
             renderTabs(); 
             renderTable();
