@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>業務出團表紀錄系統 v3.5 (Fast Load)</title>
+    <title>業務出團表紀錄系統 v3.6 (Compressed)</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
@@ -71,7 +71,6 @@
             border-radius: 5px;
         }
 
-        /* 同步狀態指示器 */
         #syncStatus {
             font-size: 0.85rem;
             margin-right: 15px;
@@ -89,9 +88,7 @@
     <!-- 操作區塊 -->
     <div class="row mb-3">
         <div class="col-md-12 text-end d-flex align-items-center justify-content-end">
-            <!-- 同步狀態顯示區 -->
             <span id="syncStatus"></span>
-
             <button class="btn btn-outline-success btn-sm me-1" onclick="exportToCSV()"><i class="fas fa-file-excel"></i> 匯出 Excel</button>
             <label class="btn btn-outline-warning btn-sm btn-file me-1">
                 <i class="fas fa-file-upload"></i> 匯入 CSV <input type="file" id="csvFileInput" style="display: none;" onchange="importFromCSV(this)">
@@ -179,7 +176,6 @@
 
     <!-- 表格與分頁 -->
     <div class="table-container">
-        <!-- 分頁控制區 -->
         <div class="pagination-controls">
             <div class="d-flex align-items-center">
                 <span class="me-2">每頁顯示:</span>
@@ -229,10 +225,13 @@
 </div>
 
 <script>
-    // ★★★ API URL ★★★
+    // ★★★ API URL: 請確認這是您剛剛更新過 GAS 後的網址 ★★★
     const API_URL = "https://script.google.com/macros/s/AKfycbw4H6vytYgQN_9i-WD6vxqm9t5D9ofQ0PLcbEXRACPIvlggeTw-Y0YEfHz1uMlbfwrM3w/exec";
     
-    // 定義欄位名稱
+    // 定義欄位順序 (必須與 Sheet 欄位順序 100% 一致)
+    // 0:date, 1:tour, 2:name, 3:phone, 4:pax, 5:estRev, 6:actRev, 7:bookingId
+    // 8:contract, 9:contractUploaded, 10:paperSent, 11:preTripNotify, 12:deposit
+    // 13:balance, 14:billSent, 15:list, 16:room, 17:note
     const headers = [
         "出發日期", "行程", "客人代表", "電話號碼", "人數", 
         "預估業績", "實際業績", "訂編", "合約", "合約上傳", "寄出紙本", "行前通知",
@@ -242,15 +241,11 @@
     let salesData = []; 
     let currentTab = 'ALL'; 
     let isLoading = false; 
-
-    // 分頁變數
     let currentPage = 1;
     let rowsPerPage = 10;
     let currentFilteredData = []; 
 
-    // ★★★ 優化：載入時先讀取 LocalStorage ★★★
     window.onload = function() {
-        // 1. 嘗試從 LocalStorage 讀取資料
         const cachedData = localStorage.getItem('salesGroupData_Cache');
         if (cachedData) {
             console.log("Found local cache, rendering immediately...");
@@ -258,18 +253,68 @@
             sortData();
             renderTabs();
             renderTable();
-            // 如果有快取，背景靜默更新 (不擋畫面)
             loadFromCloud(false); 
         } else {
             console.log("No cache found, full loading...");
-            // 如果沒快取，顯示遮罩並載入
-            renderTable(); // 初始空表
+            renderTable(); 
             loadFromCloud(true); 
         }
     };
 
-    // --- 雲端功能區 ---
-    // isBlocking: true = 顯示全螢幕遮罩, false = 顯示右上角小提示
+    // --- 雲端功能區 (Array 壓縮版) ---
+
+    // 解包：將雲端回傳的二維陣列 [[val, val]...] 轉為 物件陣列 [{key:val}...]
+    function unpackData(rows) {
+        return rows.map(row => {
+            // 清理單引號
+            const clean = (val) => String(val).replace(/^'/, '');
+            return {
+                date: clean(row[0] || ''),
+                tour: row[1] || '',
+                name: row[2] || '',
+                phone: clean(row[3] || ''),
+                pax: row[4] || '',
+                estRev: row[5] || '',
+                actRev: row[6] || '',
+                bookingId: row[7] || '',
+                contract: row[8] || '',
+                contractUploaded: row[9] || '',
+                paperSent: row[10] || '',
+                preTripNotify: row[11] || '',
+                deposit: row[12] || '',
+                balance: row[13] || '',
+                billSent: row[14] || '',
+                list: row[15] || '',
+                room: row[16] || '',
+                note: row[17] || ''
+            };
+        });
+    }
+
+    // 打包：將物件陣列 [{key:val}...] 轉為 二維陣列 [[val, val]...]
+    function packData(data) {
+        return data.map(item => [
+            "'" + (item.date || ""), // 強制字串
+            item.tour || "",
+            item.name || "",
+            "'" + (item.phone || ""), // 強制字串
+            item.pax || "",
+            item.estRev || "",
+            item.actRev || "",
+            item.bookingId || "",
+            item.contract || "",
+            item.contractUploaded || "",
+            item.paperSent || "",
+            item.preTripNotify || "",
+            item.deposit || "",
+            item.balance || "",
+            item.billSent || "",
+            item.list || "",
+            item.room || "",
+            item.note || ""
+        ]);
+    }
+
     function loadFromCloud(isBlocking = true) {
         if (isBlocking) {
             toggleLoading(true, "資料讀取中...");
@@ -279,11 +324,11 @@
 
         fetch(API_URL)
             .then(response => response.json())
-            .then(data => {
-                salesData = data;
-                // 更新後存入快取
-                saveToLocalCache();
+            .then(rows => {
+                // 優化點：在這裡解包
+                salesData = unpackData(rows);
                 
+                saveToLocalCache();
                 sortData();
                 renderTabs();
                 renderTable();
@@ -300,19 +345,20 @@
                     alert("讀取失敗，請檢查網路。");
                     toggleLoading(false);
                 } else {
-                    updateSyncStatus(false); // 失敗也移除提示
+                    updateSyncStatus(false); 
                 }
             });
     }
 
     function saveToCloud() {
-        // 儲存時，我們希望使用者知道正在存，所以使用右上的狀態提示，或者遮罩皆可
-        // 為了確保資料一致性，這裡使用遮罩比較安全，避免使用者連續按
         toggleLoading(true, "資料儲存中...");
         
+        // 優化點：在這裡打包
+        const packedData = packData(salesData);
+
         fetch(API_URL, {
             method: "POST",
-            body: JSON.stringify(salesData) 
+            body: JSON.stringify(packedData) // 傳送二維陣列
         })
         .then(response => response.json())
         .then(result => {
@@ -330,12 +376,10 @@
         });
     }
 
-    // 將資料存入 LocalStorage 當作快取
     function saveToLocalCache() {
         localStorage.setItem('salesGroupData_Cache', JSON.stringify(salesData));
     }
 
-    // 全螢幕遮罩
     function toggleLoading(show, msg) {
         isLoading = show;
         let loader = document.getElementById('loadingOverlay');
@@ -349,19 +393,17 @@
         loader.style.display = show ? 'flex' : 'none';
     }
 
-    // 右上角同步狀態提示
     function updateSyncStatus(show, msg) {
         const statusEl = document.getElementById('syncStatus');
         if (show) {
             statusEl.innerHTML = `<i class="fas fa-sync fa-spin-fast text-primary"></i> ${msg}`;
         } else {
             statusEl.innerHTML = `<i class="fas fa-check-circle text-success"></i> 已同步`;
-            // 2秒後消失
             setTimeout(() => { statusEl.innerHTML = ''; }, 2000);
         }
     }
 
-    // --- 核心邏輯 ---
+    // --- 核心邏輯 (與舊版相同) ---
 
     function sortData() {
         salesData.sort((a, b) => {
@@ -555,9 +597,7 @@
             if(data.date) currentTab = data.date.substring(0, 7);
         }
 
-        // 儲存後立刻更新快取
         saveToLocalCache();
-
         sortData(); 
         renderTabs(); 
         renderTable();
@@ -599,7 +639,7 @@
     function deleteData(index) {
         if(confirm('確定要刪除這筆資料嗎？刪除後會同步更新至雲端。')) {
             salesData.splice(index, 1);
-            saveToLocalCache(); // 更新快取
+            saveToLocalCache(); 
             renderTabs(); 
             renderTable();
             saveToCloud();
