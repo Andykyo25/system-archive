@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>業務出團表紀錄系統 v3.8 (Notification)</title>
+    <title>業務出團表紀錄系統 v3.9 (SIM Alert)</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
@@ -170,7 +170,6 @@
 
                     <div class="col-md-1"><label class="form-label">名單</label><select class="form-select" id="f_list"><option value="">-</option><option value="V">V</option></select></div>
                     <div class="col-md-1"><label class="form-label">分房</label><select class="form-select" id="f_room"><option value="">-</option><option value="V">V</option></select></div>
-                    <!-- 新增網卡欄位 -->
                     <div class="col-md-1"><label class="form-label">網卡</label><select class="form-select" id="f_simCard"><option value="">-</option><option value="V">V</option></select></div>
                     
                     <div class="col-md-3"><label class="form-label">備註</label><input type="text" class="form-control" id="f_note" placeholder="備註事項..."></div>
@@ -244,7 +243,7 @@
                     <th class="th-highlight">繳帳單</th>
                     <th>名單</th>
                     <th>分房</th>
-                    <th>網卡</th> <!-- 新增 -->
+                    <th>網卡</th>
                     <th>備註</th>
                 </tr>
             </thead>
@@ -260,7 +259,7 @@
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header bg-danger text-white">
-                <h5 class="modal-title"><i class="fas fa-bell"></i> 緊急事項提醒 (5天內出發)</h5>
+                <h5 class="modal-title"><i class="fas fa-bell"></i> 消息中心 / 緊急事項</h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
@@ -282,7 +281,7 @@
     // ★★★ API URL ★★★
     const API_URL = "https://script.google.com/macros/s/AKfycbw4H6vytYgQN_9i-WD6vxqm9t5D9ofQ0PLcbEXRACPIvlggeTw-Y0YEfHz1uMlbfwrM3w/exec";
     
-    // 定義欄位名稱 (新增 網卡)
+    // 定義欄位名稱
     const headers = [
         "出發日期", "行程", "客人代表", "電話號碼", "人數", 
         "預估業績", "實際業績", "訂編", "合約", "合約上傳", "寄出紙本", "行前通知",
@@ -303,7 +302,7 @@
             console.log("Found local cache, rendering immediately...");
             salesData = JSON.parse(cachedData);
             sortData();
-            checkNotifications(); // 檢查提醒
+            checkNotifications(); 
             renderTabs();
             renderTable();
             loadFromCloud(false); 
@@ -314,7 +313,7 @@
         }
     };
 
-    // --- 雲端功能區 (Array 壓縮版 - 新增網卡欄位) ---
+    // --- 雲端功能區 ---
 
     function unpackData(rows) {
         return rows.map(row => {
@@ -337,8 +336,8 @@
                 billSent: row[14] || '',
                 list: row[15] || '',
                 room: row[16] || '',
-                simCard: row[17] || '', // 新增
-                note: row[18] || ''     // 順延
+                simCard: row[17] || '', 
+                note: row[18] || ''     
             };
         });
     }
@@ -362,7 +361,7 @@
             item.billSent || "",
             item.list || "",
             item.room || "",
-            item.simCard || "", // 新增
+            item.simCard || "", 
             item.note || ""
         ]);
     }
@@ -381,7 +380,7 @@
                 
                 saveToLocalCache();
                 sortData();
-                checkNotifications(); // 檢查提醒
+                checkNotifications(); 
                 renderTabs();
                 renderTable();
 
@@ -404,9 +403,7 @@
 
     function saveToCloud() {
         toggleLoading(true, "資料儲存中...");
-        
         const packedData = packData(salesData);
-
         fetch(API_URL, {
             method: "POST",
             body: JSON.stringify(packedData) 
@@ -454,12 +451,13 @@
         }
     }
 
-    // --- 消息中心邏輯 ---
+    // --- 消息中心邏輯 (含網卡提醒) ---
     function checkNotifications() {
         notifications = [];
         const today = new Date();
         today.setHours(0,0,0,0);
 
+        // 1. 檢查行程緊急事項 (5天內)
         salesData.forEach((row, index) => {
             if (!row.date) return;
             const tripDate = new Date(row.date);
@@ -468,7 +466,6 @@
             const diffTime = tripDate - today;
             const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
 
-            // 條件：5天內出發 (包含當天，不包含已過期) 且有未完成項目
             if (diffDays >= 0 && diffDays <= 5) {
                 let issues = [];
                 if (row.paperSent !== 'V') issues.push("未寄出紙本");
@@ -477,7 +474,8 @@
 
                 if (issues.length > 0) {
                     notifications.push({
-                        index: index, // 原始索引
+                        type: 'trip',
+                        index: index, 
                         date: row.date,
                         tour: row.tour,
                         name: row.name,
@@ -487,6 +485,35 @@
                 }
             }
         });
+
+        // 2. 檢查固定網卡提醒 (每月1號、15號前2天)
+        // 檢查本月15號
+        let target15 = new Date(today.getFullYear(), today.getMonth(), 15);
+        let diff15 = Math.ceil((target15 - today) / (1000 * 60 * 60 * 24));
+        if (diff15 >= 0 && diff15 <= 2) {
+            notifications.unshift({ // 加在最前面
+                type: 'system',
+                date: `${today.getMonth()+1}/15`,
+                tour: '系統提醒',
+                name: '全體',
+                days: diff15,
+                issues: ['需購買/結算網卡']
+            });
+        }
+
+        // 檢查下個月1號
+        let target1 = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+        let diff1 = Math.ceil((target1 - today) / (1000 * 60 * 60 * 24));
+        if (diff1 >= 0 && diff1 <= 2) {
+            notifications.unshift({ // 加在最前面
+                type: 'system',
+                date: `${target1.getMonth()+1}/1`,
+                tour: '系統提醒',
+                name: '全體',
+                days: diff1,
+                issues: ['需購買/結算網卡']
+            });
+        }
 
         // 更新鈴鐺紅點
         const badge = document.getElementById('notifBadge');
@@ -510,18 +537,32 @@
             notifications.forEach(item => {
                 const li = document.createElement('li');
                 li.className = 'list-group-item list-group-item-action';
-                li.style.cursor = 'pointer';
-                li.innerHTML = `
-                    <div class="d-flex w-100 justify-content-between">
-                        <h6 class="mb-1 text-danger fw-bold"><i class="fas fa-exclamation-circle"></i> 剩 ${item.days} 天: ${item.name}</h6>
-                        <small>${item.date}</small>
-                    </div>
-                    <p class="mb-1">${item.tour}</p>
-                    <small class="text-danger">缺失: ${item.issues.join(', ')}</small>
-                `;
-                li.onclick = function() {
-                    jumpToRecord(item.index, item.date);
-                };
+                
+                if (item.type === 'system') {
+                    // 系統提醒樣式 (藍色)
+                    li.style.cursor = 'default';
+                    li.innerHTML = `
+                        <div class="d-flex w-100 justify-content-between">
+                            <h6 class="mb-1 text-primary fw-bold"><i class="fas fa-info-circle"></i> [系統] 剩 ${item.days} 天: ${item.issues[0]}</h6>
+                            <small>${item.date}</small>
+                        </div>
+                        <p class="mb-1 text-muted">請確認本月網卡採購與結算。</p>
+                    `;
+                } else {
+                    // 行程提醒樣式 (紅色，可點擊)
+                    li.style.cursor = 'pointer';
+                    li.innerHTML = `
+                        <div class="d-flex w-100 justify-content-between">
+                            <h6 class="mb-1 text-danger fw-bold"><i class="fas fa-exclamation-circle"></i> 剩 ${item.days} 天: ${item.name}</h6>
+                            <small>${item.date}</small>
+                        </div>
+                        <p class="mb-1">${item.tour}</p>
+                        <small class="text-danger">缺失: ${item.issues.join(', ')}</small>
+                    `;
+                    li.onclick = function() {
+                        jumpToRecord(item.index, item.date);
+                    };
+                }
                 list.appendChild(li);
             });
         }
@@ -530,24 +571,16 @@
         modal.show();
     }
 
-    // 跳轉到該筆資料
     function jumpToRecord(index, dateStr) {
-        // 1. 關閉 Modal
         const modalEl = document.getElementById('notificationModal');
         const modal = bootstrap.Modal.getInstance(modalEl);
         modal.hide();
 
-        // 2. 切換到該月份 Tab
         if(dateStr) {
             currentTab = dateStr.substring(0, 7);
             renderTabs();
         }
 
-        // 3. 計算該筆資料在過濾後的位置，以決定頁碼
-        // 為了簡單起見，我們先切換 Tab 並重新渲染，然後找出這筆資料在當前檢視的第幾頁
-        // 因為 salesData 已經排序過，index 是原始索引
-        
-        // 重新渲染表格邏輯以獲取 currentFilteredData
         let indexedData = salesData.map((item, idx) => ({ ...item, originalIndex: idx }));
         if (currentTab === 'ALL') {
             currentFilteredData = indexedData;
@@ -555,25 +588,19 @@
             currentFilteredData = indexedData.filter(row => row.date && row.date.substring(0, 7) === currentTab);
         }
 
-        // 找到該筆資料在 currentFilteredData 的位置
         const filterIdx = currentFilteredData.findIndex(row => row.originalIndex === index);
         
         if (filterIdx !== -1) {
-            // 計算頁碼
             const targetPage = Math.floor(filterIdx / rowsPerPage) + 1;
             currentPage = targetPage;
             renderTable();
 
-            // 4. 高亮顯示
-            // 延遲一點點讓 DOM 渲染完成
             setTimeout(() => {
                 const rows = document.querySelectorAll('#tableBody tr');
-                // 在當前頁面中，該筆資料是第幾列
                 const rowOnPage = filterIdx % rowsPerPage;
                 if (rows[rowOnPage]) {
                     rows[rowOnPage].classList.add('highlight-row');
                     rows[rowOnPage].scrollIntoView({ behavior: 'smooth', block: 'center' });
-                    // 2秒後移除高亮
                     setTimeout(() => {
                         rows[rowOnPage].classList.remove('highlight-row');
                     }, 2000);
@@ -732,7 +759,7 @@
                 <td><span class="${row.billSent === 'V' ? 'status-v' : ''}">${safe(row.billSent)}</span></td>
                 <td><span class="${row.list === 'V' ? 'status-v' : ''}">${safe(row.list)}</span></td>
                 <td><span class="${row.room === 'V' ? 'status-v' : ''}">${safe(row.room)}</span></td>
-                <td><span class="${row.simCard === 'V' ? 'status-v' : ''}">${safe(row.simCard)}</span></td> <!-- 新增 -->
+                <td><span class="${row.simCard === 'V' ? 'status-v' : ''}">${safe(row.simCard)}</span></td>
                 <td class="text-left text-muted" style="font-size:0.85rem;">${safe(row.note)}</td>
             `;
 
@@ -769,7 +796,7 @@
             billSent: document.getElementById('f_billSent').value,
             list: document.getElementById('f_list').value,
             room: document.getElementById('f_room').value,
-            simCard: document.getElementById('f_simCard').value, // 新增
+            simCard: document.getElementById('f_simCard').value,
             note: document.getElementById('f_note').value
         };
 
@@ -789,7 +816,7 @@
 
         saveToLocalCache();
         sortData(); 
-        checkNotifications(); // 更新提醒
+        checkNotifications(); 
         renderTabs(); 
         renderTable();
         resetForm();
@@ -816,7 +843,7 @@
         document.getElementById('f_billSent').value = safe(row.billSent);
         document.getElementById('f_list').value = safe(row.list);
         document.getElementById('f_room').value = safe(row.room);
-        document.getElementById('f_simCard').value = safe(row.simCard); // 新增
+        document.getElementById('f_simCard').value = safe(row.simCard); 
         document.getElementById('f_note').value = safe(row.note);
 
         document.getElementById('editIndex').value = index;
@@ -832,7 +859,7 @@
         if(confirm('確定要刪除這筆資料嗎？刪除後會同步更新至雲端。')) {
             salesData.splice(index, 1);
             saveToLocalCache(); 
-            checkNotifications(); // 更新提醒
+            checkNotifications(); 
             renderTabs(); 
             renderTable();
             saveToCloud();
@@ -870,7 +897,7 @@
                 safe(row.estRev), safe(row.actRev), safe(row.bookingId), safe(row.contract), 
                 safe(row.contractUploaded), safe(row.paperSent), safe(row.preTripNotify),
                 safe(row.deposit), safe(row.balance), safe(row.billSent), safe(row.list), safe(row.room), 
-                safe(row.simCard), // 新增
+                safe(row.simCard),
                 `"${safe(row.note)}"`
             ];
             csvContent += rowArray.join(",") + "\n";
@@ -902,8 +929,8 @@
                     preTripNotify: clean(cols[11]),
                     deposit: clean(cols[12]), balance: clean(cols[13]), billSent: clean(cols[14]), 
                     list: clean(cols[15]), room: clean(cols[16]), 
-                    simCard: clean(cols[17]), // 新增 (注意索引)
-                    note: clean(cols[18])     // 順延
+                    simCard: clean(cols[17]),
+                    note: clean(cols[18])
                 };
                 newData.push(obj);
             }
