@@ -68,6 +68,7 @@
                     <div class="col-12 col-md-3"><label class="form-label">行程</label><input type="text" class="form-control" id="f_tour" placeholder="例如: 芬蘭破冰船15日" required></div>
                     <div class="col-6 col-md-2"><label class="form-label">客人代表</label><input type="text" class="form-control" id="f_name" required></div>
                     <div class="col-6 col-md-2"><label class="form-label">電話號碼</label><input type="text" class="form-control" id="f_phone"></div>
+                    
                     <div class="col-6 col-md-1"><label class="form-label">人數</label><input type="number" class="form-control" id="f_pax" min="1"></div>
                     <div class="col-6 col-md-2"><label class="form-label">訂編</label><input type="text" class="form-control" id="f_bookingId"></div>
                     <div class="col-6 col-md-2"><label class="form-label">預估業績</label><input type="number" class="form-control" id="f_estRev"></div>
@@ -206,13 +207,12 @@
 </div>
 
 <script>
-    // ★★★ STEP 1: 設定 Supabase (請換成您的資料) ★★★
-    // 注意：SUPABASE_KEY 必須是以 'ey' 開頭的 anon key
+    // ★★★ STEP 1: 設定 Supabase ★★★
+    // 請將您的 Key 填入下方
     const SUPABASE_URL = 'https://legwqtrutzpbwqumvvkb.supabase.co';
     const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxlZ3dxdHJ1dHpwYndxdW12dmtiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ4NDI4NTgsImV4cCI6MjA4MDQxODg1OH0.YIQPKNZizMcD1vZhAzalW1G2fRgLT6mx08qeyzEuaSg'; 
     
     // 初始化 Supabase
-    // 修正點：使用 supabase.createClient 而不是 supa.createClient
     const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
     const TABLE_NAME = 'sales_records';
 
@@ -231,8 +231,25 @@
     let currentFilteredData = []; 
     let notifications = [];
 
+    // ★★★ 工具函式區 (移到最上方以確保讀取) ★★★
+    
+    // 安全數值轉換 (避免 NaN)
+    function safeNumber(val) {
+        if (!val) return 0; 
+        const num = parseInt(String(val).replace(/,/g, ''), 10);
+        return isNaN(num) ? 0 : num;
+    }
+
+    // 金額格式化 (加逗號)
+    function formatMoney(num) {
+        if (!num) return '0';
+        const n = parseInt(String(num).replace(/,/g, ''), 10);
+        if (isNaN(n)) return '0';
+        return n.toLocaleString();
+    }
+
+    // --- 程式入口 ---
     window.onload = function() {
-        // 先載入本地快取
         const cachedData = localStorage.getItem('salesGroupData_Cache');
         if (cachedData) {
             salesData = JSON.parse(cachedData);
@@ -250,15 +267,12 @@
         else updateSyncStatus(true, "同步中...");
 
         try {
-            // 從 Supabase 讀取所有資料
             let { data, error } = await sb
                 .from(TABLE_NAME)
                 .select('*')
                 .order('date', { ascending: true });
 
             if (error) throw error;
-
-            console.log("Loaded data:", data); // 除錯用：在 Console 顯示抓到的資料
 
             salesData = data;
             saveToLocalCache();
@@ -270,7 +284,7 @@
         } catch (err) {
             console.error('Error loading:', err);
             if(isBlocking) {
-                alert("讀取失敗：" + err.message + "\n請檢查 Key 是否正確且 RLS 已關閉");
+                alert("讀取失敗：" + err.message);
                 toggleLoading(false);
             }
         }
@@ -510,12 +524,6 @@
 
     // --- Table & Pagination Logic ---
 
-    function safeNumber(val) {
-        if (!val) return 0; 
-        const num = parseInt(String(val).replace(/,/g, ''), 10);
-        return isNaN(num) ? 0 : num;
-    }
-
     function renderTabs() {
         const tabsContainer = document.getElementById('monthTabs');
         let months = new Set();
@@ -615,7 +623,7 @@
         const row = salesData[index];
         const safe = (val) => val || '';
         document.getElementById('editIndex').value = index;
-        document.getElementById('editId').value = safe(row.id); // 重要：存入 ID
+        document.getElementById('editId').value = safe(row.id);
 
         document.getElementById('f_date').value = safe(row.date);
         document.getElementById('f_tour').value = safe(row.tour);
