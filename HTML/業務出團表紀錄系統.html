@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>業務出團表紀錄系統 v3.2 (Cloud)</title>
+    <title>業務出團表紀錄系統 v3.2</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
@@ -82,7 +82,7 @@
 <body>
 
 <div class="container-fluid">
-    <h2 class="mb-3 text-center text-secondary"><i class="fas fa-plane-departure"></i> 業務出團管理系統 (Cloud)</h2>
+    <h2 class="mb-3 text-center text-secondary"><i class="fas fa-plane-departure"></i> 業務出團管理系統</h2>
 
     <!-- 操作區塊 -->
     <div class="row mb-3">
@@ -134,7 +134,7 @@
                     
                     <div class="col-md-2"><label class="form-label">訂金</label><input type="number" class="form-control" id="f_deposit"></div>
                     <div class="col-md-2"><label class="form-label">尾款</label><input type="number" class="form-control" id="f_balance"></div>
-                    <div class="col-md-2"><label class="form-label text-primary">繳帳單寄出</label>
+                    <div class="col-md-2"><label class="form-label text-primary">繳帳單</label>
                         <select class="form-select" id="f_billSent"><option value="">否</option><option value="V">是 (V)</option></select>
                     </div>
 
@@ -192,7 +192,7 @@
                     <th class="th-alert">行前通知</th>
                     <th>訂金</th>
                     <th>尾款</th>
-                    <th class="th-highlight">帳單寄出</th>
+                    <th class="th-highlight">繳帳單</th>
                     <th>名單</th>
                     <th>分房</th>
                     <th>備註</th>
@@ -206,14 +206,14 @@
 </div>
 
 <script>
-    // ★★★ 請將這裡換成你剛剛部署的 Google Apps Script 網址 ★★★
+    // ★★★ API URL 設定 ★★★
     const API_URL = "https://script.google.com/macros/s/AKfycbw4H6vytYgQN_9i-WD6vxqm9t5D9ofQ0PLcbEXRACPIvlggeTw-Y0YEfHz1uMlbfwrM3w/exec";
     
     // 定義欄位名稱
     const headers = [
         "出發日期", "行程", "客人代表", "電話號碼", "人數", 
         "預估業績", "實際業績", "訂編", "合約", "合約上傳", "寄出紙本", "行前通知",
-        "訂金", "尾款", "繳帳單寄出", "名單", "分房", "備註"
+        "訂金", "尾款", "繳帳單", "名單", "分房", "備註"
     ];
 
     let salesData = []; 
