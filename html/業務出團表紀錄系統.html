@@ -3,106 +3,38 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>業務出團表紀錄系統 v4.0 (Mobile Optimized)</title>
+    <title>業務出團表紀錄系統 v4.1 (Supabase)</title>
+    <!-- 引入 Supabase JS -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
         body { background-color: #f4f6f9; padding: 20px; font-family: "Microsoft JhengHei", sans-serif; }
-        
-        .table-container { 
-            overflow-x: auto; 
-            background: white; 
-            border-radius: 0 0 8px 8px; 
-            box-shadow: 0 4px 6px rgba(0,0,0,0.05); 
-            padding: 15px; 
-            border-top: none;
-        }
-
-        .table thead th { 
-            background-color: #e9ecef !important; 
-            color: #495057; 
-            font-weight: bold;
-            border-bottom: 2px solid #dee2e6;
-            white-space: nowrap; 
-            vertical-align: middle; 
-            text-align: center;
-        }
-
+        .table-container { overflow-x: auto; background: white; border-radius: 0 0 8px 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); padding: 15px; border-top: none; }
+        .table thead th { background-color: #e9ecef !important; color: #495057; font-weight: bold; border-bottom: 2px solid #dee2e6; white-space: nowrap; vertical-align: middle; text-align: center; }
         .th-highlight { background-color: #f3e5f5 !important; color: #6a1b9a; }
         .th-alert { background-color: #fff3e0 !important; color: #e65100; } 
-
         td { white-space: nowrap; vertical-align: middle; text-align: center; font-size: 0.95rem; }
         .text-left { text-align: left !important; }
-        
         .status-v { color: #198754; font-weight: bold; background-color: #e8f5e9; padding: 2px 8px; border-radius: 4px; }
-        
-        .summary-panel {
-            background: #fff;
-            padding: 15px;
-            border-radius: 8px;
-            margin-bottom: 15px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-            display: flex;
-            justify-content: space-around;
-            align-items: center;
-            border-left: 5px solid #0d6efd;
-            flex-wrap: wrap; /* 手機版自動換行 */
-        }
-        .summary-item { margin: 5px; } /* 手機版間距 */
+        .summary-panel { background: #fff; padding: 15px; border-radius: 8px; margin-bottom: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); display: flex; justify-content: space-around; align-items: center; border-left: 5px solid #0d6efd; flex-wrap: wrap; }
+        .summary-item { margin: 5px; }
         .summary-item h5 { margin: 0; font-size: 0.9rem; color: #6c757d; }
         .summary-item .value { font-size: 1.5rem; font-weight: bold; color: #212529; }
         .text-success-dark { color: #198754 !important; }
-
         .badge-date { font-size: 0.75rem; margin-left: 5px; }
-        
         .nav-tabs .nav-link { color: #495057; background-color: #e9ecef; margin-right: 2px; border-radius: 8px 8px 0 0; }
         .nav-tabs .nav-link.active { color: #0d6efd; background-color: white; border-top: 3px solid #0d6efd; font-weight: bold; }
         .nav-tabs { border-bottom: 1px solid #dee2e6; }
-
         .form-card { border: none; box-shadow: 0 2px 5px rgba(0,0,0,0.05); margin-bottom: 20px; }
         .form-card .card-header { background-color: white; border-bottom: 1px solid #eee; color: #0d6efd; font-size: 1.1rem; }
         .form-card .card-body { background-color: #ffffff; }
-
-        .pagination-controls {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 15px;
-            padding: 10px;
-            background: #f8f9fa;
-            border-radius: 5px;
-            flex-wrap: wrap; /* 手機版換行 */
-            gap: 10px;
-        }
-
-        #syncStatus {
-            font-size: 0.85rem;
-            margin-right: 15px;
-            font-weight: bold;
-            color: #6c757d;
-        }
+        .pagination-controls { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; padding: 10px; background: #f8f9fa; border-radius: 5px; flex-wrap: wrap; gap: 10px; }
+        #syncStatus { font-size: 0.85rem; margin-right: 15px; font-weight: bold; color: #6c757d; }
         .fa-spin-fast { animation: fa-spin 1s infinite linear; }
-
-        /* 消息中心按鈕樣式 */
-        .btn-notification {
-            position: relative;
-            margin-right: 10px;
-        }
-        .notification-badge {
-            position: absolute;
-            top: -5px;
-            right: -5px;
-            font-size: 0.7rem;
-            padding: 3px 6px;
-            border-radius: 50%;
-            background-color: #dc3545;
-            color: white;
-            display: none; 
-        }
-        .highlight-row {
-            background-color: #fff3cd !important;
-            transition: background-color 2s ease-out;
-        }
+        .btn-notification { position: relative; margin-right: 10px; }
+        .notification-badge { position: absolute; top: -5px; right: -5px; font-size: 0.7rem; padding: 3px 6px; border-radius: 50%; background-color: #dc3545; color: white; display: none; }
+        .highlight-row { background-color: #fff3cd !important; transition: background-color 2s ease-out; }
     </style>
 </head>
 <body>
@@ -113,44 +45,37 @@
     <!-- 操作區塊 -->
     <div class="row mb-3">
         <div class="col-12 text-end d-flex align-items-center justify-content-end flex-wrap gap-2">
-            <!-- 消息中心按鈕 -->
             <button class="btn btn-outline-secondary btn-notification" onclick="openNotificationModal()">
                 <i class="fas fa-bell"></i>
                 <span id="notifBadge" class="notification-badge">0</span>
             </button>
-
-            <span id="syncStatus" class="d-none d-md-inline"></span> <!-- 手機版隱藏文字，節省空間 -->
+            <span id="syncStatus" class="d-none d-md-inline"></span>
             <button class="btn btn-outline-success btn-sm" onclick="exportToCSV()"><i class="fas fa-file-excel"></i> 匯出</button>
-            <label class="btn btn-outline-warning btn-sm btn-file">
-                <i class="fas fa-file-upload"></i> 匯入 <input type="file" id="csvFileInput" style="display: none;" onchange="importFromCSV(this)">
-            </label>
-            <button class="btn btn-outline-danger btn-sm" onclick="clearAllData()"><i class="fas fa-trash"></i> 清空</button>
+            <button class="btn btn-outline-primary btn-sm" onclick="loadFromCloud(true)"><i class="fas fa-sync"></i> 重新整理</button>
         </div>
     </div>
 
-    <!-- 輸入表單 (Grid 優化版) -->
+    <!-- 輸入表單 -->
     <div class="card form-card">
         <div class="card-header">
             <strong><i class="fas fa-edit"></i> 資料輸入 / 編輯區</strong>
         </div>
         <div class="card-body">
             <form id="recordForm" onsubmit="event.preventDefault(); saveRecord();">
-                <input type="hidden" id="editIndex" value="-1">
+                <input type="hidden" id="editIndex" value="-1"> <!-- 這裡存的是陣列索引 -->
+                <input type="hidden" id="editId" value="">     <!-- 這裡存 Supabase ID -->
                 <div class="row g-2">
-                    <!-- 基礎資訊 -->
                     <div class="col-12 col-md-2"><label class="form-label">出發日期</label><input type="date" class="form-control" id="f_date" required></div>
                     <div class="col-12 col-md-3"><label class="form-label">行程</label><input type="text" class="form-control" id="f_tour" placeholder="例如: 芬蘭破冰船15日" required></div>
                     <div class="col-6 col-md-2"><label class="form-label">客人代表</label><input type="text" class="form-control" id="f_name" required></div>
                     <div class="col-6 col-md-2"><label class="form-label">電話號碼</label><input type="text" class="form-control" id="f_phone"></div>
                     
-                    <!-- 數字類：手機版併排 -->
                     <div class="col-6 col-md-1"><label class="form-label">人數</label><input type="number" class="form-control" id="f_pax" min="1"></div>
                     <div class="col-6 col-md-2"><label class="form-label">訂編</label><input type="text" class="form-control" id="f_bookingId"></div>
                     
                     <div class="col-6 col-md-2"><label class="form-label">預估業績</label><input type="number" class="form-control" id="f_estRev"></div>
                     <div class="col-6 col-md-2"><label class="form-label">實際業績</label><input type="number" class="form-control" id="f_actRev"></div>
                     
-                    <!-- 狀態類：手機版 2~3個一排，節省高度 -->
                     <div class="col-6 col-md-2"><label class="form-label">合約狀態</label>
                         <select class="form-select" id="f_contract">
                             <option value="">未簽約</option>
@@ -160,7 +85,6 @@
                         </select>
                     </div>
                     
-                    <!-- 打勾選項區 (手機版 3格一排) -->
                     <div class="col-4 col-md-2"><label class="form-label text-primary" style="font-size:0.8rem">合約上傳</label>
                         <select class="form-select form-select-sm" id="f_contractUploaded"><option value="">否</option><option value="V">V</option></select>
                     </div>
@@ -171,11 +95,9 @@
                         <select class="form-select form-select-sm" id="f_preTripNotify"><option value="">否</option><option value="V">V</option></select>
                     </div>
                     
-                    <!-- 金額 -->
                     <div class="col-6 col-md-2"><label class="form-label">訂金</label><input type="number" class="form-control" id="f_deposit"></div>
                     <div class="col-6 col-md-2"><label class="form-label">尾款</label><input type="number" class="form-control" id="f_balance"></div>
                     
-                    <!-- 雜項 (手機版 3格一排) -->
                     <div class="col-6 col-md-2"><label class="form-label text-primary">繳帳單</label>
                         <select class="form-select" id="f_billSent"><option value="">否</option><option value="V">V</option></select>
                     </div>
@@ -215,7 +137,7 @@
         </div>
     </div>
 
-    <!-- 表格與分頁 -->
+    <!-- 表格 -->
     <div class="table-container">
         <div class="pagination-controls">
             <div class="d-flex align-items-center">
@@ -275,9 +197,7 @@
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
-                <ul class="list-group" id="notifList">
-                    <!-- JS 插入提醒 -->
-                </ul>
+                <ul class="list-group" id="notifList"></ul>
                 <div id="noNotifMsg" class="text-center text-muted mt-3" style="display:none;">
                     <i class="fas fa-check-circle fa-2x text-success mb-2"></i><br>目前沒有緊急事項
                 </div>
@@ -290,10 +210,16 @@
 </div>
 
 <script>
-    // ★★★ API URL ★★★
-    const API_URL = "https://script.google.com/macros/s/AKfycbw4H6vytYgQN_9i-WD6vxqm9t5D9ofQ0PLcbEXRACPIvlggeTw-Y0YEfHz1uMlbfwrM3w/exec";
+    // ★★★ STEP 1: 設定 Supabase ★★★
+    // 請到 Supabase Dashboard > Settings > API 複製 URL 和 Key
+    const SUPABASE_URL = 'https://legwqtrutzpbwqumvvkb.supabase.co';
+    const SUPABASE_KEY = 'sb_publishable_RE8HpfduURWhNVqiSJDeXA_pHhjDBfZ';
     
-    // 定義欄位名稱
+    // 初始化 Supabase
+    const supabase = supa.createClient(SUPABASE_URL, SUPABASE_KEY);
+    const TABLE_NAME = 'sales_records';
+
+    // 定義欄位 (CSV 匯出用)
     const headers = [
         "出發日期", "行程", "客人代表", "電話號碼", "人數", 
         "預估業績", "實際業績", "訂編", "合約", "合約上傳", "寄出紙本", "行前通知",
@@ -309,129 +235,152 @@
     let notifications = [];
 
     window.onload = function() {
+        // 先載入本地快取 (提升體驗)
         const cachedData = localStorage.getItem('salesGroupData_Cache');
         if (cachedData) {
-            console.log("Found local cache, rendering immediately...");
             salesData = JSON.parse(cachedData);
-            sortData();
-            checkNotifications(); 
-            renderTabs();
-            renderTable();
-            loadFromCloud(false); 
+            processData(); // 排序、統計、分頁
+            loadFromCloud(false); // 背景更新
         } else {
-            console.log("No cache found, full loading...");
-            renderTable(); 
-            loadFromCloud(true); 
+            loadFromCloud(true); // 全螢幕載入
         }
     };
 
-    // --- 雲端功能區 ---
+    // --- Supabase 功能區 ---
 
-    function unpackData(rows) {
-        return rows.map(row => {
-            const clean = (val) => String(val).replace(/^'/, '');
-            return {
-                date: clean(row[0] || ''),
-                tour: row[1] || '',
-                name: row[2] || '',
-                phone: clean(row[3] || ''),
-                pax: row[4] || '',
-                estRev: row[5] || '',
-                actRev: row[6] || '',
-                bookingId: row[7] || '',
-                contract: row[8] || '',
-                contractUploaded: row[9] || '',
-                paperSent: row[10] || '',
-                preTripNotify: row[11] || '',
-                deposit: row[12] || '',
-                balance: row[13] || '',
-                billSent: row[14] || '',
-                list: row[15] || '',
-                room: row[16] || '',
-                simCard: row[17] || '', 
-                note: row[18] || ''     
-            };
-        });
-    }
+    async function loadFromCloud(isBlocking = true) {
+        if (isBlocking) toggleLoading(true, "資料讀取中...");
+        else updateSyncStatus(true, "同步中...");
 
-    function packData(data) {
-        return data.map(item => [
-            "'" + (item.date || ""), 
-            item.tour || "",
-            item.name || "",
-            "'" + (item.phone || ""), 
-            item.pax || "",
-            item.estRev || "",
-            item.actRev || "",
-            item.bookingId || "",
-            item.contract || "",
-            item.contractUploaded || "",
-            item.paperSent || "",
-            item.preTripNotify || "",
-            item.deposit || "",
-            item.balance || "",
-            item.billSent || "",
-            item.list || "",
-            item.room || "",
-            item.simCard || "", 
-            item.note || ""
-        ]);
-    }
+        try {
+            // 從 Supabase 讀取所有資料
+            let { data, error } = await supabase
+                .from(TABLE_NAME)
+                .select('*')
+                .order('date', { ascending: true }); // 直接用 DB 排序
 
-    function loadFromCloud(isBlocking = true) {
-        if (isBlocking) {
-            toggleLoading(true, "資料讀取中...");
-        } else {
-            updateSyncStatus(true, "同步中...");
-        }
+            if (error) throw error;
 
-        fetch(API_URL)
-            .then(response => response.json())
-            .then(rows => {
-                salesData = unpackData(rows);
-                saveToLocalCache();
-                sortData();
-                checkNotifications(); 
-                renderTabs();
-                renderTable();
-                if (isBlocking) {
-                    toggleLoading(false);
-                } else {
-                    updateSyncStatus(false);
-                }
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                if (isBlocking) {
-                    alert("讀取失敗，請檢查網路。");
-                    toggleLoading(false);
-                } else {
-                    updateSyncStatus(false); 
-                }
-            });
-    }
+            salesData = data;
+            saveToLocalCache();
+            processData();
 
-    function saveToCloud() {
-        toggleLoading(true, "儲存中...");
-        const packedData = packData(salesData);
-        fetch(API_URL, {
-            method: "POST",
-            body: JSON.stringify(packedData) 
-        })
-        .then(response => response.json())
-        .then(result => {
-            if(result.result === "success") {
-                toggleLoading(false);
-            } else {
-                alert("儲存失敗：" + result.error);
+            if (isBlocking) toggleLoading(false);
+            else updateSyncStatus(false);
+
+        } catch (err) {
+            console.error('Error loading:', err);
+            if(isBlocking) {
+                alert("讀取失敗：" + err.message);
                 toggleLoading(false);
             }
-        })
-        .catch(error => {
-            console.error('Error:', error);
-            alert("連線失敗，請檢查網路。");
+        }
+    }
+
+    // 儲存或更新 (Atomic Operation)
+    async function saveRecord() {
+        if (isLoading) return;
+        toggleLoading(true, "儲存中...");
+
+        // 收集表單資料
+        const record = {
+            date: document.getElementById('f_date').value,
+            tour: document.getElementById('f_tour').value,
+            name: document.getElementById('f_name').value,
+            phone: document.getElementById('f_phone').value,
+            pax: safeNumber(document.getElementById('f_pax').value),
+            estRev: safeNumber(document.getElementById('f_estRev').value),
+            actRev: safeNumber(document.getElementById('f_actRev').value),
+            bookingId: document.getElementById('f_bookingId').value,
+            contract: document.getElementById('f_contract').value,
+            contractUploaded: document.getElementById('f_contractUploaded').value,
+            paperSent: document.getElementById('f_paperSent').value,
+            preTripNotify: document.getElementById('f_preTripNotify').value,
+            deposit: safeNumber(document.getElementById('f_deposit').value),
+            balance: safeNumber(document.getElementById('f_balance').value),
+            billSent: document.getElementById('f_billSent').value,
+            list: document.getElementById('f_list').value,
+            room: document.getElementById('f_room').value,
+            simCard: document.getElementById('f_simCard').value,
+            note: document.getElementById('f_note').value
+        };
+
+        const editId = document.getElementById('editId').value;
+
+        try {
+            let error;
+            if (editId) {
+                // 更新模式
+                const { error: updateError } = await supabase
+                    .from(TABLE_NAME)
+                    .update(record)
+                    .eq('id', editId);
+                error = updateError;
+            } else {
+                // 新增模式
+                const { error: insertError } = await supabase
+                    .from(TABLE_NAME)
+                    .insert([record]);
+                error = insertError;
+            }
+
+            if (error) throw error;
+
+            // 成功後重新讀取 (確保資料一致)
+            await loadFromCloud(false);
+            resetForm();
+            
+            // 如果新增資料，切換到該月份
+            if(record.date) {
+                currentTab = record.date.substring(0, 7);
+                renderTabs();
+                renderTable();
+            }
+
+        } catch (err) {
+            console.error('Error saving:', err);
+            alert("儲存失敗：" + err.message);
+        } finally {
             toggleLoading(false);
-        });
+        }
+    }
+
+    async function deleteData(index) {
+        // index 是在 salesData 陣列中的索引
+        const record = salesData[index];
+        if(!record || !record.id) return;
+
+        if(confirm(`確定要刪除「${record.tour} - ${record.name}」嗎？此動作無法復原。`)) {
+            toggleLoading(true, "刪除中...");
+            try {
+                const { error } = await supabase
+                    .from(TABLE_NAME)
+                    .delete()
+                    .eq('id', record.id);
+
+                if (error) throw error;
+
+                // 本地先刪除以提升反應速度，再背景同步
+                salesData.splice(index, 1);
+                processData();
+                
+            } catch (err) {
+                console.error('Error deleting:', err);
+                alert("刪除失敗：" + err.message);
+            } finally {
+                toggleLoading(false);
+            }
+        }
+    }
+
+    // --- 資料處理與 UI 邏輯 ---
+
+    function processData() {
+        // 因為 Supabase 已經排序過了，這裡主要做通知檢查和介面渲染
+        saveToLocalCache();
+        checkNotifications();
+        renderTabs();
+        renderTable();
     }
 
     function saveToLocalCache() {
@@ -471,7 +420,6 @@
             if (!row.date) return;
             const tripDate = new Date(row.date);
             tripDate.setHours(0,0,0,0);
-            
             const diffTime = tripDate - today;
             const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
 
@@ -499,27 +447,12 @@
         let target15 = new Date(today.getFullYear(), today.getMonth(), 15);
         let diff15 = Math.ceil((target15 - today) / (1000 * 60 * 60 * 24));
         if (diff15 >= 0 && diff15 <= 2) {
-            notifications.unshift({ 
-                type: 'system',
-                date: `${today.getMonth()+1}/15`,
-                tour: '系統提醒',
-                name: '全體',
-                days: diff15,
-                issues: ['需購買/結算網卡']
-            });
+            notifications.unshift({ type: 'system', date: `${today.getMonth()+1}/15`, tour: '系統提醒', name: '全體', days: diff15, issues: ['需購買/結算網卡'] });
         }
-
         let target1 = new Date(today.getFullYear(), today.getMonth() + 1, 1);
         let diff1 = Math.ceil((target1 - today) / (1000 * 60 * 60 * 24));
         if (diff1 >= 0 && diff1 <= 2) {
-            notifications.unshift({ 
-                type: 'system',
-                date: `${target1.getMonth()+1}/1`,
-                tour: '系統提醒',
-                name: '全體',
-                days: diff1,
-                issues: ['需購買/結算網卡']
-            });
+            notifications.unshift({ type: 'system', date: `${target1.getMonth()+1}/1`, tour: '系統提醒', name: '全體', days: diff1, issues: ['需購買/結算網卡'] });
         }
 
         const badge = document.getElementById('notifBadge');
@@ -543,85 +476,49 @@
             notifications.forEach(item => {
                 const li = document.createElement('li');
                 li.className = 'list-group-item list-group-item-action';
-                
                 if (item.type === 'system') {
                     li.style.cursor = 'default';
-                    li.innerHTML = `
-                        <div class="d-flex w-100 justify-content-between">
-                            <h6 class="mb-1 text-primary fw-bold"><i class="fas fa-info-circle"></i> [系統] 剩 ${item.days} 天: ${item.issues[0]}</h6>
-                            <small>${item.date}</small>
-                        </div>
-                        <p class="mb-1 text-muted">請確認本月網卡採購與結算。</p>
-                    `;
+                    li.innerHTML = `<div class="d-flex w-100 justify-content-between"><h6 class="mb-1 text-primary fw-bold"><i class="fas fa-info-circle"></i> [系統] 剩 ${item.days} 天: ${item.issues[0]}</h6><small>${item.date}</small></div><p class="mb-1 text-muted">請確認本月網卡採購與結算。</p>`;
                 } else {
                     li.style.cursor = 'pointer';
-                    li.innerHTML = `
-                        <div class="d-flex w-100 justify-content-between">
-                            <h6 class="mb-1 text-danger fw-bold"><i class="fas fa-exclamation-circle"></i> 剩 ${item.days} 天: ${item.name}</h6>
-                            <small>${item.date}</small>
-                        </div>
-                        <p class="mb-1">${item.tour}</p>
-                        <small class="text-danger">缺失: ${item.issues.join(', ')}</small>
-                    `;
-                    li.onclick = function() {
-                        jumpToRecord(item.index, item.date);
-                    };
+                    li.innerHTML = `<div class="d-flex w-100 justify-content-between"><h6 class="mb-1 text-danger fw-bold"><i class="fas fa-exclamation-circle"></i> 剩 ${item.days} 天: ${item.name}</h6><small>${item.date}</small></div><p class="mb-1">${item.tour}</p><small class="text-danger">缺失: ${item.issues.join(', ')}</small>`;
+                    li.onclick = function() { jumpToRecord(item.index, item.date); };
                 }
                 list.appendChild(li);
             });
         }
-        
-        const modal = new bootstrap.Modal(document.getElementById('notificationModal'));
-        modal.show();
+        new bootstrap.Modal(document.getElementById('notificationModal')).show();
     }
 
     function jumpToRecord(index, dateStr) {
-        const modalEl = document.getElementById('notificationModal');
-        const modal = bootstrap.Modal.getInstance(modalEl);
-        modal.hide();
-
+        bootstrap.Modal.getInstance(document.getElementById('notificationModal')).hide();
         if(dateStr) {
             currentTab = dateStr.substring(0, 7);
             renderTabs();
         }
-
         let indexedData = salesData.map((item, idx) => ({ ...item, originalIndex: idx }));
         if (currentTab === 'ALL') {
             currentFilteredData = indexedData;
         } else {
             currentFilteredData = indexedData.filter(row => row.date && row.date.substring(0, 7) === currentTab);
         }
-
         const filterIdx = currentFilteredData.findIndex(row => row.originalIndex === index);
-        
         if (filterIdx !== -1) {
-            const targetPage = Math.floor(filterIdx / rowsPerPage) + 1;
-            currentPage = targetPage;
+            currentPage = Math.floor(filterIdx / rowsPerPage) + 1;
             renderTable();
-
             setTimeout(() => {
                 const rows = document.querySelectorAll('#tableBody tr');
                 const rowOnPage = filterIdx % rowsPerPage;
                 if (rows[rowOnPage]) {
                     rows[rowOnPage].classList.add('highlight-row');
                     rows[rowOnPage].scrollIntoView({ behavior: 'smooth', block: 'center' });
-                    setTimeout(() => {
-                        rows[rowOnPage].classList.remove('highlight-row');
-                    }, 2000);
+                    setTimeout(() => { rows[rowOnPage].classList.remove('highlight-row'); }, 2000);
                 }
             }, 100);
         }
     }
 
-    // --- 核心邏輯 ---
-
-    function sortData() {
-        salesData.sort((a, b) => {
-            const dateA = a.date ? new Date(a.date) : new Date('9999-12-31');
-            const dateB = b.date ? new Date(b.date) : new Date('9999-12-31');
-            return dateA - dateB;
-        });
-    }
+    // --- Table & Pagination Logic ---
 
     function safeNumber(val) {
         if (!val) return 0; 
@@ -632,15 +529,10 @@
     function renderTabs() {
         const tabsContainer = document.getElementById('monthTabs');
         let months = new Set();
-        salesData.forEach(row => {
-            if(row.date) months.add(row.date.substring(0, 7));
-        });
+        salesData.forEach(row => { if(row.date) months.add(row.date.substring(0, 7)); });
         let sortedMonths = Array.from(months).sort();
-
         let html = `<li class="nav-item"><button class="nav-link ${currentTab === 'ALL' ? 'active' : ''}" onclick="switchTab('ALL')">全部顯示</button></li>`;
-        sortedMonths.forEach(m => {
-            html += `<li class="nav-item"><button class="nav-link ${currentTab === m ? 'active' : ''}" onclick="switchTab('${m}')">${m}</button></li>`;
-        });
+        sortedMonths.forEach(m => { html += `<li class="nav-item"><button class="nav-link ${currentTab === m ? 'active' : ''}" onclick="switchTab('${m}')">${m}</button></li>`; });
         tabsContainer.innerHTML = html;
     }
 
@@ -670,10 +562,7 @@
         const tbody = document.getElementById('tableBody');
         tbody.innerHTML = '';
 
-        let totalPax = 0;
-        let totalEst = 0;
-        let totalAct = 0;
-        
+        let totalPax = 0; let totalEst = 0; let totalAct = 0;
         let indexedData = salesData.map((item, index) => ({ ...item, originalIndex: index }));
 
         if (currentTab === 'ALL') {
@@ -694,7 +583,6 @@
 
         const totalRows = currentFilteredData.length;
         const totalPages = Math.ceil(totalRows / rowsPerPage) || 1;
-        
         if (currentPage > totalPages) currentPage = totalPages;
 
         const startIndex = (currentPage - 1) * rowsPerPage;
@@ -705,8 +593,7 @@
         document.getElementById('btnPrev').disabled = (currentPage === 1);
         document.getElementById('btnNext').disabled = (currentPage === totalPages);
 
-        const today = new Date();
-        today.setHours(0,0,0,0);
+        const today = new Date(); today.setHours(0,0,0,0);
 
         pageData.forEach((row) => {
             const index = row.originalIndex; 
@@ -714,122 +601,32 @@
 
             let dateBadge = '';
             if (row.date) {
-                const tripDate = new Date(row.date);
-                tripDate.setHours(0,0,0,0); 
-                
+                const tripDate = new Date(row.date); tripDate.setHours(0,0,0,0); 
                 const diffTime = tripDate - today;
                 const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
-                
-                if (diffDays < 0) {
-                    dateBadge = `<span class="badge bg-secondary badge-date">已出團</span>`;
-                } else if (diffDays === 0) {
-                    dateBadge = `<span class="badge bg-success badge-date">今天出發</span>`;
-                } else if (diffDays <= 7) {
-                    dateBadge = `<span class="badge bg-danger badge-date">剩${diffDays}天</span>`;
-                } else if (diffDays <= 30) {
-                    dateBadge = `<span class="badge bg-warning text-dark badge-date">剩${diffDays}天</span>`;
-                }
+                if (diffDays < 0) dateBadge = `<span class="badge bg-secondary badge-date">已出團</span>`;
+                else if (diffDays === 0) dateBadge = `<span class="badge bg-success badge-date">今天出發</span>`;
+                else if (diffDays <= 7) dateBadge = `<span class="badge bg-danger badge-date">剩${diffDays}天</span>`;
+                else if (diffDays <= 30) dateBadge = `<span class="badge bg-warning text-dark badge-date">剩${diffDays}天</span>`;
             }
 
             let contractDisplay = safe(row.contract);
-            if (contractDisplay === '未簽約') {
-                contractDisplay = `<span class="text-danger fw-bold">${contractDisplay}</span>`;
-            }
+            if (contractDisplay === '未簽約') contractDisplay = `<span class="text-danger fw-bold">${contractDisplay}</span>`;
 
             let tr = document.createElement('tr');
-            let btnTd = `
-                <td>
-                    <div class="btn-group-action">
-                        <button class="btn btn-sm btn-outline-primary" onclick="editData(${index})"><i class="fas fa-edit"></i></button>
-                        <button class="btn btn-sm btn-outline-danger" onclick="deleteData(${index})"><i class="fas fa-trash"></i></button>
-                    </div>
-                </td>`;
-            
-            let dataTd = `
-                <td>${safe(row.date)} ${dateBadge}</td>
-                <td class="text-left fw-bold">${safe(row.tour)}</td>
-                <td>${safe(row.name)}</td>
-                <td>${safe(row.phone)}</td>
-                <td>${safe(row.pax)}</td>
-                <td>${formatMoney(row.estRev)}</td>
-                <td>${formatMoney(row.actRev)}</td>
-                <td>${safe(row.bookingId)}</td>
-                <td>${contractDisplay}</td>
-                <td><span class="${row.contractUploaded === 'V' ? 'status-v' : ''}">${safe(row.contractUploaded)}</span></td>
-                <td><span class="${row.paperSent === 'V' ? 'status-v' : ''}">${safe(row.paperSent)}</span></td>
-                <td><span class="${row.preTripNotify === 'V' ? 'status-v' : ''}">${safe(row.preTripNotify)}</span></td>
-                <td>${formatMoney(row.deposit)}</td>
-                <td>${formatMoney(row.balance)}</td>
-                <td><span class="${row.billSent === 'V' ? 'status-v' : ''}">${safe(row.billSent)}</span></td>
-                <td><span class="${row.list === 'V' ? 'status-v' : ''}">${safe(row.list)}</span></td>
-                <td><span class="${row.room === 'V' ? 'status-v' : ''}">${safe(row.room)}</span></td>
-                <td><span class="${row.simCard === 'V' ? 'status-v' : ''}">${safe(row.simCard)}</span></td>
-                <td class="text-left text-muted" style="font-size:0.85rem;">${safe(row.note)}</td>
-            `;
-
+            let btnTd = `<td><div class="btn-group-action"><button class="btn btn-sm btn-outline-primary" onclick="editData(${index})"><i class="fas fa-edit"></i></button><button class="btn btn-sm btn-outline-danger" onclick="deleteData(${index})"><i class="fas fa-trash"></i></button></div></td>`;
+            let dataTd = `<td>${safe(row.date)} ${dateBadge}</td><td class="text-left fw-bold">${safe(row.tour)}</td><td>${safe(row.name)}</td><td>${safe(row.phone)}</td><td>${safe(row.pax)}</td><td>${formatMoney(row.estRev)}</td><td>${formatMoney(row.actRev)}</td><td>${safe(row.bookingId)}</td><td>${contractDisplay}</td><td><span class="${row.contractUploaded === 'V' ? 'status-v' : ''}">${safe(row.contractUploaded)}</span></td><td><span class="${row.paperSent === 'V' ? 'status-v' : ''}">${safe(row.paperSent)}</span></td><td><span class="${row.preTripNotify === 'V' ? 'status-v' : ''}">${safe(row.preTripNotify)}</span></td><td>${formatMoney(row.deposit)}</td><td>${formatMoney(row.balance)}</td><td><span class="${row.billSent === 'V' ? 'status-v' : ''}">${safe(row.billSent)}</span></td><td><span class="${row.list === 'V' ? 'status-v' : ''}">${safe(row.list)}</span></td><td><span class="${row.room === 'V' ? 'status-v' : ''}">${safe(row.room)}</span></td><td><span class="${row.simCard === 'V' ? 'status-v' : ''}">${safe(row.simCard)}</span></td><td class="text-left text-muted" style="font-size:0.85rem;">${safe(row.note)}</td>`;
             tr.innerHTML = btnTd + dataTd;
             tbody.appendChild(tr);
         });
     }
 
-    function formatMoney(num) {
-        if (!num) return '0';
-        const n = parseInt(String(num).replace(/,/g, ''), 10);
-        if (isNaN(n)) return '0';
-        return n.toLocaleString();
-    }
-
-    function saveRecord() {
-        if (isLoading) return;
-
-        const data = {
-            date: document.getElementById('f_date').value,
-            tour: document.getElementById('f_tour').value,
-            name: document.getElementById('f_name').value,
-            phone: document.getElementById('f_phone').value,
-            pax: document.getElementById('f_pax').value,
-            estRev: document.getElementById('f_estRev').value,
-            actRev: document.getElementById('f_actRev').value,
-            bookingId: document.getElementById('f_bookingId').value,
-            contract: document.getElementById('f_contract').value,
-            contractUploaded: document.getElementById('f_contractUploaded').value,
-            paperSent: document.getElementById('f_paperSent').value,
-            preTripNotify: document.getElementById('f_preTripNotify').value,
-            deposit: document.getElementById('f_deposit').value,
-            balance: document.getElementById('f_balance').value,
-            billSent: document.getElementById('f_billSent').value,
-            list: document.getElementById('f_list').value,
-            room: document.getElementById('f_room').value,
-            simCard: document.getElementById('f_simCard').value,
-            note: document.getElementById('f_note').value
-        };
-
-        const editIndex = document.getElementById('editIndex').value;
-
-        if (editIndex === "-1") {
-            salesData.push(data);
-            if(data.date) currentTab = data.date.substring(0, 7);
-        } else {
-            salesData[editIndex] = data;
-            document.getElementById('editIndex').value = "-1";
-            document.querySelector('#recordForm button[type="submit"]').textContent = "儲存紀錄";
-            document.querySelector('#recordForm button[type="submit"]').classList.remove('btn-warning');
-            document.querySelector('#recordForm button[type="submit"]').classList.add('btn-primary');
-            if(data.date) currentTab = data.date.substring(0, 7);
-        }
-
-        saveToLocalCache();
-        sortData(); 
-        checkNotifications(); 
-        renderTabs(); 
-        renderTable();
-        resetForm();
-        saveToCloud();
-    }
-
     function editData(index) {
         const row = salesData[index];
         const safe = (val) => val || '';
+        document.getElementById('editIndex').value = index;
+        document.getElementById('editId').value = safe(row.id); // 重要：存入 ID
+
         document.getElementById('f_date').value = safe(row.date);
         document.getElementById('f_tour').value = safe(row.tour);
         document.getElementById('f_name').value = safe(row.name);
@@ -850,47 +647,23 @@
         document.getElementById('f_simCard').value = safe(row.simCard);
         document.getElementById('f_note').value = safe(row.note);
 
-        document.getElementById('editIndex').value = index;
         window.scrollTo({ top: 0, behavior: 'smooth' });
-        
         const submitBtn = document.querySelector('#recordForm button[type="submit"]');
         submitBtn.textContent = "更新資料";
         submitBtn.classList.remove('btn-primary');
         submitBtn.classList.add('btn-warning');
     }
 
-    function deleteData(index) {
-        if(confirm('確定要刪除這筆資料嗎？刪除後會同步更新至雲端。')) {
-            salesData.splice(index, 1);
-            saveToLocalCache(); 
-            checkNotifications(); 
-            renderTabs(); 
-            renderTable();
-            saveToCloud();
-        }
-    }
-
     function resetForm() {
         document.getElementById('recordForm').reset();
         document.getElementById('editIndex').value = "-1";
+        document.getElementById('editId').value = "";
         const submitBtn = document.querySelector('#recordForm button[type="submit"]');
         submitBtn.textContent = "儲存紀錄";
         submitBtn.classList.remove('btn-warning');
         submitBtn.classList.add('btn-primary');
     }
 
-    function clearAllData() {
-        if(confirm('警告：這將會刪除所有 Google Sheet 上的資料且無法復原！')) {
-            salesData = [];
-            currentTab = 'ALL';
-            saveToLocalCache();
-            renderTabs();
-            renderTable();
-            checkNotifications();
-            saveToCloud();
-        }
-    }
-    
     function exportToCSV() {
         let csvContent = "\uFEFF"; 
         csvContent += headers.join(",") + "\n";
@@ -901,8 +674,7 @@
                 safe(row.estRev), safe(row.actRev), safe(row.bookingId), safe(row.contract), 
                 safe(row.contractUploaded), safe(row.paperSent), safe(row.preTripNotify),
                 safe(row.deposit), safe(row.balance), safe(row.billSent), safe(row.list), safe(row.room), 
-                safe(row.simCard),
-                `"${safe(row.note)}"`
+                safe(row.simCard), `"${safe(row.note)}"`
             ];
             csvContent += rowArray.join(",") + "\n";
         });
@@ -915,43 +687,7 @@
     }
 
     function importFromCSV(input) {
-        const file = input.files[0];
-        if (!file) return;
-        const reader = new FileReader();
-        reader.onload = function(e) {
-            const text = e.target.result;
-            const rows = text.split("\n");
-            let newData = [];
-            for (let i = 1; i < rows.length; i++) {
-                let cols = rows[i].split(",");
-                if (cols.length < 5) continue; 
-                const clean = (str) => str ? str.replace(/^"|"$/g, '').replace(/^'/, '').trim() : '';
-                let obj = {
-                    date: clean(cols[0]), tour: clean(cols[1]), name: clean(cols[2]), phone: clean(cols[3]),
-                    pax: clean(cols[4]), estRev: clean(cols[5]), actRev: clean(cols[6]), bookingId: clean(cols[7]),
-                    contract: clean(cols[8]), contractUploaded: clean(cols[9]), paperSent: clean(cols[10]), 
-                    preTripNotify: clean(cols[11]),
-                    deposit: clean(cols[12]), balance: clean(cols[13]), billSent: clean(cols[14]), 
-                    list: clean(cols[15]), room: clean(cols[16]), 
-                    simCard: clean(cols[17]),
-                    note: clean(cols[18])
-                };
-                newData.push(obj);
-            }
-            if(confirm(`解析到 ${newData.length} 筆資料，確定要覆蓋現有資料嗎？(取消則附加)`)) {
-                salesData = newData;
-            } else {
-                salesData = salesData.concat(newData);
-            }
-            saveToLocalCache();
-            sortData(); 
-            checkNotifications();
-            renderTabs(); 
-            renderTable();
-            input.value = ''; 
-            saveToCloud();
-        };
-        reader.readAsText(file);
+        alert("使用 Supabase 後，建議使用 Supabase 後台進行大量匯入，以確保資料格式正確。此功能僅供測試。");
     }
 </script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
