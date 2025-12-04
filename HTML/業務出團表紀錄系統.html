@@ -206,19 +206,88 @@
 </div>
 
 <script>
+    // ★★★ 請將這裡換成你剛剛部署的 Google Apps Script 網址 ★★★
+    const API_URL = "https://script.google.com/macros/s/AKfycbw4H6vytYgQN_9i-WD6vxqm9t5D9ofQ0PLcbEXRACPIvlggeTw-Y0YEfHz1uMlbfwrM3w/exec";
+    
+    // 定義欄位名稱
     const headers = [
         "出發日期", "行程", "客人代表", "電話號碼", "人數", 
         "預估業績", "實際業績", "訂編", "合約", "合約上傳", "寄出紙本", "行前通知",
         "訂金", "尾款", "繳帳單寄出", "名單", "分房", "備註"
     ];
 
-    let salesData = JSON.parse(localStorage.getItem('salesGroupData')) || [];
+    let salesData = []; // 現在資料從雲端抓，初始為空
     let currentTab = 'ALL'; 
+    let isLoading = false; // 防止重複送出
 
+    // 頁面載入時，從雲端讀取資料
     window.onload = function() {
-        renderTabs();
-        renderTable();
+        renderTable(); // 先顯示空表或讀取中
+        loadFromCloud(); // 抓資料
     };
+
+    // --- 雲端功能區 ---
+
+    // 從 Google Sheet 讀取
+    function loadFromCloud() {
+        toggleLoading(true, "資料讀取中...");
+        fetch(API_URL)
+            .then(response => response.json())
+            .then(data => {
+                salesData = data;
+                renderTabs();
+                renderTable();
+                toggleLoading(false);
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert("讀取失敗，請檢查網路或 API 設定。");
+                toggleLoading(false);
+            });
+    }
+
+    // 儲存到 Google Sheet (全量覆蓋)
+    function saveToCloud() {
+        toggleLoading(true, "資料儲存中...");
+        
+        // 使用 fetch POST 發送資料
+        fetch(API_URL, {
+            method: "POST",
+            body: JSON.stringify(salesData) // 傳送整個陣列
+        })
+        .then(response => response.json())
+        .then(result => {
+            if(result.result === "success") {
+                // 成功
+                toggleLoading(false);
+            } else {
+                alert("儲存失敗：" + result.error);
+                toggleLoading(false);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert("連線失敗，請檢查網路。");
+            toggleLoading(false);
+        });
+    }
+
+    // 切換讀取畫面遮罩
+    function toggleLoading(show, msg) {
+        isLoading = show;
+        let loader = document.getElementById('loadingOverlay');
+        if (!loader) {
+            // 如果沒有遮罩元素，動態建立一個
+            loader = document.createElement('div');
+            loader.id = 'loadingOverlay';
+            loader.style.cssText = "position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(255,255,255,0.8);z-index:9999;display:flex;justify-content:center;align-items:center;font-size:1.5rem;font-weight:bold;color:#0d6efd;";
+            document.body.appendChild(loader);
+        }
+        loader.innerHTML = `<i class="fas fa-spinner fa-spin"></i> &nbsp; ${msg || '處理中...'}`;
+        loader.style.display = show ? 'flex' : 'none';
+    }
+
+    // --- 以下為原本的邏輯，稍微修改儲存觸發點 ---
 
     function renderTabs() {
         const tabsContainer = document.getElementById('monthTabs');
@@ -248,7 +317,6 @@
         let totalPax = 0;
         let totalEst = 0;
         let totalAct = 0;
-
         const today = new Date();
         today.setHours(0,0,0,0);
 
@@ -266,18 +334,12 @@
                 const tripDate = new Date(row.date);
                 const diffTime = tripDate - today;
                 const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
-                
-                if (diffDays < 0) {
-                    dateBadge = `<span class="badge bg-secondary badge-date">已出團</span>`;
-                } else if (diffDays <= 7) {
-                    dateBadge = `<span class="badge bg-danger badge-date">剩${diffDays}天</span>`;
-                } else if (diffDays <= 30) {
-                    dateBadge = `<span class="badge bg-warning text-dark badge-date">剩${diffDays}天</span>`;
-                }
+                if (diffDays < 0) dateBadge = `<span class="badge bg-secondary badge-date">已出團</span>`;
+                else if (diffDays <= 7) dateBadge = `<span class="badge bg-danger badge-date">剩${diffDays}天</span>`;
+                else if (diffDays <= 30) dateBadge = `<span class="badge bg-warning text-dark badge-date">剩${diffDays}天</span>`;
             }
 
             let tr = document.createElement('tr');
-            
             let btnTd = `
                 <td>
                     <div class="btn-group-action">
@@ -286,25 +348,28 @@
                     </div>
                 </td>`;
             
+            // 確保每個欄位都有值，避免 undefined
+            const safe = (val) => val || '';
+            
             let dataTd = `
-                <td>${row.date} ${dateBadge}</td>
-                <td class="text-left fw-bold">${row.tour}</td>
-                <td>${row.name}</td>
-                <td>${row.phone}</td>
-                <td>${row.pax}</td>
+                <td>${safe(row.date)} ${dateBadge}</td>
+                <td class="text-left fw-bold">${safe(row.tour)}</td>
+                <td>${safe(row.name)}</td>
+                <td>${safe(row.phone)}</td>
+                <td>${safe(row.pax)}</td>
                 <td>${formatMoney(row.estRev)}</td>
                 <td>${formatMoney(row.actRev)}</td>
-                <td>${row.bookingId}</td>
-                <td>${row.contract}</td>
-                <td><span class="${row.contractUploaded === 'V' ? 'status-v' : ''}">${row.contractUploaded || ''}</span></td>
-                <td><span class="${row.paperSent === 'V' ? 'status-v' : ''}">${row.paperSent || ''}</span></td>
-                <td><span class="${row.preTripNotify === 'V' ? 'status-v' : ''}">${row.preTripNotify || ''}</span></td>
+                <td>${safe(row.bookingId)}</td>
+                <td>${safe(row.contract)}</td>
+                <td><span class="${row.contractUploaded === 'V' ? 'status-v' : ''}">${safe(row.contractUploaded)}</span></td>
+                <td><span class="${row.paperSent === 'V' ? 'status-v' : ''}">${safe(row.paperSent)}</span></td>
+                <td><span class="${row.preTripNotify === 'V' ? 'status-v' : ''}">${safe(row.preTripNotify)}</span></td>
                 <td>${formatMoney(row.deposit)}</td>
                 <td>${formatMoney(row.balance)}</td>
-                <td><span class="${row.billSent === 'V' ? 'status-v' : ''}">${row.billSent || ''}</span></td>
-                <td><span class="${row.list === 'V' ? 'status-v' : ''}">${row.list}</span></td>
-                <td><span class="${row.room === 'V' ? 'status-v' : ''}">${row.room}</span></td>
-                <td class="text-left text-muted" style="font-size:0.85rem;">${row.note || ''}</td>
+                <td><span class="${row.billSent === 'V' ? 'status-v' : ''}">${safe(row.billSent)}</span></td>
+                <td><span class="${row.list === 'V' ? 'status-v' : ''}">${safe(row.list)}</span></td>
+                <td><span class="${row.room === 'V' ? 'status-v' : ''}">${safe(row.room)}</span></td>
+                <td class="text-left text-muted" style="font-size:0.85rem;">${safe(row.note)}</td>
             `;
 
             tr.innerHTML = btnTd + dataTd;
@@ -322,6 +387,8 @@
     }
 
     function saveRecord() {
+        if (isLoading) return;
+
         const data = {
             date: document.getElementById('f_date').value,
             tour: document.getElementById('f_tour').value,
@@ -357,36 +424,37 @@
             if(data.date) currentTab = data.date.substring(0, 7);
         }
 
-        saveToLocal();
         renderTabs(); 
         renderTable();
         resetForm();
+        
+        // ★★★ 觸發雲端儲存 ★★★
+        saveToCloud();
     }
 
     function editData(index) {
         const row = salesData[index];
-        document.getElementById('f_date').value = row.date;
-        document.getElementById('f_tour').value = row.tour;
-        document.getElementById('f_name').value = row.name;
-        document.getElementById('f_phone').value = row.phone;
-        document.getElementById('f_pax').value = row.pax;
-        document.getElementById('f_bookingId').value = row.bookingId;
-        document.getElementById('f_estRev').value = row.estRev;
-        document.getElementById('f_actRev').value = row.actRev;
-        document.getElementById('f_contract').value = row.contract;
-        document.getElementById('f_contractUploaded').value = row.contractUploaded || '';
-        document.getElementById('f_paperSent').value = row.paperSent;
-        document.getElementById('f_preTripNotify').value = row.preTripNotify || '';
-        document.getElementById('f_deposit').value = row.deposit;
-        document.getElementById('f_balance').value = row.balance;
-        document.getElementById('f_billSent').value = row.billSent;
-        document.getElementById('f_list').value = row.list;
-        document.getElementById('f_room').value = row.room;
-        document.getElementById('f_note').value = row.note || '';
+        const safe = (val) => val || '';
+        document.getElementById('f_date').value = safe(row.date);
+        document.getElementById('f_tour').value = safe(row.tour);
+        document.getElementById('f_name').value = safe(row.name);
+        document.getElementById('f_phone').value = safe(row.phone);
+        document.getElementById('f_pax').value = safe(row.pax);
+        document.getElementById('f_bookingId').value = safe(row.bookingId);
+        document.getElementById('f_estRev').value = safe(row.estRev);
+        document.getElementById('f_actRev').value = safe(row.actRev);
+        document.getElementById('f_contract').value = safe(row.contract);
+        document.getElementById('f_contractUploaded').value = safe(row.contractUploaded);
+        document.getElementById('f_paperSent').value = safe(row.paperSent);
+        document.getElementById('f_preTripNotify').value = safe(row.preTripNotify);
+        document.getElementById('f_deposit').value = safe(row.deposit);
+        document.getElementById('f_balance').value = safe(row.balance);
+        document.getElementById('f_billSent').value = safe(row.billSent);
+        document.getElementById('f_list').value = safe(row.list);
+        document.getElementById('f_room').value = safe(row.room);
+        document.getElementById('f_note').value = safe(row.note);
 
         document.getElementById('editIndex').value = index;
-        
-        // 不需要處理 Collapse 了，直接滑動到最上方
         window.scrollTo({ top: 0, behavior: 'smooth' });
         
         const submitBtn = document.querySelector('#recordForm button[type="submit"]');
@@ -396,16 +464,13 @@
     }
 
     function deleteData(index) {
-        if(confirm('確定要刪除這筆資料嗎？')) {
+        if(confirm('確定要刪除這筆資料嗎？刪除後會同步更新至雲端。')) {
             salesData.splice(index, 1);
-            saveToLocal();
             renderTabs(); 
             renderTable();
+            // ★★★ 觸發雲端儲存 ★★★
+            saveToCloud();
         }
-    }
-
-    function saveToLocal() {
-        localStorage.setItem('salesGroupData', JSON.stringify(salesData));
     }
 
     function resetForm() {
@@ -418,24 +483,27 @@
     }
 
     function clearAllData() {
-        if(confirm('警告：這將會刪除所有資料且無法復原！')) {
+        if(confirm('警告：這將會刪除所有 Google Sheet 上的資料且無法復原！')) {
             salesData = [];
             currentTab = 'ALL';
-            saveToLocal();
             renderTabs();
             renderTable();
+            // ★★★ 觸發雲端儲存 (會把空陣列傳上去，等於清空) ★★★
+            saveToCloud();
         }
     }
-
+    
+    // 匯出功能保留，當作手動備份用
     function exportToCSV() {
         let csvContent = "\uFEFF"; 
         csvContent += headers.join(",") + "\n";
         salesData.forEach(row => {
+            const safe = (val) => val || '';
             let rowArray = [
-                row.date, `"${row.tour}"`, row.name, `'${row.phone}`, row.pax,
-                row.estRev, row.actRev, row.bookingId, row.contract, 
-                row.contractUploaded, row.paperSent, row.preTripNotify,
-                row.deposit, row.balance, row.billSent, row.list, row.room, `"${row.note || ''}"`
+                safe(row.date), `"${safe(row.tour)}"`, safe(row.name), `'${safe(row.phone)}`, safe(row.pax),
+                safe(row.estRev), safe(row.actRev), safe(row.bookingId), safe(row.contract), 
+                safe(row.contractUploaded), safe(row.paperSent), safe(row.preTripNotify),
+                safe(row.deposit), safe(row.balance), safe(row.billSent), safe(row.list), safe(row.room), `"${safe(row.note)}"`
             ];
             csvContent += rowArray.join(",") + "\n";
         });
@@ -447,6 +515,7 @@
         link.click();
     }
 
+    // 匯入功能 (會把資料跟雲端合併)
     function importFromCSV(input) {
         const file = input.files[0];
         if (!file) return;
@@ -469,15 +538,16 @@
                 };
                 newData.push(obj);
             }
-            if(confirm(`解析到 ${newData.length} 筆資料，確定要覆蓋嗎？(取消則附加)`)) {
+            if(confirm(`解析到 ${newData.length} 筆資料，確定要覆蓋現有資料嗎？(取消則附加)`)) {
                 salesData = newData;
             } else {
                 salesData = salesData.concat(newData);
             }
-            saveToLocal();
             renderTabs(); 
             renderTable();
             input.value = ''; 
+            // 匯入後同步到雲端
+            saveToCloud();
         };
         reader.readAsText(file);
     }
