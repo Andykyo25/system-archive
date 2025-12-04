@@ -3,15 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>業務出團表紀錄系統</title>
-    <!-- 引入 Bootstrap 5 -->
+    <title>業務出團表紀錄系統 v3.0</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <!-- 引入 FontAwesome -->
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
         body { background-color: #f4f6f9; padding: 20px; font-family: "Microsoft JhengHei", sans-serif; }
         
-        /* 表格容器 */
         .table-container { 
             overflow-x: auto; 
             background: white; 
@@ -21,7 +18,7 @@
             border-top: none;
         }
 
-        /* 表格標題配色 - 淺色系 */
+        /* 淺色系表頭 */
         .table thead th { 
             background-color: #e9ecef !important; 
             color: #495057; 
@@ -32,43 +29,44 @@
             text-align: center;
         }
 
-        /* 動作類欄位：合約上傳、寄出紙本、繳帳單 (淡紫色背景) */
-        .th-highlight {
-            background-color: #f3e5f5 !important; 
-            color: #6a1b9a;
-        }
+        /* 重點動作欄位背景 */
+        .th-highlight { background-color: #f3e5f5 !important; color: #6a1b9a; }
+        .th-alert { background-color: #fff3e0 !important; color: #e65100; } /* 行前通知 */
 
         td { white-space: nowrap; vertical-align: middle; text-align: center; font-size: 0.95rem; }
         .text-left { text-align: left !important; }
         
-        /* 狀態 V 的顏色 */
         .status-v { color: #198754; font-weight: bold; background-color: #e8f5e9; padding: 2px 8px; border-radius: 4px; }
         
-        /* 分頁 Tabs 樣式 */
-        .nav-tabs .nav-link {
-            color: #495057;
-            background-color: #e9ecef;
-            margin-right: 2px;
-            border: 1px solid transparent;
-            border-radius: 8px 8px 0 0;
-            font-weight: 500;
+        /* 統計儀表板樣式 */
+        .summary-panel {
+            background: #fff;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+            border-left: 5px solid #0d6efd;
         }
-        .nav-tabs .nav-link.active {
-            color: #0d6efd; 
-            background-color: white;
-            border-color: #dee2e6 #dee2e6 #fff;
-            font-weight: bold;
-            border-top: 3px solid #0d6efd; 
-        }
-        .nav-tabs {
-            border-bottom: 1px solid #dee2e6;
-        }
+        .summary-item h5 { margin: 0; font-size: 0.9rem; color: #6c757d; }
+        .summary-item .value { font-size: 1.5rem; font-weight: bold; color: #212529; }
+        .text-success-dark { color: #198754 !important; }
+
+        /* 日期標籤樣式 */
+        .badge-date { font-size: 0.75rem; margin-left: 5px; }
+        
+        /* Tabs */
+        .nav-tabs .nav-link { color: #495057; background-color: #e9ecef; margin-right: 2px; border-radius: 8px 8px 0 0; }
+        .nav-tabs .nav-link.active { color: #0d6efd; background-color: white; border-top: 3px solid #0d6efd; font-weight: bold; }
+        .nav-tabs { border-bottom: 1px solid #dee2e6; }
     </style>
 </head>
 <body>
 
 <div class="container-fluid">
-    <h2 class="mb-4 text-center text-secondary"><i class="fas fa-plane-departure"></i> 業務出團表紀錄</h2>
+    <h2 class="mb-3 text-center text-secondary"><i class="fas fa-plane-departure"></i> 業務出團管理系統</h2>
 
     <!-- 操作區塊 -->
     <div class="row mb-3">
@@ -81,11 +79,11 @@
         </div>
     </div>
 
-    <!-- 輸入表單 -->
-    <div class="accordion mb-4 shadow-sm" id="accordionForm">
+    <!-- 輸入表單 (收納) -->
+    <div class="accordion mb-3 shadow-sm" id="accordionForm">
         <div class="accordion-item">
             <h2 class="accordion-header" id="headingOne">
-                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseOne" aria-expanded="false">
+                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseOne">
                     <strong><i class="fas fa-plus-circle"></i> 新增 / 編輯 資料</strong>
                 </button>
             </h2>
@@ -112,40 +110,30 @@
                                     <option value="PDF">PDF</option>
                                 </select>
                             </div>
-
-                            <!-- 新增：合約上傳 -->
                             <div class="col-md-2"><label class="form-label text-primary">合約上傳</label>
-                                <select class="form-select" id="f_contractUploaded">
-                                    <option value="">否</option>
-                                    <option value="V">是 (V)</option>
-                                </select>
+                                <select class="form-select" id="f_contractUploaded"><option value="">否</option><option value="V">是 (V)</option></select>
                             </div>
-
                             <div class="col-md-2"><label class="form-label text-primary">寄出紙本</label>
-                                <select class="form-select" id="f_paperSent">
-                                    <option value="">否</option>
-                                    <option value="V">是 (V)</option>
-                                </select>
+                                <select class="form-select" id="f_paperSent"><option value="">否</option><option value="V">是 (V)</option></select>
+                            </div>
+                            <div class="col-md-2"><label class="form-label text-danger">行前通知</label>
+                                <select class="form-select" id="f_preTripNotify"><option value="">否</option><option value="V">是 (V)</option></select>
                             </div>
                             
                             <div class="col-md-2"><label class="form-label">訂金</label><input type="number" class="form-control" id="f_deposit"></div>
                             <div class="col-md-2"><label class="form-label">尾款</label><input type="number" class="form-control" id="f_balance"></div>
-                            
                             <div class="col-md-2"><label class="form-label text-primary">繳帳單寄出</label>
-                                <select class="form-select" id="f_billSent">
-                                    <option value="">否</option>
-                                    <option value="V">是 (V)</option>
-                                </select>
+                                <select class="form-select" id="f_billSent"><option value="">否</option><option value="V">是 (V)</option></select>
                             </div>
 
                             <div class="col-md-1"><label class="form-label">名單</label><select class="form-select" id="f_list"><option value="">-</option><option value="V">V</option></select></div>
                             <div class="col-md-1"><label class="form-label">分房</label><select class="form-select" id="f_room"><option value="">-</option><option value="V">V</option></select></div>
                             
-                            <div class="col-md-3"><label class="form-label">備註</label><input type="text" class="form-control" id="f_note" placeholder="備註事項..."></div>
+                            <div class="col-md-4"><label class="form-label">備註</label><input type="text" class="form-control" id="f_note" placeholder="備註事項..."></div>
                         </div>
                         <div class="mt-3 text-center">
                             <button type="submit" class="btn btn-primary w-25">儲存紀錄</button>
-                            <button type="button" class="btn btn-secondary" onclick="resetForm()">重置表單</button>
+                            <button type="button" class="btn btn-secondary" onclick="resetForm()">重置</button>
                         </div>
                     </form>
                 </div>
@@ -155,11 +143,24 @@
 
     <!-- 月份分頁 Tabs -->
     <ul class="nav nav-tabs" id="monthTabs">
-        <!-- JS 動態生成 -->
-        <li class="nav-item">
-            <a class="nav-link active" href="#">全部顯示</a>
-        </li>
+        <li class="nav-item"><a class="nav-link active" href="#">全部顯示</a></li>
     </ul>
+
+    <!-- 統計儀表板 (新增) -->
+    <div class="summary-panel" id="summaryPanel">
+        <div class="summary-item text-center">
+            <h5><i class="fas fa-users"></i> 總人數</h5>
+            <div class="value" id="sumPax">0</div>
+        </div>
+        <div class="summary-item text-center">
+            <h5><i class="fas fa-sack-dollar"></i> 預估業績總額</h5>
+            <div class="value text-primary" id="sumEst">0</div>
+        </div>
+        <div class="summary-item text-center">
+            <h5><i class="fas fa-coins"></i> 實際業績總額</h5>
+            <div class="value text-success-dark" id="sumAct">0</div>
+        </div>
+    </div>
 
     <!-- 表格顯示區 -->
     <div class="table-container">
@@ -170,100 +171,107 @@
                     <th>出發日期</th>
                     <th>行程</th>
                     <th>客人代表</th>
-                    <th>電話號碼</th>
+                    <th>電話</th>
                     <th>人數</th>
                     <th>預估業績</th>
                     <th>實際業績</th>
                     <th>訂編</th>
                     <th>合約</th>
-                    <th class="th-highlight">合約上傳</th> <!-- 新增 -->
+                    <th class="th-highlight">合約上傳</th>
                     <th class="th-highlight">寄出紙本</th>
+                    <th class="th-alert">行前通知</th> <!-- 新增 -->
                     <th>訂金</th>
                     <th>尾款</th>
-                    <th class="th-highlight">繳帳單寄出</th>
+                    <th class="th-highlight">帳單寄出</th>
                     <th>名單</th>
                     <th>分房</th>
                     <th>備註</th>
                 </tr>
             </thead>
             <tbody id="tableBody">
-                <!-- 資料會由 JS 插入 -->
+                <!-- JS 插入資料 -->
             </tbody>
         </table>
     </div>
 </div>
 
 <script>
-    // 定義欄位名稱 (Header)
     const headers = [
         "出發日期", "行程", "客人代表", "電話號碼", "人數", 
-        "預估業績", "實際業績", "訂編", "合約", "合約上傳", "寄出紙本", 
+        "預估業績", "實際業績", "訂編", "合約", "合約上傳", "寄出紙本", "行前通知",
         "訂金", "尾款", "繳帳單寄出", "名單", "分房", "備註"
     ];
 
-    // 初始化資料
     let salesData = JSON.parse(localStorage.getItem('salesGroupData')) || [];
     let currentTab = 'ALL'; 
 
-    // 頁面載入時
     window.onload = function() {
         renderTabs();
         renderTable();
     };
 
-    // 1. 生成月份 Tabs
     function renderTabs() {
         const tabsContainer = document.getElementById('monthTabs');
-        
         let months = new Set();
         salesData.forEach(row => {
-            if(row.date) {
-                months.add(row.date.substring(0, 7)); // 取 "2024-12"
-            }
+            if(row.date) months.add(row.date.substring(0, 7));
         });
-        
         let sortedMonths = Array.from(months).sort();
 
-        let html = `
-            <li class="nav-item">
-                <button class="nav-link ${currentTab === 'ALL' ? 'active' : ''}" onclick="switchTab('ALL')">全部顯示</button>
-            </li>
-        `;
-
+        let html = `<li class="nav-item"><button class="nav-link ${currentTab === 'ALL' ? 'active' : ''}" onclick="switchTab('ALL')">全部顯示</button></li>`;
         sortedMonths.forEach(m => {
-            html += `
-                <li class="nav-item">
-                    <button class="nav-link ${currentTab === m ? 'active' : ''}" onclick="switchTab('${m}')">${m}</button>
-                </li>
-            `;
+            html += `<li class="nav-item"><button class="nav-link ${currentTab === m ? 'active' : ''}" onclick="switchTab('${m}')">${m}</button></li>`;
         });
-
         tabsContainer.innerHTML = html;
     }
 
-    // 2. 切換 Tab
     function switchTab(tab) {
         currentTab = tab;
         renderTabs(); 
         renderTable(); 
     }
 
-    // 3. 渲染表格
     function renderTable() {
         const tbody = document.getElementById('tableBody');
         tbody.innerHTML = '';
 
+        // 統計變數初始化
+        let totalPax = 0;
+        let totalEst = 0;
+        let totalAct = 0;
+
+        // 取得今日日期 (用於計算提醒)
+        const today = new Date();
+        today.setHours(0,0,0,0);
+
         salesData.forEach((row, index) => {
-            // 過濾邏輯
             if (currentTab !== 'ALL') {
-                if (!row.date || row.date.substring(0, 7) !== currentTab) {
-                    return; 
+                if (!row.date || row.date.substring(0, 7) !== currentTab) return; 
+            }
+
+            // 累加統計
+            totalPax += parseInt(row.pax || 0);
+            totalEst += parseInt(row.estRev || 0);
+            totalAct += parseInt(row.actRev || 0);
+
+            // 計算日期提醒邏輯
+            let dateBadge = '';
+            if (row.date) {
+                const tripDate = new Date(row.date);
+                const diffTime = tripDate - today;
+                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
+                
+                if (diffDays < 0) {
+                    dateBadge = `<span class="badge bg-secondary badge-date">已出團</span>`;
+                } else if (diffDays <= 7) {
+                    dateBadge = `<span class="badge bg-danger badge-date">剩${diffDays}天</span>`;
+                } else if (diffDays <= 30) {
+                    dateBadge = `<span class="badge bg-warning text-dark badge-date">剩${diffDays}天</span>`;
                 }
             }
 
             let tr = document.createElement('tr');
             
-            // 操作按鈕
             let btnTd = `
                 <td>
                     <div class="btn-group-action">
@@ -273,7 +281,7 @@
                 </td>`;
             
             let dataTd = `
-                <td>${row.date}</td>
+                <td>${row.date} ${dateBadge}</td>
                 <td class="text-left fw-bold">${row.tour}</td>
                 <td>${row.name}</td>
                 <td>${row.phone}</td>
@@ -282,8 +290,9 @@
                 <td>${formatMoney(row.actRev)}</td>
                 <td>${row.bookingId}</td>
                 <td>${row.contract}</td>
-                <td><span class="${row.contractUploaded === 'V' ? 'status-v' : ''}">${row.contractUploaded || ''}</span></td> <!-- 新增 -->
+                <td><span class="${row.contractUploaded === 'V' ? 'status-v' : ''}">${row.contractUploaded || ''}</span></td>
                 <td><span class="${row.paperSent === 'V' ? 'status-v' : ''}">${row.paperSent || ''}</span></td>
+                <td><span class="${row.preTripNotify === 'V' ? 'status-v' : ''}">${row.preTripNotify || ''}</span></td>
                 <td>${formatMoney(row.deposit)}</td>
                 <td>${formatMoney(row.balance)}</td>
                 <td><span class="${row.billSent === 'V' ? 'status-v' : ''}">${row.billSent || ''}</span></td>
@@ -295,14 +304,18 @@
             tr.innerHTML = btnTd + dataTd;
             tbody.appendChild(tr);
         });
+
+        // 更新統計儀表板
+        document.getElementById('sumPax').textContent = totalPax;
+        document.getElementById('sumEst').textContent = formatMoney(totalEst);
+        document.getElementById('sumAct').textContent = formatMoney(totalAct);
     }
 
     function formatMoney(num) {
-        if (!num) return '';
+        if (!num) return '0';
         return parseInt(num).toLocaleString();
     }
 
-    // 儲存資料
     function saveRecord() {
         const data = {
             date: document.getElementById('f_date').value,
@@ -314,8 +327,9 @@
             actRev: document.getElementById('f_actRev').value,
             bookingId: document.getElementById('f_bookingId').value,
             contract: document.getElementById('f_contract').value,
-            contractUploaded: document.getElementById('f_contractUploaded').value, // 新增
+            contractUploaded: document.getElementById('f_contractUploaded').value,
             paperSent: document.getElementById('f_paperSent').value,
+            preTripNotify: document.getElementById('f_preTripNotify').value, // 新增
             deposit: document.getElementById('f_deposit').value,
             balance: document.getElementById('f_balance').value,
             billSent: document.getElementById('f_billSent').value,
@@ -344,7 +358,6 @@
         resetForm();
     }
 
-    // 編輯
     function editData(index) {
         const row = salesData[index];
         document.getElementById('f_date').value = row.date;
@@ -356,8 +369,9 @@
         document.getElementById('f_estRev').value = row.estRev;
         document.getElementById('f_actRev').value = row.actRev;
         document.getElementById('f_contract').value = row.contract;
-        document.getElementById('f_contractUploaded').value = row.contractUploaded || ''; // 新增
+        document.getElementById('f_contractUploaded').value = row.contractUploaded || '';
         document.getElementById('f_paperSent').value = row.paperSent;
+        document.getElementById('f_preTripNotify').value = row.preTripNotify || ''; // 新增
         document.getElementById('f_deposit').value = row.deposit;
         document.getElementById('f_balance').value = row.balance;
         document.getElementById('f_billSent').value = row.billSent;
@@ -366,18 +380,15 @@
         document.getElementById('f_note').value = row.note || '';
 
         document.getElementById('editIndex').value = index;
-        
         new bootstrap.Collapse(document.getElementById('collapseOne'), { show: true });
         
         const submitBtn = document.querySelector('#recordForm button[type="submit"]');
         submitBtn.textContent = "更新資料";
         submitBtn.classList.remove('btn-primary');
         submitBtn.classList.add('btn-warning');
-        
         window.scrollTo(0, 0);
     }
 
-    // 刪除
     function deleteData(index) {
         if(confirm('確定要刪除這筆資料嗎？')) {
             salesData.splice(index, 1);
@@ -401,7 +412,7 @@
     }
 
     function clearAllData() {
-        if(confirm('警告：這將會刪除所有資料且無法復原！建議先匯出備份。確定要清空嗎？')) {
+        if(confirm('警告：這將會刪除所有資料且無法復原！')) {
             salesData = [];
             currentTab = 'ALL';
             saveToLocal();
@@ -413,83 +424,46 @@
     function exportToCSV() {
         let csvContent = "\uFEFF"; 
         csvContent += headers.join(",") + "\n";
-
         salesData.forEach(row => {
             let rowArray = [
-                row.date,
-                `"${row.tour}"`,
-                row.name,
-                `'${row.phone}`,
-                row.pax,
-                row.estRev,
-                row.actRev,
-                row.bookingId,
-                row.contract,
-                row.contractUploaded, // 新增
-                row.paperSent,
-                row.deposit,
-                row.balance,
-                row.billSent,
-                row.list,
-                row.room,
-                `"${row.note || ''}"`
+                row.date, `"${row.tour}"`, row.name, `'${row.phone}`, row.pax,
+                row.estRev, row.actRev, row.bookingId, row.contract, 
+                row.contractUploaded, row.paperSent, row.preTripNotify, // 新增
+                row.deposit, row.balance, row.billSent, row.list, row.room, `"${row.note || ''}"`
             ];
             csvContent += rowArray.join(",") + "\n";
         });
-
         const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
         const link = document.createElement("a");
-        const url = URL.createObjectURL(blob);
+        link.href = URL.createObjectURL(blob);
         const now = new Date();
-        const dateStr = `${now.getMonth()+1}_${now.getDate()}`;
-        
-        link.setAttribute("href", url);
-        link.setAttribute("download", `業務出團表_${dateStr}.csv`);
-        document.body.appendChild(link);
+        link.download = `業務出團表_${now.getMonth()+1}_${now.getDate()}.csv`;
         link.click();
-        document.body.removeChild(link);
     }
 
     function importFromCSV(input) {
         const file = input.files[0];
         if (!file) return;
-
         const reader = new FileReader();
         reader.onload = function(e) {
             const text = e.target.result;
             const rows = text.split("\n");
-            
             let newData = [];
             for (let i = 1; i < rows.length; i++) {
                 let cols = rows[i].split(",");
                 if (cols.length < 5) continue; 
-
                 const clean = (str) => str ? str.replace(/^"|"$/g, '').replace(/^'/, '').trim() : '';
-
-                // 注意：這裡需對應 CSV 欄位順序 (Total 17)
                 let obj = {
-                    date: clean(cols[0]),
-                    tour: clean(cols[1]),
-                    name: clean(cols[2]),
-                    phone: clean(cols[3]),
-                    pax: clean(cols[4]),
-                    estRev: clean(cols[5]),
-                    actRev: clean(cols[6]),
-                    bookingId: clean(cols[7]),
-                    contract: clean(cols[8]),
-                    contractUploaded: clean(cols[9]), // 新增
-                    paperSent: clean(cols[10]),
-                    deposit: clean(cols[11]),
-                    balance: clean(cols[12]),
-                    billSent: clean(cols[13]),
-                    list: clean(cols[14]),
-                    room: clean(cols[15]),
-                    note: clean(cols[16])
+                    date: clean(cols[0]), tour: clean(cols[1]), name: clean(cols[2]), phone: clean(cols[3]),
+                    pax: clean(cols[4]), estRev: clean(cols[5]), actRev: clean(cols[6]), bookingId: clean(cols[7]),
+                    contract: clean(cols[8]), contractUploaded: clean(cols[9]), paperSent: clean(cols[10]), 
+                    preTripNotify: clean(cols[11]), // 新增
+                    deposit: clean(cols[12]), balance: clean(cols[13]), billSent: clean(cols[14]), 
+                    list: clean(cols[15]), room: clean(cols[16]), note: clean(cols[17])
                 };
                 newData.push(obj);
             }
-
-            if(confirm(`解析到 ${newData.length} 筆資料，確定要覆蓋現有資料嗎？(選擇取消則保留現有並附加新資料)`)) {
+            if(confirm(`解析到 ${newData.length} 筆資料，確定要覆蓋嗎？(取消則附加)`)) {
                 salesData = newData;
             } else {
                 salesData = salesData.concat(newData);
@@ -502,7 +476,6 @@
         reader.readAsText(file);
     }
 </script>
-
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
