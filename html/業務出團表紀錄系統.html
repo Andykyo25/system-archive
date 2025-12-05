@@ -3,13 +3,33 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>業務出團表紀錄系統 v4.3 (Fixed)</title>
+    <title>業務出團表紀錄系統 v5.0 (Login Secured)</title>
     <!-- 引入 Supabase JS -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
         body { background-color: #f4f6f9; padding: 20px; font-family: "Microsoft JhengHei", sans-serif; }
+        
+        /* 登入區塊樣式 */
+        #login-container {
+            height: 80vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .login-card {
+            width: 100%;
+            max-width: 400px;
+            padding: 30px;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+        }
+
+        /* 應用程式本體 (預設隱藏) */
+        #app-container { display: none; }
+
         .table-container { overflow-x: auto; background: white; border-radius: 0 0 8px 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); padding: 15px; border-top: none; }
         .table thead th { background-color: #e9ecef !important; color: #495057; font-weight: bold; border-bottom: 2px solid #dee2e6; white-space: nowrap; vertical-align: middle; text-align: center; }
         .th-highlight { background-color: #f3e5f5 !important; color: #6a1b9a; }
@@ -39,9 +59,36 @@
 </head>
 <body>
 
-<div class="container-fluid">
-    <h2 class="mb-3 text-center text-secondary"><i class="fas fa-plane-departure"></i> 業務出團管理系統</h2>
+<!-- ★★★ 登入畫面 ★★★ -->
+<div id="login-container">
+    <div class="login-card">
+        <h3 class="text-center mb-4"><i class="fas fa-plane-departure text-primary"></i> 系統登入</h3>
+        <form onsubmit="event.preventDefault(); handleLogin();">
+            <div class="mb-3">
+                <label class="form-label">Email</label>
+                <input type="email" id="login-email" class="form-control" placeholder="輸入您的帳號" required>
+            </div>
+            <div class="mb-3">
+                <label class="form-label">密碼</label>
+                <input type="password" id="login-password" class="form-control" placeholder="輸入您的密碼" required>
+            </div>
+            <button type="submit" class="btn btn-primary w-100" id="login-btn">登入</button>
+            <div id="login-error" class="text-danger text-center mt-3 small"></div>
+        </form>
+    </div>
+</div>
 
+<!-- ★★★ 主應用程式 (預設隱藏) ★★★ -->
+<div id="app-container" class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h2 class="text-secondary m-0"><i class="fas fa-plane-departure"></i> 業務出團管理</h2>
+        <div>
+            <span id="user-email" class="text-muted small me-2"></span>
+            <button class="btn btn-sm btn-outline-dark" onclick="handleLogout()"><i class="fas fa-sign-out-alt"></i> 登出</button>
+        </div>
+    </div>
+
+    <!-- 操作區塊 -->
     <div class="row mb-3">
         <div class="col-12 text-end d-flex align-items-center justify-content-end flex-wrap gap-2">
             <button class="btn btn-outline-secondary btn-notification" onclick="openNotificationModal()">
@@ -208,8 +255,9 @@
 
 <script>
     // ★★★ STEP 1: 設定 Supabase ★★★
+    // 請將您的 URL 和 Key 填入 (使用 anon key)
     const SUPABASE_URL = 'https://legwqtrutzpbwqumvvkb.supabase.co';
-    const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxlZ3dxdHJ1dHpwYndxdW12dmtiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ4NDI4NTgsImV4cCI6MjA4MDQxODg1OH0.YIQPKNZizMcD1vZhAzalW1G2fRgLT6mx08qeyzEuaSg';
+    const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxlZ3dxdHJ1dHpwYndxdW12dmtiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ4NDI4NTgsImV4cCI6MjA4MDQxODg1OH0.YIQPKNZizMcD1vZhAzalW1G2fRgLT6mx08qeyzEuaSg'; 
     
     // 初始化 Supabase
     const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -244,8 +292,80 @@
         return n.toLocaleString();
     }
 
-    // --- 程式入口 ---
-    window.onload = function() {
+    // --- 程式入口 (檢查登入狀態) ---
+    window.onload = async function() {
+        // 檢查 Supabase 是否有登入 Session
+        const { data: { session } } = await sb.auth.getSession();
+
+        if (session) {
+            // 已登入：顯示主畫面，載入資料
+            showAppSection(session.user.email);
+            initializeApp();
+        } else {
+            // 未登入：顯示登入畫面
+            showLoginSection();
+        }
+
+        // 監聽登入狀態改變 (例如自動登出)
+        sb.auth.onAuthStateChange((event, session) => {
+            if (event === 'SIGNED_IN') {
+                showAppSection(session.user.email);
+                initializeApp();
+            } else if (event === 'SIGNED_OUT') {
+                showLoginSection();
+            }
+        });
+    };
+
+    // --- 登入/登出 邏輯 ---
+
+    function showLoginSection() {
+        document.getElementById('login-container').style.display = 'flex';
+        document.getElementById('app-container').style.display = 'none';
+        salesData = []; // 清空記憶體資料
+    }
+
+    function showAppSection(email) {
+        document.getElementById('login-container').style.display = 'none';
+        document.getElementById('app-container').style.display = 'block';
+        document.getElementById('user-email').textContent = email;
+    }
+
+    async function handleLogin() {
+        const email = document.getElementById('login-email').value;
+        const password = document.getElementById('login-password').value;
+        const btn = document.getElementById('login-btn');
+        const err = document.getElementById('login-error');
+
+        btn.disabled = true;
+        btn.textContent = "登入中...";
+        err.textContent = "";
+
+        const { data, error } = await sb.auth.signInWithPassword({
+            email: email,
+            password: password
+        });
+
+        if (error) {
+            err.textContent = "登入失敗：" + error.message;
+            btn.disabled = false;
+            btn.textContent = "登入";
+        } else {
+            // 登入成功會觸發 onAuthStateChange，自動切換畫面
+        }
+    }
+
+    async function handleLogout() {
+        if(confirm("確定要登出嗎？")) {
+            // 清除本地快取，增加安全性
+            localStorage.removeItem('salesGroupData_Cache');
+            await sb.auth.signOut();
+            window.location.reload();
+        }
+    }
+
+    // --- 主程式初始化 ---
+    function initializeApp() {
         const cachedData = localStorage.getItem('salesGroupData_Cache');
         if (cachedData) {
             salesData = JSON.parse(cachedData);
@@ -254,7 +374,7 @@
         } else {
             loadFromCloud(true); 
         }
-    };
+    }
 
     // --- Supabase 功能區 ---
 
@@ -263,7 +383,6 @@
         else updateSyncStatus(true, "同步中...");
 
         try {
-            // 直接讀取，不要再經過 unpackData，這樣才能保留 id
             let { data, error } = await sb
                 .from(TABLE_NAME)
                 .select('*')
@@ -271,7 +390,7 @@
 
             if (error) throw error;
 
-            salesData = data; // 直接賦值
+            salesData = data;
             saveToLocalCache();
             processData();
 
@@ -291,13 +410,11 @@
         if (isLoading) return;
         toggleLoading(true, "儲存中...");
 
-        // 收集表單資料
         const record = {
             date: document.getElementById('f_date').value,
             tour: document.getElementById('f_tour').value,
             name: document.getElementById('f_name').value,
-            // 修正：不需要再加單引號
-            phone: document.getElementById('f_phone').value, 
+            phone: document.getElementById('f_phone').value,
             pax: safeNumber(document.getElementById('f_pax').value),
             estRev: safeNumber(document.getElementById('f_estRev').value),
             actRev: safeNumber(document.getElementById('f_actRev').value),
@@ -320,14 +437,12 @@
         try {
             let error;
             if (editId) {
-                // 更新模式 (有 ID)
                 const { error: updateError } = await sb
                     .from(TABLE_NAME)
                     .update(record)
                     .eq('id', editId);
                 error = updateError;
             } else {
-                // 新增模式 (無 ID)
                 const { error: insertError } = await sb
                     .from(TABLE_NAME)
                     .insert([record]);
@@ -354,16 +469,9 @@
     }
 
     async function deleteData(index) {
-        // index 是在 currentFilteredData 或 salesData 的索引
-        // 我們需要取得正確的資料物件
-        let record;
-        
-        // 為了確保刪對人，我們先找出正確的 record
-        // 因為 renderTable 使用的是 currentFilteredData 的原始索引
-        record = salesData[index];
-
+        const record = salesData[index];
         if(!record || !record.id) {
-            alert("錯誤：找不到此筆資料的 ID，無法刪除。請重新整理網頁後再試。");
+            alert("找不到 ID，無法刪除");
             return;
         }
 
@@ -377,7 +485,6 @@
 
                 if (error) throw error;
 
-                // 成功後移除本地資料
                 salesData.splice(index, 1);
                 processData();
                 
@@ -635,7 +742,7 @@
         const row = salesData[index];
         const safe = (val) => val || '';
         document.getElementById('editIndex').value = index;
-        document.getElementById('editId').value = safe(row.id); // ID 會被正確讀取
+        document.getElementById('editId').value = safe(row.id);
 
         document.getElementById('f_date').value = safe(row.date);
         document.getElementById('f_tour').value = safe(row.tour);
