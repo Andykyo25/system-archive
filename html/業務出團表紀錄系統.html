@@ -136,7 +136,8 @@
                     <div class="col-4 col-md-2"><label class="form-label text-primary" style="font-size:0.8rem">寄出紙本</label>
                         <select class="form-select form-select-sm" id="f_paperSent"><option value="">否</option><option value="V">V</option></select>
                     </div>
-                    <div class="col-4 col-md-2"><label class="form-label text-danger" style="font-size:0.8rem">行前通知</label>
+                    <!-- 修改欄位名稱 -->
+                    <div class="col-4 col-md-2"><label class="form-label text-danger" style="font-size:0.8rem">行前通知/領隊群</label>
                         <select class="form-select form-select-sm" id="f_preTripNotify"><option value="">否</option><option value="V">V</option></select>
                     </div>
                     
@@ -215,7 +216,8 @@
                     <th>合約</th>
                     <th class="th-highlight">合約上傳</th>
                     <th class="th-highlight">寄出紙本</th>
-                    <th class="th-alert">行前通知</th>
+                    <!-- 修改表格標頭 -->
+                    <th class="th-alert">行前通知/領隊群</th>
                     <th>訂金</th>
                     <th>尾款</th>
                     <th class="th-highlight">繳帳單</th>
@@ -263,10 +265,10 @@
     const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
     const TABLE_NAME = 'sales_records';
 
-    // 定義欄位 (CSV 匯出用)
+    // 定義欄位 (CSV 匯出用) - 修改匯出標題以符合顯示
     const headers = [
         "出發日期", "行程", "客人代表", "電話號碼", "人數", 
-        "預估業績", "實際業績", "訂編", "合約", "合約上傳", "寄出紙本", "行前通知",
+        "預估業績", "實際業績", "訂編", "合約", "合約上傳", "寄出紙本", "行前通知/領隊群",
         "訂金", "尾款", "繳帳單", "名單", "分房", "網卡", "備註"
     ];
 
