@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>業務出團表紀錄系統 v6.4 (Notification Enhanced)</title>
+    <title>業務出團表紀錄系統 v6.5 (No Pagination)</title>
     <!-- 引入 Supabase JS -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -68,7 +68,7 @@
         /* 搜尋框樣式 */
         .search-box { max-width: 300px; }
 
-        /* ★★★ 新增：通知列表優化樣式 ★★★ */
+        /* 通知列表優化樣式 */
         .list-group-item { transition: background-color 0.2s; }
         .list-group-item:hover { background-color: #f8f9fa !important; }
         .badge.rounded-pill { padding-top: 0.4em; padding-bottom: 0.4em; letter-spacing: 0.5px; }
@@ -177,29 +177,14 @@
         <!-- JS 動態生成 -->
     </ul>
 
-    <!-- 統計儀表板 (已移除文字) -->
+    <!-- 統計儀表板 -->
     <div class="summary-panel">
         <div class="summary-item"><h5>總人數</h5><div class="value" id="sumPax">0</div></div>
         <div class="summary-item"><h5>預估業績</h5><div class="value text-primary" id="sumEst">0</div></div>
         <div class="summary-item"><h5>實際業績</h5><div class="value text-success-dark" id="sumAct">0</div></div>
     </div>
 
-    <!-- 分頁控制 -->
-    <div class="d-flex justify-content-between align-items-center mb-2 bg-white p-2 rounded shadow-sm">
-        <div class="d-flex align-items-center">
-            <span class="me-2 text-nowrap small">每頁:</span>
-            <select class="form-select form-select-sm" id="rowsPerPage" style="width: 70px;" onchange="changeRowsPerPage()">
-                <option value="10">10</option>
-                <option value="20">20</option>
-                <option value="50">50</option>
-            </select>
-        </div>
-        <span class="small text-muted" id="pageInfo">讀取中...</span>
-        <div>
-            <button class="btn btn-sm btn-outline-secondary" onclick="changePage(-1)" id="btnPrev"><i class="fas fa-chevron-left"></i></button>
-            <button class="btn btn-sm btn-outline-secondary ms-1" onclick="changePage(1)" id="btnNext"><i class="fas fa-chevron-right"></i></button>
-        </div>
-    </div>
+    <!-- ★★★ (已移除分頁控制區塊) ★★★ -->
 
     <!-- PC版: 表格 -->
     <div class="table-container">
@@ -265,9 +250,6 @@
     const TABLE_NAME = 'sales_records';
 
     // 狀態變數
-    let currentPage = 1;
-    let rowsPerPage = 10;
-    let totalCount = 0;
     let currentData = []; 
     let currentTab = 'ALL'; 
     let sortColumn = 'date';
@@ -315,13 +297,12 @@
     function initApp() {
         renderTabs(); 
         loadData();
-        fetchNotifications(); // 獨立載入通知
+        fetchNotifications(); 
         setupRealtime(); 
     }
 
-    // --- 0. 獨立的通知系統 (優化版：排序 + 資訊清晰 + 美觀) ---
+    // --- 0. 獨立的通知系統 ---
     async function fetchNotifications() {
-        // 設定查詢範圍：今天 ~ 未來 7 天
         const today = new Date();
         today.setHours(0,0,0,0);
         const nextWeek = new Date(today);
@@ -331,13 +312,12 @@
         const nextWeekStr = nextWeek.toISOString().split('T')[0];
 
         try {
-            // 從資料庫撈取即將出團的資料，並依日期排序 (Server-side sort)
             const { data, error } = await sb
                 .from(TABLE_NAME)
                 .select('date, tour, name, paperSent, billSent, preTripNotify')
                 .gte('date', todayStr)
                 .lte('date', nextWeekStr)
-                .order('date', { ascending: true }); // 資料庫先排一次
+                .order('date', { ascending: true }); 
 
             if (error) throw error;
             updateNotificationUI(data);
@@ -357,7 +337,6 @@
         let count = 0;
         let alertItems = [];
 
-        // 1. 處理系統通知 (固定置頂)
         const sysDate = new Date();
         const d = sysDate.getDate();
         if (d >= 13 && d <= 15) {
@@ -367,19 +346,16 @@
             alertItems.push({ type: 'system', title: '每月1號結算', msg: '請確認網卡採購與結算', urgent: true });
         }
 
-        // 2. 處理行程缺失通知
         data.forEach(row => {
             if(!row.date) return;
             const tDate = new Date(row.date); tDate.setHours(0,0,0,0);
             const days = Math.ceil((tDate - today)/86400000);
             
-            // 檢查缺失項目
             let issues = [];
             if(row.paperSent !== 'V') issues.push({text: "未寄紙本", icon: "fa-file-signature"});
             if(row.billSent !== 'V') issues.push({text: "未繳帳單", icon: "fa-file-invoice-dollar"});
             if(row.preTripNotify !== 'V') issues.push({text: "未行前通知", icon: "fa-bullhorn"});
             
-            // 只要有缺失，就加入清單 (範圍 0~7 天)
             if (issues.length > 0 && days >= 0) {
                 alertItems.push({
                     type: 'trip',
@@ -388,25 +364,21 @@
                     tour: row.tour,
                     name: row.name,
                     issues: issues,
-                    urgent: days <= 2 // 剩餘 2 天內算非常緊急
+                    urgent: days <= 2 
                 });
             }
         });
 
-        // 3. 用戶端再次排序 (確保系統通知在最前，接著按天數由少到多)
         alertItems.sort((a, b) => {
             if (a.type === 'system') return -1;
             if (b.type === 'system') return 1;
             return a.days - b.days;
         });
 
-        // 4. 生成 HTML
         alertItems.forEach(item => {
             count++;
             const li = document.createElement('li');
             li.className = 'list-group-item p-3 border-0 border-bottom';
-            
-            // 根據緊急程度改變左側邊框顏色與背景微調
             li.style.borderLeft = `5px solid ${item.urgent ? '#dc3545' : '#ffc107'}`;
             li.style.backgroundColor = item.urgent ? '#fff8f8' : '#fff';
 
@@ -419,14 +391,12 @@
                         </div>
                     </div>`;
             } else {
-                // 生成缺失項目的 Badges
                 const badgesHtml = item.issues.map(issue => 
                     `<span class="badge rounded-pill text-bg-secondary me-1 fw-normal">
                         <i class="fas ${issue.icon} me-1"></i>${issue.text}
                      </span>`
                 ).join('');
 
-                // 剩餘天數顯示
                 const dayDisplay = item.days === 0 
                     ? `<span class="badge bg-danger">今天</span>` 
                     : `<span class="text-danger fw-bold fs-5">${item.days}</span> <span class="small text-muted">天後</span>`;
@@ -438,9 +408,7 @@
                                 <span class="fw-bold fs-6 me-2 text-dark">${item.name}</span>
                                 <small class="text-muted text-truncate d-inline-block" style="max-width: 150px;">${item.tour}</small>
                             </div>
-                            <div class="mt-2">
-                                ${badgesHtml}
-                            </div>
+                            <div class="mt-2">${badgesHtml}</div>
                         </div>
                         <div class="col-4 text-end border-start">
                             <div class="d-flex flex-column align-items-end">
@@ -454,53 +422,49 @@
             list.appendChild(li);
         });
 
-        // 5. 更新計數與顯示狀態
         badge.textContent = count;
         badge.style.display = count > 0 ? 'inline-block' : 'none';
         
-        // 確保 Modal 裡的顯示/隱藏邏輯正確
         if (count === 0) {
             noMsg.style.display = 'block';
             list.style.display = 'none';
         } else {
-            noMsg.style.display = 'block';
+            noMsg.style.display = 'none';
             list.style.display = 'block';
         }
     }
 
-    // --- 1. 資料讀取 ---
+    // --- 1. 資料讀取 (移除分頁限制，讀取全部符合條件資料) ---
     async function loadData(forceRefresh = false) {
         toggleLoading(true);
         updateSyncStatus(true, "同步中...");
 
         try {
-            let query = sb.from(TABLE_NAME).select('*', { count: 'exact' });
+            // 建立基礎查詢
+            let query = sb.from(TABLE_NAME).select('*'); // 移除 {count} 參數，因為不分頁了
 
+            // 搜尋過濾
             if (searchQuery) {
                 query = query.or(`tour.ilike.%${searchQuery}%,name.ilike.%${searchQuery}%,phone.ilike.%${searchQuery}%`);
             }
 
+            // 月份 Tab 過濾
             if (currentTab !== 'ALL') {
                 query = query.ilike('date', `${currentTab}%`);
             }
 
+            // 排序
             query = query.order(sortColumn, { ascending: sortAsc });
 
-            const from = (currentPage - 1) * rowsPerPage;
-            const to = from + rowsPerPage - 1;
-            query = query.range(from, to);
-
-            const { data, error, count } = await query;
+            // ★★★ 移除 .range() 分頁限制，直接抓取所有結果 ★★★
+            const { data, error } = await query;
 
             if (error) throw error;
 
             currentData = data;
-            totalCount = count;
-
+            
             renderTableAndCards();
-            updatePaginationInfo();
             calculateSummary(searchQuery, currentTab); 
-            // 注意：這裡不再呼叫 checkNotifications(data)，改由全域 fetchNotifications() 處理
 
         } catch (err) {
             console.error(err);
@@ -511,8 +475,9 @@
         }
     }
 
-    // --- 2. 統計數值計算 (保留 NaN 修復) ---
+    // --- 2. 統計數值計算 ---
     async function calculateSummary(queryText, tab) {
+        // 為了確保計算邏輯一致，這邊維持獨立計算，但其實也可以直接用 currentData 算
         let query = sb.from(TABLE_NAME).select('pax, estRev, actRev');
 
         if (queryText) {
@@ -675,7 +640,7 @@
             if(record.date) currentTab = record.date.substring(0, 7);
             renderTabs();
             loadData(true);
-            fetchNotifications(); // 儲存後更新通知
+            fetchNotifications(); 
             showToast("儲存成功", "success");
         } catch (err) {
             alert("錯誤: " + err.message);
@@ -690,7 +655,7 @@
             const { error } = await sb.from(TABLE_NAME).delete().eq('id', id);
             if(!error) {
                 loadData(true);
-                fetchNotifications(); // 刪除後更新通知
+                fetchNotifications(); 
                 showToast("已刪除", "success");
             } else {
                 alert("刪除失敗: " + error.message);
@@ -732,13 +697,12 @@
         return true;
     }
 
-    // --- 5. 搜尋、排序、分頁 ---
+    // --- 5. 搜尋、排序 ---
     let searchTimeout;
     function debounceSearch() {
         clearTimeout(searchTimeout);
         searchTimeout = setTimeout(() => {
             searchQuery = document.getElementById('searchInput').value.trim();
-            currentPage = 1;
             loadData();
         }, 500); 
     }
@@ -752,28 +716,6 @@
         if (icon) icon.className = sortAsc ? 'fas fa-sort-up sort-icon sort-active' : 'fas fa-sort-down sort-icon sort-active';
         
         loadData();
-    }
-
-    function changePage(delta) {
-        const totalPages = Math.ceil(totalCount / rowsPerPage) || 1;
-        const newPage = currentPage + delta;
-        if (newPage >= 1 && newPage <= totalPages) {
-            currentPage = newPage;
-            loadData();
-        }
-    }
-
-    function changeRowsPerPage() {
-        rowsPerPage = parseInt(document.getElementById('rowsPerPage').value);
-        currentPage = 1;
-        loadData();
-    }
-
-    function updatePaginationInfo() {
-        const totalPages = Math.ceil(totalCount / rowsPerPage) || 1;
-        document.getElementById('pageInfo').textContent = `${currentPage} / ${totalPages} 頁 (共 ${totalCount} 筆)`;
-        document.getElementById('btnPrev').disabled = (currentPage === 1);
-        document.getElementById('btnNext').disabled = (currentPage === totalPages);
     }
 
     // --- 6. CSV 全量匯出 ---
@@ -836,7 +778,6 @@
 
     function switchTab(tab) {
         currentTab = tab;
-        currentPage = 1;
         renderTabs(); 
         loadData();
     }
@@ -848,7 +789,7 @@
             console.log('Change received!', payload);
             if (!isEditing) {
                 loadData(false); 
-                fetchNotifications(); // 接收到變更時也更新通知
+                fetchNotifications(); 
             } else {
                 showToast("有人更新了資料，請存檔後刷新", "warning");
             }
