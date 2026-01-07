@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>業務出團表紀錄系統 v6.6 (Updated Fields)</title>
+    <title>業務出團管理系統 v6.8</title>
     <!-- 引入 Supabase JS -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -11,7 +11,7 @@
     <style>
         body { background-color: #f4f6f9; padding: 20px; font-family: "Microsoft JhengHei", sans-serif; }
         
-        /* 登入與基礎樣式 */
+        /* 登入樣式 */
         #login-container { height: 80vh; display: flex; align-items: center; justify-content: center; }
         .login-card { width: 100%; max-width: 400px; padding: 30px; background: white; border-radius: 10px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); }
         #app-container { display: none; }
@@ -37,25 +37,21 @@
         .summary-item h5 { margin: 0; font-size: 0.9rem; color: #6c757d; }
         .summary-item .value { font-size: 1.5rem; font-weight: bold; color: #212529; }
         
-        /* 表單與控制項 */
+        /* 導覽與控制 */
         .nav-tabs .nav-link { color: #495057; background-color: #e9ecef; margin-right: 2px; border-radius: 8px 8px 0 0; }
         .nav-tabs .nav-link.active { color: #0d6efd; background-color: white; border-top: 3px solid #0d6efd; font-weight: bold; }
         .form-card { border: none; box-shadow: 0 2px 5px rgba(0,0,0,0.05); margin-bottom: 20px; }
-        .form-card .card-header { background-color: white; border-bottom: 1px solid #eee; color: #0d6efd; font-size: 1.1rem; }
         
-        /* 手機版卡片視圖 */
+        /* 手機版視圖 */
         .mobile-card-container { display: none; }
         .mobile-card { background: white; border-radius: 8px; padding: 15px; margin-bottom: 15px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); border-left: 4px solid transparent; }
         .mobile-card.urgent { border-left-color: #dc3545; }
-        .mobile-card.normal { border-left-color: #198754; }
         .m-label { font-size: 0.8rem; color: #888; margin-right: 5px; }
         .m-value { font-weight: bold; color: #333; }
         
         @media (max-width: 992px) {
             .table-container { display: none; }
             .mobile-card-container { display: block; }
-            .summary-panel { flex-direction: column; align-items: flex-start; }
-            .summary-item { width: 100%; display: flex; justify-content: space-between; border-bottom: 1px solid #eee; padding-bottom: 5px; }
         }
 
         .highlight-row { background-color: #fff3cd !important; transition: background-color 2s ease-out; }
@@ -63,15 +59,11 @@
         .sort-active { color: #0d6efd; }
         .btn-notification { position: relative; margin-right: 10px; }
         .notification-badge { position: absolute; top: -5px; right: -5px; font-size: 0.7rem; padding: 3px 6px; border-radius: 50%; background-color: #dc3545; color: white; display: none; }
-        
-        .list-group-item { transition: background-color 0.2s; }
-        .list-group-item:hover { background-color: #f8f9fa !important; }
-        .badge.rounded-pill { padding-top: 0.4em; padding-bottom: 0.4em; letter-spacing: 0.5px; }
     </style>
 </head>
 <body>
 
-<!-- ★★★ 登入畫面 ★★★ -->
+<!-- 登入畫面 -->
 <div id="login-container">
     <div class="login-card">
         <h3 class="text-center mb-4"><i class="fas fa-plane-departure text-primary"></i> 系統登入</h3>
@@ -84,7 +76,7 @@
     </div>
 </div>
 
-<!-- ★★★ 主應用程式 ★★★ -->
+<!-- 主應用程式 -->
 <div id="app-container" class="container-fluid">
     <div class="d-flex justify-content-between align-items-center mb-3 mt-2">
         <h2 class="text-secondary m-0"><i class="fas fa-plane-departure"></i> 業務出團管理</h2>
@@ -99,7 +91,7 @@
         <div class="col-12 col-md-4">
             <div class="input-group">
                 <span class="input-group-text bg-white"><i class="fas fa-search"></i></span>
-                <input type="text" class="form-control" id="searchInput" placeholder="搜尋團名、姓名..." onkeyup="debounceSearch()">
+                <input type="text" class="form-control" id="searchInput" placeholder="搜尋行程、姓名..." onkeyup="debounceSearch()">
             </div>
         </div>
         <div class="col-12 col-md-8 text-end d-flex align-items-center justify-content-md-end justify-content-between">
@@ -111,16 +103,16 @@
             </div>
             <div>
                 <button class="btn btn-outline-success btn-sm me-1" onclick="exportToCSV()"><i class="fas fa-file-excel"></i> 匯出全部</button>
-                <button class="btn btn-outline-primary btn-sm" onclick="loadData(true)"><i class="fas fa-sync"></i> 刷新</button>
+                <button class="btn btn-outline-primary btn-sm" onclick="loadData(true)"><i class="fas fa-sync"></i> 刷新數據</button>
             </div>
         </div>
     </div>
 
     <!-- 輸入表單 -->
     <div class="card form-card">
-        <div class="card-header" role="button" data-bs-toggle="collapse" data-bs-target="#formBody" aria-expanded="true">
+        <div class="card-header" role="button" data-bs-toggle="collapse" data-bs-target="#formBody">
             <div class="d-flex justify-content-between align-items-center">
-                <strong><i class="fas fa-edit"></i> 資料輸入 / 編輯區</strong>
+                <strong><i class="fas fa-edit"></i> 資料編輯區</strong>
                 <i class="fas fa-chevron-down"></i>
             </div>
         </div>
@@ -130,38 +122,37 @@
                     <input type="hidden" id="editId" value="">
                     <div class="row g-2">
                         <div class="col-12 col-md-2"><label class="form-label">出發日期</label><input type="date" class="form-control" id="f_date" required></div>
-                        <div class="col-12 col-md-3"><label class="form-label">行程</label><input type="text" class="form-control" id="f_tour" placeholder="行程名稱" required></div>
+                        <div class="col-12 col-md-3"><label class="form-label">行程</label><input type="text" class="form-control" id="f_tour" required></div>
                         <div class="col-6 col-md-2"><label class="form-label">客人代表</label><input type="text" class="form-control" id="f_name" required></div>
-                        <div class="col-6 col-md-2"><label class="form-label">電話號碼</label><input type="text" class="form-control" id="f_phone"></div>
-                        
-                        <div class="col-4 col-md-1"><label class="form-label">人數</label><input type="number" class="form-control" id="f_pax" min="0" required></div>
+                        <div class="col-6 col-md-2"><label class="form-label">電話</label><input type="text" class="form-control" id="f_phone"></div>
+                        <div class="col-4 col-md-1"><label class="form-label">人數</label><input type="number" class="form-control" id="f_pax" required></div>
                         <div class="col-8 col-md-2"><label class="form-label">訂編</label><input type="text" class="form-control" id="f_bookingId"></div>
                         
-                        <div class="col-6 col-md-2"><label class="form-label">團費</label><input type="number" class="form-control" id="f_tourFee" min="0"></div>
-                        <div class="col-6 col-md-2"><label class="form-label">預估業績</label><input type="number" class="form-control" id="f_estRev" min="0"></div>
-                        <div class="col-6 col-md-2"><label class="form-label">實際業績</label><input type="number" class="form-control" id="f_actRev" min="0"></div>
+                        <!-- 更新欄位 -->
+                        <div class="col-6 col-md-2"><label class="form-label">團費</label><input type="number" class="form-control" id="f_tourFee"></div>
+                        <div class="col-6 col-md-2"><label class="form-label">預估業績</label><input type="number" class="form-control" id="f_estRev"></div>
+                        <div class="col-6 col-md-2"><label class="form-label">實際業績</label><input type="number" class="form-control" id="f_actRev"></div>
                         <div class="col-6 col-md-2"><label class="form-label text-primary">開票日</label><input type="date" class="form-control" id="f_ticketingDate"></div>
 
                         <div class="col-6 col-md-2"><label class="form-label">合約狀態</label>
                             <select class="form-select" id="f_contract"><option value="">未簽約</option><option value="線上">線上</option><option value="紙本">紙本</option><option value="PDF">PDF</option></select>
                         </div>
+                        <div class="col-4 col-md-2"><label class="form-label small">合約上傳</label><select class="form-select form-select-sm" id="f_contractUploaded"><option value="">-</option><option value="V">V</option></select></div>
+                        <div class="col-4 col-md-2"><label class="form-label small">寄出紙本</label><select class="form-select form-select-sm" id="f_paperSent"><option value="">-</option><option value="V">V</option></select></div>
+                        <div class="col-4 col-md-2"><label class="form-label text-danger small">行前通知</label><select class="form-select form-select-sm" id="f_preTripNotify"><option value="">-</option><option value="V">V</option></select></div>
                         
-                        <div class="col-4 col-md-2"><label class="form-label text-primary small">合約上傳</label><select class="form-select form-select-sm" id="f_contractUploaded"><option value="">-</option><option value="V">V</option></select></div>
-                        <div class="col-4 col-md-2"><label class="form-label text-primary small">寄出紙本</label><select class="form-select form-select-sm" id="f_paperSent"><option value="">-</option><option value="V">V</option></select></div>
-                        <div class="col-4 col-md-2"><label class="form-label text-danger small">行前/領隊群</label><select class="form-select form-select-sm" id="f_preTripNotify"><option value="">-</option><option value="V">V</option></select></div>
-                        
+                        <!-- 訂金與尾款改為打勾 -->
                         <div class="col-4 col-md-1"><label class="form-label">訂金</label><select class="form-select form-select-sm" id="f_deposit"><option value="">-</option><option value="V">V</option></select></div>
                         <div class="col-4 col-md-1"><label class="form-label">尾款</label><select class="form-select form-select-sm" id="f_balance"><option value="">-</option><option value="V">V</option></select></div>
-                        <div class="col-4 col-md-2"><label class="form-label text-primary">繳帳單</label><select class="form-select" id="f_billSent"><option value="">-</option><option value="V">V</option></select></div>
-
+                        
+                        <div class="col-4 col-md-2"><label class="form-label">繳帳單</label><select class="form-select form-select-sm" id="f_billSent"><option value="">-</option><option value="V">V</option></select></div>
                         <div class="col-4 col-md-1"><label class="form-label">名單</label><select class="form-select form-select-sm" id="f_list"><option value="">-</option><option value="V">V</option></select></div>
                         <div class="col-4 col-md-1"><label class="form-label">分房</label><select class="form-select form-select-sm" id="f_room"><option value="">-</option><option value="V">V</option></select></div>
                         <div class="col-4 col-md-1"><label class="form-label">網卡</label><select class="form-select form-select-sm" id="f_simCard"><option value="">-</option><option value="V">V</option></select></div>
-                        
                         <div class="col-12 col-md-3"><label class="form-label">備註</label><input type="text" class="form-control" id="f_note"></div>
                     </div>
                     <div class="mt-3 text-center">
-                        <button type="submit" class="btn btn-primary w-50 w-md-25">儲存紀錄</button>
+                        <button type="submit" class="btn btn-primary px-5">儲存</button>
                         <button type="button" class="btn btn-secondary ms-2" onclick="resetForm()">重置</button>
                     </div>
                 </form>
@@ -169,41 +160,35 @@
         </div>
     </div>
 
-    <!-- 月份分頁 Tabs -->
+    <!-- 月份分頁 -->
     <ul class="nav nav-tabs mb-2" id="monthTabs"></ul>
 
-    <!-- 統計儀表板 -->
+    <!-- 統計 -->
     <div class="summary-panel">
         <div class="summary-item"><h5>總人數</h5><div class="value" id="sumPax">0</div></div>
-        <div class="summary-item"><h5>預估業績</h5><div class="value text-primary" id="sumEst">0</div></div>
-        <div class="summary-item"><h5>實際業績</h5><div class="value text-success-dark" id="sumAct">0</div></div>
+        <div class="summary-item"><h5>預估總業績</h5><div class="value text-primary" id="sumEst">0</div></div>
+        <div class="summary-item"><h5>實際總業績</h5><div class="value text-success" id="sumAct">0</div></div>
     </div>
 
-    <!-- PC版: 表格 -->
+    <!-- PC表格 -->
     <div class="table-container">
-        <table class="table table-hover table-striped" id="dataTable">
+        <table class="table table-hover table-striped">
             <thead>
                 <tr>
-                    <th style="width: 80px;">操作</th>
-                    <th onclick="sortData('date')">出發日期 <i class="fas fa-sort sort-icon" id="sort-date"></i></th>
-                    <th onclick="sortData('tour')">行程 <i class="fas fa-sort sort-icon" id="sort-tour"></i></th>
-                    <th onclick="sortData('name')">客人 <i class="fas fa-sort sort-icon" id="sort-name"></i></th>
-                    <th>電話</th>
-                    <th onclick="sortData('pax')">人數 <i class="fas fa-sort sort-icon" id="sort-pax"></i></th>
+                    <th>操作</th>
+                    <th onclick="sortData('date')">日期 <i class="fas fa-sort sort-icon" id="sort-date"></i></th>
+                    <th>行程</th>
+                    <th>客人</th>
+                    <th>人數</th>
                     <th>團費</th>
                     <th onclick="sortData('estRev')">預估 <i class="fas fa-sort sort-icon" id="sort-estRev"></i></th>
                     <th onclick="sortData('actRev')">實際 <i class="fas fa-sort sort-icon" id="sort-actRev"></i></th>
                     <th>開票日</th>
-                    <th>訂編</th>
-                    <th>合約</th>
-                    <th class="th-highlight">合約上傳</th>
-                    <th class="th-highlight">寄出紙本</th>
-                    <th class="th-alert">行前通知</th>
                     <th>訂金</th>
                     <th>尾款</th>
-                    <th class="th-highlight">繳帳單</th>
+                    <th class="th-alert">行前</th>
+                    <th class="th-highlight">帳單</th>
                     <th>名單</th>
-                    <th>分房</th>
                     <th>網卡</th>
                     <th>備註</th>
                 </tr>
@@ -212,7 +197,7 @@
         </table>
     </div>
 
-    <!-- 手機版: 卡片視圖 -->
+    <!-- 手機卡片 -->
     <div class="mobile-card-container" id="mobileCards"></div>
 </div>
 
@@ -224,18 +209,15 @@
                 <h5 class="modal-title"><i class="fas fa-bell"></i> 待辦提醒</h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
-            <div class="modal-body">
-                <ul class="list-group list-group-flush px-0" id="notifList"></ul>
-                <div id="noNotifMsg" class="text-center text-muted mt-3" style="display:none;">
-                    <i class="fas fa-check-circle fa-2x text-success mb-2"></i><br>目前沒有緊急事項
-                </div>
+            <div class="modal-body p-0">
+                <ul class="list-group list-group-flush" id="notifList"></ul>
+                <div id="noNotifMsg" class="text-center text-muted p-4" style="display:none;">目前沒有待辦事項</div>
             </div>
         </div>
     </div>
 </div>
 
 <script>
-    // ★★★ 設定區 ★★★
     const SUPABASE_URL = 'https://legwqtrutzpbwqumvvkb.supabase.co';
     const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxlZ3dxdHJ1dHpwYndxdW12dmtiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ4NDI4NTgsImV4cCI6MjA4MDQxODg1OH0.YIQPKNZizMcD1vZhAzalW1G2fRgLT6mx08qeyzEuaSg'; 
     const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -248,308 +230,213 @@
     let searchQuery = '';
     let isEditing = false; 
 
-    const csvHeaders = ["出發日期","行程","客人代表","電話","人數","團費","預估業績","實際業績","開票日","訂編","合約","合約上傳","寄出紙本","行前通知","訂金","尾款","繳帳單","名單","分房","網卡","備註"];
-    
     window.onload = async function() {
         const { data: { session } } = await sb.auth.getSession();
-        if (session) { showAppSection(session.user.email); initApp(); } 
-        else { showLoginSection(); }
+        if (session) { showApp(session.user.email); initApp(); } 
+        else { showLogin(); }
         sb.auth.onAuthStateChange((event, session) => {
-            if (event === 'SIGNED_IN') { showAppSection(session.user.email); initApp(); }
-            else if (event === 'SIGNED_OUT') { showLoginSection(); }
+            if (event === 'SIGNED_IN') { showApp(session.user.email); initApp(); }
+            else if (event === 'SIGNED_OUT') { showLogin(); }
         });
     };
 
-    function showLoginSection() { document.getElementById('login-container').style.display = 'flex'; document.getElementById('app-container').style.display = 'none'; }
-    function showAppSection(email) { document.getElementById('login-container').style.display = 'none'; document.getElementById('app-container').style.display = 'block'; document.getElementById('user-email').textContent = email; }
+    function showLogin() { document.getElementById('login-container').style.display = 'flex'; document.getElementById('app-container').style.display = 'none'; }
+    function showApp(email) { document.getElementById('login-container').style.display = 'none'; document.getElementById('app-container').style.display = 'block'; document.getElementById('user-email').textContent = email; }
 
     async function handleLogin() {
         const email = document.getElementById('login-email').value;
         const password = document.getElementById('login-password').value;
-        const btn = document.getElementById('login-btn');
-        btn.disabled = true; btn.textContent = "登入中...";
         const { error } = await sb.auth.signInWithPassword({ email, password });
-        if (error) { alert("登入失敗：" + error.message); btn.disabled = false; btn.textContent = "登入"; }
+        if (error) { document.getElementById('login-error').textContent = "失敗：" + error.message; }
     }
 
-    async function handleLogout() { if(confirm("確定要登出嗎？")) await sb.auth.signOut(); }
+    async function handleLogout() { await sb.auth.signOut(); }
 
     function initApp() {
-        renderTabs(); 
-        loadData();
-        fetchNotifications(); 
-        setupRealtime(); 
+        renderTabs(); loadData(); fetchNotifications(); setupRealtime(); 
     }
 
-    async function loadData(forceRefresh = false) {
-        updateSyncStatus(true, "同步中...");
-        try {
-            let query = sb.from(TABLE_NAME).select('*');
-            if (searchQuery) query = query.or(`tour.ilike.%${searchQuery}%,name.ilike.%${searchQuery}%,phone.ilike.%${searchQuery}%`);
-            if (currentTab !== 'ALL') query = query.ilike('date', `${currentTab}%`);
-            query = query.order(sortColumn, { ascending: sortAsc });
+    async function loadData() {
+        updateSync(true);
+        let query = sb.from(TABLE_NAME).select('*');
+        if (searchQuery) query = query.or(`tour.ilike.%${searchQuery}%,name.ilike.%${searchQuery}%`);
+        if (currentTab !== 'ALL') query = query.ilike('date', `${currentTab}%`);
+        query = query.order(sortColumn, { ascending: sortAsc });
 
-            const { data, error } = await query;
-            if (error) throw error;
+        const { data, error } = await query;
+        if (!error) {
             currentData = data;
-            renderTableAndCards();
-            calculateSummary(); 
-        } catch (err) {
-            console.error(err);
-        } finally {
-            updateSyncStatus(false);
+            renderAll();
+            calculateSummary();
         }
+        updateSync(false);
     }
 
-    function calculateSummary() {
-        const toNum = (val) => {
-            if (!val) return 0;
-            return parseFloat(String(val).replace(/,/g, '')) || 0;
-        };
-        let tPax = 0, tEst = 0, tAct = 0;
-        currentData.forEach(r => {
-            tPax += toNum(r.pax);
-            tEst += toNum(r.estRev);
-            tAct += toNum(r.actRev);
-        });
-        document.getElementById('sumPax').textContent = tPax;
-        document.getElementById('sumEst').textContent = formatMoney(tEst);
-        document.getElementById('sumAct').textContent = formatMoney(tAct);
-    }
-
-    function renderTableAndCards() {
+    function renderAll() {
         const tbody = document.getElementById('tableBody');
-        const cardContainer = document.getElementById('mobileCards');
-        tbody.innerHTML = ''; cardContainer.innerHTML = '';
+        const mCards = document.getElementById('mobileCards');
+        tbody.innerHTML = ''; mCards.innerHTML = '';
         const today = new Date(); today.setHours(0,0,0,0);
 
         currentData.forEach(row => {
-            const safe = (v) => (v === null || v === undefined) ? '' : v;
-            const money = (v) => v ? parseInt(String(v).replace(/,/g,'')).toLocaleString() : '';
-            const statusClass = (val) => val === 'V' ? 'status-v' : '';
-            const check = (val) => val === 'V' ? `<i class="fas fa-check text-success"></i>` : '';
+            const safe = (v) => v || '';
+            const money = (v) => v ? parseInt(v).toLocaleString() : '';
+            const statusClass = (v) => v === 'V' ? 'status-v' : '';
 
-            let dateBadge = '';
-            let isUrgent = false;
+            // 判斷出發提醒
+            let urgent = false;
             if (row.date) {
-                const tDate = new Date(row.date); tDate.setHours(0,0,0,0);
-                const diff = Math.ceil((tDate - today) / 86400000);
-                if (diff < 0) dateBadge = `<span class="badge bg-secondary ms-1">已出團</span>`;
-                else if (diff <= 5) { dateBadge = `<span class="badge bg-danger ms-1">${diff === 0 ? '今天' : '剩'+diff+'天'}</span>`; isUrgent = true; }
+                const diff = (new Date(row.date) - today) / 86400000;
+                if (diff >= 0 && diff <= 3) urgent = true;
             }
 
             const tr = document.createElement('tr');
-            if (isUrgent) tr.classList.add('highlight-row');
-            
+            if(urgent) tr.className = 'highlight-row';
             tr.innerHTML = `
                 <td>
                     <button class="btn btn-sm btn-outline-primary" onclick="editRecord('${row.id}')"><i class="fas fa-edit"></i></button>
-                    <button class="btn btn-sm btn-outline-danger" onclick="deleteRecord('${row.id}', '${row.name}')"><i class="fas fa-trash"></i></button>
+                    <button class="btn btn-sm btn-outline-danger" onclick="deleteRecord('${row.id}')"><i class="fas fa-trash"></i></button>
                 </td>
-                <td>${safe(row.date)}${dateBadge}</td>
-                <td class="text-left fw-bold text-truncate" style="max-width: 150px;">${safe(row.tour)}</td>
+                <td>${safe(row.date)}</td>
+                <td class="text-left">${safe(row.tour)}</td>
                 <td>${safe(row.name)}</td>
-                <td>${safe(row.phone)}</td>
                 <td>${safe(row.pax)}</td>
                 <td>${money(row.tourFee)}</td>
                 <td>${money(row.estRev)}</td>
                 <td>${money(row.actRev)}</td>
                 <td>${safe(row.ticketingDate)}</td>
-                <td>${safe(row.bookingId)}</td>
-                <td>${safe(row.contract)}</td>
-                <td><span class="${statusClass(row.contractUploaded)}">${safe(row.contractUploaded)}</span></td>
-                <td><span class="${statusClass(row.paperSent)}">${safe(row.paperSent)}</span></td>
-                <td><span class="${statusClass(row.preTripNotify)}">${safe(row.preTripNotify)}</span></td>
                 <td><span class="${statusClass(row.deposit)}">${safe(row.deposit)}</span></td>
                 <td><span class="${statusClass(row.balance)}">${safe(row.balance)}</span></td>
+                <td><span class="${statusClass(row.preTripNotify)}">${safe(row.preTripNotify)}</span></td>
                 <td><span class="${statusClass(row.billSent)}">${safe(row.billSent)}</span></td>
                 <td><span class="${statusClass(row.list)}">${safe(row.list)}</span></td>
-                <td><span class="${statusClass(row.room)}">${safe(row.room)}</span></td>
                 <td><span class="${statusClass(row.simCard)}">${safe(row.simCard)}</span></td>
-                <td class="text-left text-muted text-truncate" style="max-width: 100px;">${safe(row.note)}</td>
+                <td class="text-truncate" style="max-width:100px;">${safe(row.note)}</td>
             `;
             tbody.appendChild(tr);
 
+            // 卡片
             const card = document.createElement('div');
-            card.className = `mobile-card ${isUrgent ? 'urgent' : 'normal'}`;
-            card.innerHTML = `
-                <div class="d-flex justify-content-between align-items-start mb-2">
-                    <div><div class="fw-bold text-primary">${safe(row.date)} ${dateBadge}</div><div class="fw-bold mt-1">${safe(row.tour)}</div></div>
-                    <div>
-                        <button class="btn btn-sm btn-outline-primary" onclick="editRecord('${row.id}')"><i class="fas fa-edit"></i></button>
-                    </div>
-                </div>
-                <div class="row g-2 mb-2">
-                    <div class="col-6"><span class="m-label">代表:</span><span class="m-value">${safe(row.name)}</span></div>
-                    <div class="col-6"><span class="m-label">團費:</span><span class="m-value">${money(row.tourFee)}</span></div>
-                </div>
-                <div class="d-flex justify-content-between bg-light p-2 rounded small">
-                    <span>訂金: ${check(row.deposit)}</span><span>尾款: ${check(row.balance)}</span><span>開票: ${safe(row.ticketingDate)}</span>
-                </div>
-            `;
-            cardContainer.appendChild(card);
+            card.className = `mobile-card ${urgent ? 'urgent' : ''}`;
+            card.innerHTML = `<div class="d-flex justify-content-between"><b>${safe(row.date)}</b> <span>${safe(row.name)}</span></div>
+                              <div class="small">${safe(row.tour)}</div>
+                              <div class="text-end mt-2"><button class="btn btn-sm btn-primary" onclick="editRecord('${row.id}')">編輯</button></div>`;
+            mCards.appendChild(card);
         });
     }
 
     async function saveRecord() {
-        toggleLoading(true, "儲存中...");
-        const getVal = (id) => document.getElementById(id).value;
-        const getNum = (id) => { const v = getVal(id); return v ? parseInt(v) : 0; };
-
+        const getV = (id) => document.getElementById(id).value;
         const record = {
-            date: getVal('f_date'), tour: getVal('f_tour'), name: getVal('f_name'), phone: getVal('f_phone'),
-            pax: getNum('f_pax'), bookingId: getVal('f_bookingId'), tourFee: getNum('f_tourFee'),
-            estRev: getNum('f_estRev'), actRev: getNum('f_actRev'), ticketingDate: getVal('f_ticketingDate'),
-            contract: getVal('f_contract'), contractUploaded: getVal('f_contractUploaded'),
-            paperSent: getVal('f_paperSent'), preTripNotify: getVal('f_preTripNotify'),
-            deposit: getVal('f_deposit'), balance: getVal('f_balance'), billSent: getVal('f_billSent'),
-            list: getVal('f_list'), room: getVal('f_room'), simCard: getVal('f_simCard'), note: getVal('f_note')
+            date: getV('f_date'), tour: getV('f_tour'), name: getV('f_name'), phone: getV('f_phone'),
+            pax: parseInt(getV('f_pax')) || 0, bookingId: getV('f_bookingId'),
+            tourFee: parseInt(getV('f_tourFee')) || 0, estRev: parseInt(getV('f_estRev')) || 0,
+            actRev: parseInt(getV('f_actRev')) || 0, ticketingDate: getV('f_ticketingDate'),
+            contract: getV('f_contract'), contractUploaded: getV('f_contractUploaded'),
+            paperSent: getV('f_paperSent'), preTripNotify: getV('f_preTripNotify'),
+            deposit: getV('f_deposit'), balance: getV('f_balance'), billSent: getV('f_billSent'),
+            list: getV('f_list'), room: getV('f_room'), simCard: getV('f_simCard'), note: getV('f_note')
         };
-
-        const editId = document.getElementById('editId').value;
-        try {
-            const { error } = editId 
-                ? await sb.from(TABLE_NAME).update(record).eq('id', editId)
-                : await sb.from(TABLE_NAME).insert([record]);
-            if (error) throw error;
-            resetForm();
-            loadData(true);
-            fetchNotifications(); 
-        } catch (err) { alert("錯誤: " + err.message); }
-        finally { toggleLoading(false); }
+        const editId = getV('editId');
+        const { error } = editId ? await sb.from(TABLE_NAME).update(record).eq('id', editId) : await sb.from(TABLE_NAME).insert([record]);
+        if(!error) { resetForm(); loadData(); fetchNotifications(); }
     }
 
     function editRecord(id) {
-        isEditing = true; 
-        const row = currentData.find(r => r.id == id); 
-        if (!row) return;
+        const row = currentData.find(r => r.id == id);
+        if(!row) return;
         document.getElementById('editId').value = row.id;
-        const fields = ['date','tour','name','phone','pax','bookingId','tourFee','estRev','actRev','ticketingDate',
-                        'contract','contractUploaded','paperSent','preTripNotify','deposit','balance','billSent',
-                        'list','room','simCard','note'];
-        fields.forEach(f => {
-             document.getElementById('f_' + f).value = (row[f] !== null && row[f] !== undefined) ? row[f] : '';
+        Object.keys(row).forEach(k => {
+            const el = document.getElementById('f_'+k);
+            if(el) el.value = row[k] || '';
         });
         document.querySelector('#formBody').classList.add('show');
-        const btn = document.querySelector('#recordForm button[type="submit"]');
-        btn.textContent = "更新資料"; btn.classList.replace('btn-primary', 'btn-warning');
         window.scrollTo({ top: 0, behavior: 'smooth' });
     }
 
-    function resetForm() {
-        document.getElementById('recordForm').reset();
-        document.getElementById('editId').value = "";
-        const btn = document.querySelector('#recordForm button[type="submit"]');
-        btn.textContent = "儲存紀錄"; btn.classList.replace('btn-warning', 'btn-primary');
-        isEditing = false; 
-    }
+    async function fetchNotifications() {
+        const today = new Date(); today.setHours(0,0,0,0);
+        const { data } = await sb.from(TABLE_NAME).select('*');
+        const list = document.getElementById('notifList');
+        list.innerHTML = '';
+        let count = 0;
 
-    async function deleteRecord(id, name) {
-        if(confirm(`確定要刪除「${name}」的紀錄嗎？`)) {
-            const { error } = await sb.from(TABLE_NAME).delete().eq('id', id);
-            if(!error) loadData(true);
-        }
-    }
+        data.forEach(row => {
+            let issues = [];
+            const depDate = row.date ? new Date(row.date) : null;
+            const tickDate = row.ticketingDate ? new Date(row.ticketingDate) : null;
 
-    function debounceSearch() {
-        clearTimeout(window.searchTimeout);
-        window.searchTimeout = setTimeout(() => {
-            searchQuery = document.getElementById('searchInput').value.trim();
-            loadData();
-        }, 500); 
-    }
+            // 1. 出發提醒：前 3 天
+            if (depDate) {
+                const dDiff = (depDate - today) / 86400000;
+                if (dDiff >= 0 && dDiff <= 3) {
+                    if (row.deposit !== 'V') issues.push("未收訂金");
+                    if (row.balance !== 'V') issues.push("未收尾款");
+                    if (row.preTripNotify !== 'V') issues.push("未發行前通知");
+                }
+            }
 
-    function sortData(col) {
-        if (sortColumn === col) sortAsc = !sortAsc;
-        else { sortColumn = col; sortAsc = true; }
-        document.querySelectorAll('.sort-icon').forEach(el => el.className = 'fas fa-sort sort-icon');
-        const icon = document.getElementById('sort-' + col);
-        if (icon) icon.className = sortAsc ? 'fas fa-sort-up sort-icon sort-active' : 'fas fa-sort-down sort-icon sort-active';
-        loadData();
-    }
+            // 2. 開票提醒：前 7 天且名單未勾
+            if (tickDate) {
+                const tDiff = (tickDate - today) / 86400000;
+                if (tDiff >= 0 && tDiff <= 7 && row.list !== 'V') {
+                    issues.push(`請入名單(開票日:${row.ticketingDate})`);
+                }
+            }
 
-    async function exportToCSV() {
-        let csvContent = "\uFEFF" + csvHeaders.join(",") + "\n";
-        currentData.forEach(row => {
-            const safe = (v) => v ? String(v).replace(/,/g, '，') : ''; 
-            csvContent += [
-                safe(row.date), safe(row.tour), safe(row.name), `'${safe(row.phone)}`, safe(row.pax),
-                safe(row.tourFee), safe(row.estRev), safe(row.actRev), safe(row.ticketingDate),
-                safe(row.bookingId), safe(row.contract), safe(row.contractUploaded),
-                safe(row.paperSent), safe(row.preTripNotify), safe(row.deposit), safe(row.balance),
-                safe(row.billSent), safe(row.list), safe(row.room), safe(row.simCard), safe(row.note)
-            ].join(",") + "\n";
+            if (issues.length > 0) {
+                count++;
+                const li = document.createElement('li');
+                li.className = 'list-group-item';
+                li.innerHTML = `<b>${row.name}</b> - ${row.tour}<br><small class="text-danger">${issues.join('、')}</small>`;
+                list.appendChild(li);
+            }
         });
-        const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-        const link = document.createElement("a");
-        link.href = URL.createObjectURL(blob);
-        link.download = `業務出團表_${new Date().toISOString().slice(0,10)}.csv`;
-        link.click();
+
+        document.getElementById('notifBadge').textContent = count;
+        document.getElementById('notifBadge').style.display = count > 0 ? 'block' : 'none';
+        document.getElementById('noNotifMsg').style.display = count === 0 ? 'block' : 'none';
+    }
+
+    function resetForm() { document.getElementById('recordForm').reset(); document.getElementById('editId').value = ''; }
+    async function deleteRecord(id) { if(confirm('確定刪除?')) { await sb.from(TABLE_NAME).delete().eq('id', id); loadData(); } }
+    function debounceSearch() { clearTimeout(window.t); window.t = setTimeout(() => { searchQuery = document.getElementById('searchInput').value; loadData(); }, 500); }
+    function sortData(col) { if(sortColumn===col) sortAsc=!sortAsc; else {sortColumn=col; sortAsc=true;} loadData(); }
+    function updateSync(s) { document.getElementById('syncStatus').innerHTML = s ? '<i class="fas fa-spinner fa-spin"></i>' : '已同步'; }
+    function openNotificationModal() { new bootstrap.Modal(document.getElementById('notificationModal')).show(); }
+
+    function calculateSummary() {
+        let p=0, e=0, a=0;
+        currentData.forEach(r => { p+=r.pax||0; e+=r.estRev||0; a+=r.actRev||0; });
+        document.getElementById('sumPax').textContent = p;
+        document.getElementById('sumEst').textContent = e.toLocaleString();
+        document.getElementById('sumAct').textContent = a.toLocaleString();
     }
 
     async function renderTabs() {
         const { data } = await sb.from(TABLE_NAME).select('date');
-        const months = new Set();
-        if(data) data.forEach(r => { if(r.date) months.add(r.date.substring(0, 7)); });
-        const sorted = Array.from(months).sort();
+        const months = [...new Set(data.map(r => r.date ? r.date.substring(0,7) : null).filter(x=>x))].sort();
         const container = document.getElementById('monthTabs');
-        let html = `<li class="nav-item"><button class="nav-link ${currentTab==='ALL'?'active':''}" onclick="switchTab('ALL')">全部</button></li>`;
-        sorted.forEach(m => { html += `<li class="nav-item"><button class="nav-link ${currentTab===m?'active':''}" onclick="switchTab('${m}')">${m}</button></li>`; });
-        container.innerHTML = html;
+        container.innerHTML = `<li class="nav-item"><button class="nav-link ${currentTab==='ALL'?'active':''}" onclick="currentTab='ALL';renderTabs();loadData();">全部</button></li>`;
+        months.forEach(m => {
+            container.innerHTML += `<li class="nav-item"><button class="nav-link ${currentTab===m?'active':''}" onclick="currentTab='${m}';renderTabs();loadData();">${m}</button></li>`;
+        });
     }
-
-    function switchTab(tab) { currentTab = tab; renderTabs(); loadData(); }
 
     function setupRealtime() {
-        sb.channel('public:sales_records').on('postgres_changes', { event: '*', schema: 'public', table: TABLE_NAME }, () => {
-            if (!isEditing) { loadData(); fetchNotifications(); }
-        }).subscribe();
+        sb.channel('public:sales_records').on('postgres_changes', { event: '*', schema: 'public', table: TABLE_NAME }, () => loadData()).subscribe();
     }
 
-    function updateSyncStatus(isSyncing, msg) {
-        const el = document.getElementById('syncStatus');
-        if (isSyncing) el.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${msg}`;
-        else { el.innerHTML = `<i class="fas fa-check"></i> 已同步`; setTimeout(() => el.innerHTML = '', 2000); }
-    }
-
-    function toggleLoading(show, msg) {
-        let overlay = document.getElementById('loadingOverlay');
-        if(!overlay && show) {
-            overlay = document.createElement('div');
-            overlay.id = 'loadingOverlay';
-            overlay.style.cssText = "position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(255,255,255,0.7);z-index:9999;display:flex;justify-content:center;align-items:center;";
-            overlay.innerHTML = `<div class="text-center"><i class="fas fa-spinner fa-spin fa-2x text-primary"></i><div class="mt-2">${msg}</div></div>`;
-            document.body.appendChild(overlay);
-        } else if (overlay) { overlay.style.display = show ? 'flex' : 'none'; }
-    }
-
-    function formatMoney(num) { return num ? parseInt(num).toLocaleString() : '0'; }
-    function openNotificationModal() { new bootstrap.Modal(document.getElementById('notificationModal')).show(); }
-
-    async function fetchNotifications() {
-        const today = new Date().toISOString().split('T')[0];
-        const { data } = await sb.from(TABLE_NAME).select('*').gte('date', today).order('date', { ascending: true });
-        if(data) {
-            const list = document.getElementById('notifList');
-            list.innerHTML = '';
-            let count = 0;
-            data.forEach(row => {
-                let issues = [];
-                if(row.deposit !== 'V') issues.push("未收訂金");
-                if(row.balance !== 'V') issues.push("未收尾款");
-                if(row.preTripNotify !== 'V') issues.push("未行前通知");
-                if(issues.length > 0) {
-                    count++;
-                    const li = document.createElement('li');
-                    li.className = 'list-group-item';
-                    li.innerHTML = `<strong>${row.name}</strong> (${row.date})<br><small class="text-danger">${issues.join(', ')}</small>`;
-                    list.appendChild(li);
-                }
-            });
-            document.getElementById('notifBadge').textContent = count;
-            document.getElementById('notifBadge').style.display = count > 0 ? 'block' : 'none';
-            document.getElementById('noNotifMsg').style.display = count === 0 ? 'block' : 'none';
-        }
+    function exportToCSV() {
+        let csv = "\uFEFF" + "日期,行程,客人,人數,團費,實際業績,備註\n";
+        currentData.forEach(r => {
+            csv += `${r.date},${r.tour},${r.name},${r.pax},${r.tourFee},${r.actRev},${r.note}\n`;
+        });
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.download = "出團紀錄.csv";
+        link.click();
     }
 </script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
