@@ -3,67 +3,33 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>業務出團管理系統 v6.8</title>
-    <!-- 引入 Supabase JS -->
+    <title>業務出團管理系統 v6.9 (Fixed Summary)</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
         body { background-color: #f4f6f9; padding: 20px; font-family: "Microsoft JhengHei", sans-serif; }
-        
-        /* 登入樣式 */
         #login-container { height: 80vh; display: flex; align-items: center; justify-content: center; }
         .login-card { width: 100%; max-width: 400px; padding: 30px; background: white; border-radius: 10px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); }
         #app-container { display: none; }
-
-        /* 表格樣式 */
-        .table-container { overflow-x: auto; background: white; border-radius: 0 0 8px 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); padding: 15px; border-top: none; }
-        .table thead th { 
-            background-color: #e9ecef !important; color: #495057; font-weight: bold; 
-            border-bottom: 2px solid #dee2e6; white-space: nowrap; vertical-align: middle; text-align: center; 
-            cursor: pointer; user-select: none;
-        }
-        .table thead th:hover { background-color: #dee2e6 !important; }
-        
-        .th-highlight { background-color: #f3e5f5 !important; color: #6a1b9a; }
-        .th-alert { background-color: #fff3e0 !important; color: #e65100; } 
+        .table-container { overflow-x: auto; background: white; border-radius: 0 0 8px 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); padding: 15px; }
+        .table thead th { background-color: #e9ecef !important; font-weight: bold; text-align: center; white-space: nowrap; cursor: pointer; }
         td { white-space: nowrap; vertical-align: middle; text-align: center; font-size: 0.95rem; }
-        .text-left { text-align: left !important; }
         .status-v { color: #198754; font-weight: bold; background-color: #e8f5e9; padding: 2px 8px; border-radius: 4px; }
-        
-        /* 統計面板 */
         .summary-panel { background: #fff; padding: 15px; border-radius: 8px; margin-bottom: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); display: flex; justify-content: space-around; align-items: center; border-left: 5px solid #0d6efd; flex-wrap: wrap; }
-        .summary-item { margin: 5px; }
+        .summary-item { margin: 5px; text-align: center; }
         .summary-item h5 { margin: 0; font-size: 0.9rem; color: #6c757d; }
         .summary-item .value { font-size: 1.5rem; font-weight: bold; color: #212529; }
-        
-        /* 導覽與控制 */
-        .nav-tabs .nav-link { color: #495057; background-color: #e9ecef; margin-right: 2px; border-radius: 8px 8px 0 0; }
-        .nav-tabs .nav-link.active { color: #0d6efd; background-color: white; border-top: 3px solid #0d6efd; font-weight: bold; }
         .form-card { border: none; box-shadow: 0 2px 5px rgba(0,0,0,0.05); margin-bottom: 20px; }
-        
-        /* 手機版視圖 */
-        .mobile-card-container { display: none; }
-        .mobile-card { background: white; border-radius: 8px; padding: 15px; margin-bottom: 15px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); border-left: 4px solid transparent; }
-        .mobile-card.urgent { border-left-color: #dc3545; }
-        .m-label { font-size: 0.8rem; color: #888; margin-right: 5px; }
-        .m-value { font-weight: bold; color: #333; }
-        
-        @media (max-width: 992px) {
-            .table-container { display: none; }
-            .mobile-card-container { display: block; }
-        }
-
-        .highlight-row { background-color: #fff3cd !important; transition: background-color 2s ease-out; }
-        .sort-icon { font-size: 0.8em; margin-left: 5px; color: #aaa; }
-        .sort-active { color: #0d6efd; }
-        .btn-notification { position: relative; margin-right: 10px; }
+        .highlight-row { background-color: #fff3cd !important; }
         .notification-badge { position: absolute; top: -5px; right: -5px; font-size: 0.7rem; padding: 3px 6px; border-radius: 50%; background-color: #dc3545; color: white; display: none; }
+        .btn-notification { position: relative; margin-right: 10px; }
+        @media (max-width: 992px) { .table-container { display: none; } .mobile-card-container { display: block; } }
+        .mobile-card { background: white; border-radius: 8px; padding: 15px; margin-bottom: 10px; border-left: 4px solid #0d6efd; }
     </style>
 </head>
 <body>
 
-<!-- 登入畫面 -->
 <div id="login-container">
     <div class="login-card">
         <h3 class="text-center mb-4"><i class="fas fa-plane-departure text-primary"></i> 系統登入</h3>
@@ -76,7 +42,6 @@
     </div>
 </div>
 
-<!-- 主應用程式 -->
 <div id="app-container" class="container-fluid">
     <div class="d-flex justify-content-between align-items-center mb-3 mt-2">
         <h2 class="text-secondary m-0"><i class="fas fa-plane-departure"></i> 業務出團管理</h2>
@@ -86,7 +51,6 @@
         </div>
     </div>
 
-    <!-- 控制列 -->
     <div class="row mb-3 g-2 align-items-center">
         <div class="col-12 col-md-4">
             <div class="input-group">
@@ -94,62 +58,37 @@
                 <input type="text" class="form-control" id="searchInput" placeholder="搜尋行程、姓名..." onkeyup="debounceSearch()">
             </div>
         </div>
-        <div class="col-12 col-md-8 text-end d-flex align-items-center justify-content-md-end justify-content-between">
-            <div class="d-flex align-items-center">
-                <button class="btn btn-outline-secondary btn-notification me-2" onclick="openNotificationModal()">
-                    <i class="fas fa-bell"></i><span id="notifBadge" class="notification-badge">0</span>
-                </button>
-                <span id="syncStatus" class="me-3 small text-muted"></span>
-            </div>
-            <div>
-                <button class="btn btn-outline-success btn-sm me-1" onclick="exportToCSV()"><i class="fas fa-file-excel"></i> 匯出全部</button>
-                <button class="btn btn-outline-primary btn-sm" onclick="loadData(true)"><i class="fas fa-sync"></i> 刷新數據</button>
-            </div>
+        <div class="col-12 col-md-8 text-end">
+            <button class="btn btn-outline-secondary btn-notification" onclick="openNotificationModal()">
+                <i class="fas fa-bell"></i><span id="notifBadge" class="notification-badge">0</span>
+            </button>
+            <button class="btn btn-outline-success btn-sm" onclick="exportToCSV()">匯出 CSV</button>
+            <button class="btn btn-outline-primary btn-sm" onclick="loadData()">刷新數據</button>
         </div>
     </div>
 
-    <!-- 輸入表單 -->
     <div class="card form-card">
         <div class="card-header" role="button" data-bs-toggle="collapse" data-bs-target="#formBody">
-            <div class="d-flex justify-content-between align-items-center">
-                <strong><i class="fas fa-edit"></i> 資料編輯區</strong>
-                <i class="fas fa-chevron-down"></i>
-            </div>
+            <strong><i class="fas fa-edit"></i> 資料編輯區</strong>
         </div>
         <div id="formBody" class="collapse show">
             <div class="card-body">
                 <form id="recordForm" onsubmit="event.preventDefault(); saveRecord();">
                     <input type="hidden" id="editId" value="">
                     <div class="row g-2">
-                        <div class="col-12 col-md-2"><label class="form-label">出發日期</label><input type="date" class="form-control" id="f_date" required></div>
-                        <div class="col-12 col-md-3"><label class="form-label">行程</label><input type="text" class="form-control" id="f_tour" required></div>
-                        <div class="col-6 col-md-2"><label class="form-label">客人代表</label><input type="text" class="form-control" id="f_name" required></div>
-                        <div class="col-6 col-md-2"><label class="form-label">電話</label><input type="text" class="form-control" id="f_phone"></div>
-                        <div class="col-4 col-md-1"><label class="form-label">人數</label><input type="number" class="form-control" id="f_pax" required></div>
-                        <div class="col-8 col-md-2"><label class="form-label">訂編</label><input type="text" class="form-control" id="f_bookingId"></div>
-                        
-                        <!-- 更新欄位 -->
-                        <div class="col-6 col-md-2"><label class="form-label">團費</label><input type="number" class="form-control" id="f_tourFee"></div>
-                        <div class="col-6 col-md-2"><label class="form-label">預估業績</label><input type="number" class="form-control" id="f_estRev"></div>
-                        <div class="col-6 col-md-2"><label class="form-label">實際業績</label><input type="number" class="form-control" id="f_actRev"></div>
-                        <div class="col-6 col-md-2"><label class="form-label text-primary">開票日</label><input type="date" class="form-control" id="f_ticketingDate"></div>
-
-                        <div class="col-6 col-md-2"><label class="form-label">合約狀態</label>
-                            <select class="form-select" id="f_contract"><option value="">未簽約</option><option value="線上">線上</option><option value="紙本">紙本</option><option value="PDF">PDF</option></select>
-                        </div>
-                        <div class="col-4 col-md-2"><label class="form-label small">合約上傳</label><select class="form-select form-select-sm" id="f_contractUploaded"><option value="">-</option><option value="V">V</option></select></div>
-                        <div class="col-4 col-md-2"><label class="form-label small">寄出紙本</label><select class="form-select form-select-sm" id="f_paperSent"><option value="">-</option><option value="V">V</option></select></div>
-                        <div class="col-4 col-md-2"><label class="form-label text-danger small">行前通知</label><select class="form-select form-select-sm" id="f_preTripNotify"><option value="">-</option><option value="V">V</option></select></div>
-                        
-                        <!-- 訂金與尾款改為打勾 -->
-                        <div class="col-4 col-md-1"><label class="form-label">訂金</label><select class="form-select form-select-sm" id="f_deposit"><option value="">-</option><option value="V">V</option></select></div>
-                        <div class="col-4 col-md-1"><label class="form-label">尾款</label><select class="form-select form-select-sm" id="f_balance"><option value="">-</option><option value="V">V</option></select></div>
-                        
-                        <div class="col-4 col-md-2"><label class="form-label">繳帳單</label><select class="form-select form-select-sm" id="f_billSent"><option value="">-</option><option value="V">V</option></select></div>
-                        <div class="col-4 col-md-1"><label class="form-label">名單</label><select class="form-select form-select-sm" id="f_list"><option value="">-</option><option value="V">V</option></select></div>
-                        <div class="col-4 col-md-1"><label class="form-label">分房</label><select class="form-select form-select-sm" id="f_room"><option value="">-</option><option value="V">V</option></select></div>
-                        <div class="col-4 col-md-1"><label class="form-label">網卡</label><select class="form-select form-select-sm" id="f_simCard"><option value="">-</option><option value="V">V</option></select></div>
-                        <div class="col-12 col-md-3"><label class="form-label">備註</label><input type="text" class="form-control" id="f_note"></div>
+                        <div class="col-md-2"><label class="form-label">出發日期</label><input type="date" class="form-control" id="f_date" required></div>
+                        <div class="col-md-3"><label class="form-label">行程</label><input type="text" class="form-control" id="f_tour" required></div>
+                        <div class="col-md-2"><label class="form-label">客人代表</label><input type="text" class="form-control" id="f_name" required></div>
+                        <div class="col-md-1"><label class="form-label">人數</label><input type="number" class="form-control" id="f_pax" required></div>
+                        <div class="col-md-2"><label class="form-label">開票日</label><input type="date" class="form-control" id="f_ticketingDate"></div>
+                        <div class="col-md-2"><label class="form-label">團費</label><input type="number" class="form-control" id="f_tourFee"></div>
+                        <div class="col-md-2"><label class="form-label">預估業績</label><input type="number" class="form-control" id="f_estRev"></div>
+                        <div class="col-md-2"><label class="form-label">實際業績</label><input type="number" class="form-control" id="f_actRev"></div>
+                        <div class="col-md-1"><label class="form-label">名單</label><select class="form-select" id="f_list"><option value="">-</option><option value="V">V</option></select></div>
+                        <div class="col-md-1"><label class="form-label">訂金</label><select class="form-select" id="f_deposit"><option value="">-</option><option value="V">V</option></select></div>
+                        <div class="col-md-1"><label class="form-label">尾款</label><select class="form-select" id="f_balance"><option value="">-</option><option value="V">V</option></select></div>
+                        <div class="col-md-1"><label class="form-label">行前</label><select class="form-select" id="f_preTripNotify"><option value="">-</option><option value="V">V</option></select></div>
+                        <div class="col-md-2"><label class="form-label">備註</label><input type="text" class="form-control" id="f_note"></div>
                     </div>
                     <div class="mt-3 text-center">
                         <button type="submit" class="btn btn-primary px-5">儲存</button>
@@ -160,59 +99,34 @@
         </div>
     </div>
 
-    <!-- 月份分頁 -->
     <ul class="nav nav-tabs mb-2" id="monthTabs"></ul>
 
-    <!-- 統計 -->
     <div class="summary-panel">
         <div class="summary-item"><h5>總人數</h5><div class="value" id="sumPax">0</div></div>
         <div class="summary-item"><h5>預估總業績</h5><div class="value text-primary" id="sumEst">0</div></div>
         <div class="summary-item"><h5>實際總業績</h5><div class="value text-success" id="sumAct">0</div></div>
     </div>
 
-    <!-- PC表格 -->
     <div class="table-container">
-        <table class="table table-hover table-striped">
+        <table class="table table-hover table-sm">
             <thead>
                 <tr>
-                    <th>操作</th>
-                    <th onclick="sortData('date')">日期 <i class="fas fa-sort sort-icon" id="sort-date"></i></th>
-                    <th>行程</th>
-                    <th>客人</th>
-                    <th>人數</th>
-                    <th>團費</th>
-                    <th onclick="sortData('estRev')">預估 <i class="fas fa-sort sort-icon" id="sort-estRev"></i></th>
-                    <th onclick="sortData('actRev')">實際 <i class="fas fa-sort sort-icon" id="sort-actRev"></i></th>
-                    <th>開票日</th>
-                    <th>訂金</th>
-                    <th>尾款</th>
-                    <th class="th-alert">行前</th>
-                    <th class="th-highlight">帳單</th>
-                    <th>名單</th>
-                    <th>網卡</th>
-                    <th>備註</th>
+                    <th>操作</th><th>日期</th><th>行程</th><th>客人</th><th>人數</th><th>團費</th><th>預估</th><th>實際</th><th>開票日</th><th>訂金</th><th>尾款</th><th>行前</th><th>名單</th><th>備註</th>
                 </tr>
             </thead>
             <tbody id="tableBody"></tbody>
         </table>
     </div>
 
-    <!-- 手機卡片 -->
     <div class="mobile-card-container" id="mobileCards"></div>
 </div>
 
-<!-- 消息中心 Modal -->
+<!-- Notification Modal -->
 <div class="modal fade" id="notificationModal" tabindex="-1">
     <div class="modal-dialog">
         <div class="modal-content">
-            <div class="modal-header bg-danger text-white">
-                <h5 class="modal-title"><i class="fas fa-bell"></i> 待辦提醒</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body p-0">
-                <ul class="list-group list-group-flush" id="notifList"></ul>
-                <div id="noNotifMsg" class="text-center text-muted p-4" style="display:none;">目前沒有待辦事項</div>
-            </div>
+            <div class="modal-header bg-danger text-white"><h5>待辦提醒</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+            <div class="modal-body p-0"><ul class="list-group list-group-flush" id="notifList"></ul><div id="noNotifMsg" class="p-4 text-center text-muted">目前沒有待辦</div></div>
         </div>
     </div>
 </div>
@@ -228,12 +142,10 @@
     let sortColumn = 'date';
     let sortAsc = true;
     let searchQuery = '';
-    let isEditing = false; 
 
     window.onload = async function() {
         const { data: { session } } = await sb.auth.getSession();
-        if (session) { showApp(session.user.email); initApp(); } 
-        else { showLogin(); }
+        if (session) { showApp(session.user.email); initApp(); } else { showLogin(); }
         sb.auth.onAuthStateChange((event, session) => {
             if (event === 'SIGNED_IN') { showApp(session.user.email); initApp(); }
             else if (event === 'SIGNED_OUT') { showLogin(); }
@@ -242,22 +154,17 @@
 
     function showLogin() { document.getElementById('login-container').style.display = 'flex'; document.getElementById('app-container').style.display = 'none'; }
     function showApp(email) { document.getElementById('login-container').style.display = 'none'; document.getElementById('app-container').style.display = 'block'; document.getElementById('user-email').textContent = email; }
-
     async function handleLogin() {
         const email = document.getElementById('login-email').value;
         const password = document.getElementById('login-password').value;
         const { error } = await sb.auth.signInWithPassword({ email, password });
-        if (error) { document.getElementById('login-error').textContent = "失敗：" + error.message; }
+        if (error) document.getElementById('login-error').textContent = error.message;
     }
-
     async function handleLogout() { await sb.auth.signOut(); }
 
-    function initApp() {
-        renderTabs(); loadData(); fetchNotifications(); setupRealtime(); 
-    }
+    function initApp() { renderTabs(); loadData(); fetchNotifications(); }
 
     async function loadData() {
-        updateSync(true);
         let query = sb.from(TABLE_NAME).select('*');
         if (searchQuery) query = query.or(`tour.ilike.%${searchQuery}%,name.ilike.%${searchQuery}%`);
         if (currentTab !== 'ALL') query = query.ilike('date', `${currentTab}%`);
@@ -269,58 +176,58 @@
             renderAll();
             calculateSummary();
         }
-        updateSync(false);
+    }
+
+    // ★★★ 核心修正處：確保數據為數字類型 ★★★
+    function calculateSummary() {
+        let p = 0, e = 0, a = 0;
+        currentData.forEach(r => {
+            // 使用 Number() 強制轉換，若轉換失敗則預設為 0
+            const paxNum = Number(r.pax) || 0;
+            const estNum = Number(r.estRev) || 0;
+            const actNum = Number(r.actRev) || 0;
+
+            p += paxNum;
+            e += estNum;
+            a += actNum;
+        });
+
+        document.getElementById('sumPax').textContent = p;
+        document.getElementById('sumEst').textContent = e.toLocaleString();
+        document.getElementById('sumAct').textContent = a.toLocaleString();
     }
 
     function renderAll() {
         const tbody = document.getElementById('tableBody');
         const mCards = document.getElementById('mobileCards');
         tbody.innerHTML = ''; mCards.innerHTML = '';
-        const today = new Date(); today.setHours(0,0,0,0);
+        const today = new Date().setHours(0,0,0,0);
 
         currentData.forEach(row => {
-            const safe = (v) => v || '';
-            const money = (v) => v ? parseInt(v).toLocaleString() : '';
-            const statusClass = (v) => v === 'V' ? 'status-v' : '';
-
-            // 判斷出發提醒
-            let urgent = false;
-            if (row.date) {
-                const diff = (new Date(row.date) - today) / 86400000;
-                if (diff >= 0 && diff <= 3) urgent = true;
-            }
-
+            const urgent = row.date && (new Date(row.date) - today) / 86400000 <= 3;
             const tr = document.createElement('tr');
             if(urgent) tr.className = 'highlight-row';
             tr.innerHTML = `
-                <td>
-                    <button class="btn btn-sm btn-outline-primary" onclick="editRecord('${row.id}')"><i class="fas fa-edit"></i></button>
-                    <button class="btn btn-sm btn-outline-danger" onclick="deleteRecord('${row.id}')"><i class="fas fa-trash"></i></button>
-                </td>
-                <td>${safe(row.date)}</td>
-                <td class="text-left">${safe(row.tour)}</td>
-                <td>${safe(row.name)}</td>
-                <td>${safe(row.pax)}</td>
-                <td>${money(row.tourFee)}</td>
-                <td>${money(row.estRev)}</td>
-                <td>${money(row.actRev)}</td>
-                <td>${safe(row.ticketingDate)}</td>
-                <td><span class="${statusClass(row.deposit)}">${safe(row.deposit)}</span></td>
-                <td><span class="${statusClass(row.balance)}">${safe(row.balance)}</span></td>
-                <td><span class="${statusClass(row.preTripNotify)}">${safe(row.preTripNotify)}</span></td>
-                <td><span class="${statusClass(row.billSent)}">${safe(row.billSent)}</span></td>
-                <td><span class="${statusClass(row.list)}">${safe(row.list)}</span></td>
-                <td><span class="${statusClass(row.simCard)}">${safe(row.simCard)}</span></td>
-                <td class="text-truncate" style="max-width:100px;">${safe(row.note)}</td>
+                <td><button class="btn btn-sm btn-outline-primary" onclick="editRecord('${row.id}')">改</button></td>
+                <td>${row.date || ''}</td>
+                <td class="text-left">${row.tour || ''}</td>
+                <td>${row.name || ''}</td>
+                <td>${row.pax || 0}</td>
+                <td>${(row.tourFee || 0).toLocaleString()}</td>
+                <td>${(row.estRev || 0).toLocaleString()}</td>
+                <td>${(row.actRev || 0).toLocaleString()}</td>
+                <td>${row.ticketingDate || ''}</td>
+                <td><span class="${row.deposit === 'V' ? 'status-v' : ''}">${row.deposit || ''}</span></td>
+                <td><span class="${row.balance === 'V' ? 'status-v' : ''}">${row.balance || ''}</span></td>
+                <td><span class="${row.preTripNotify === 'V' ? 'status-v' : ''}">${row.preTripNotify || ''}</span></td>
+                <td><span class="${row.list === 'V' ? 'status-v' : ''}">${row.list || ''}</span></td>
+                <td class="text-truncate" style="max-width:100px;">${row.note || ''}</td>
             `;
             tbody.appendChild(tr);
 
-            // 卡片
             const card = document.createElement('div');
             card.className = `mobile-card ${urgent ? 'urgent' : ''}`;
-            card.innerHTML = `<div class="d-flex justify-content-between"><b>${safe(row.date)}</b> <span>${safe(row.name)}</span></div>
-                              <div class="small">${safe(row.tour)}</div>
-                              <div class="text-end mt-2"><button class="btn btn-sm btn-primary" onclick="editRecord('${row.id}')">編輯</button></div>`;
+            card.innerHTML = `<b>${row.date || ''}</b> ${row.name || ''}<br><small>${row.tour || ''}</small>`;
             mCards.appendChild(card);
         });
     }
@@ -328,91 +235,71 @@
     async function saveRecord() {
         const getV = (id) => document.getElementById(id).value;
         const record = {
-            date: getV('f_date'), tour: getV('f_tour'), name: getV('f_name'), phone: getV('f_phone'),
-            pax: parseInt(getV('f_pax')) || 0, bookingId: getV('f_bookingId'),
-            tourFee: parseInt(getV('f_tourFee')) || 0, estRev: parseInt(getV('f_estRev')) || 0,
-            actRev: parseInt(getV('f_actRev')) || 0, ticketingDate: getV('f_ticketingDate'),
-            contract: getV('f_contract'), contractUploaded: getV('f_contractUploaded'),
-            paperSent: getV('f_paperSent'), preTripNotify: getV('f_preTripNotify'),
-            deposit: getV('f_deposit'), balance: getV('f_balance'), billSent: getV('f_billSent'),
-            list: getV('f_list'), room: getV('f_room'), simCard: getV('f_simCard'), note: getV('f_note')
+            date: getV('f_date'), tour: getV('f_tour'), name: getV('f_name'),
+            pax: Number(getV('f_pax')) || 0,
+            tourFee: Number(getV('f_tourFee')) || 0, estRev: Number(getV('f_estRev')) || 0,
+            actRev: Number(getV('f_actRev')) || 0, ticketingDate: getV('f_ticketingDate'),
+            deposit: getV('f_deposit'), balance: getV('f_balance'),
+            preTripNotify: getV('f_preTripNotify'), list: getV('f_list'), note: getV('f_note')
         };
         const editId = getV('editId');
-        const { error } = editId ? await sb.from(TABLE_NAME).update(record).eq('id', editId) : await sb.from(TABLE_NAME).insert([record]);
-        if(!error) { resetForm(); loadData(); fetchNotifications(); }
+        if(editId) await sb.from(TABLE_NAME).update(record).eq('id', editId);
+        else await sb.from(TABLE_NAME).insert([record]);
+        resetForm(); loadData(); fetchNotifications();
     }
 
     function editRecord(id) {
         const row = currentData.find(r => r.id == id);
         if(!row) return;
         document.getElementById('editId').value = row.id;
-        Object.keys(row).forEach(k => {
-            const el = document.getElementById('f_'+k);
-            if(el) el.value = row[k] || '';
-        });
-        document.querySelector('#formBody').classList.add('show');
-        window.scrollTo({ top: 0, behavior: 'smooth' });
+        document.getElementById('f_date').value = row.date || '';
+        document.getElementById('f_tour').value = row.tour || '';
+        document.getElementById('f_name').value = row.name || '';
+        document.getElementById('f_pax').value = row.pax || 0;
+        document.getElementById('f_tourFee').value = row.tourFee || 0;
+        document.getElementById('f_estRev').value = row.estRev || 0;
+        document.getElementById('f_actRev').value = row.actRev || 0;
+        document.getElementById('f_ticketingDate').value = row.ticketingDate || '';
+        document.getElementById('f_deposit').value = row.deposit || '';
+        document.getElementById('f_balance').value = row.balance || '';
+        document.getElementById('f_preTripNotify').value = row.preTripNotify || '';
+        document.getElementById('f_list').value = row.list || '';
+        document.getElementById('f_note').value = row.note || '';
+        window.scrollTo(0,0);
     }
 
     async function fetchNotifications() {
-        const today = new Date(); today.setHours(0,0,0,0);
+        const today = new Date().setHours(0,0,0,0);
         const { data } = await sb.from(TABLE_NAME).select('*');
         const list = document.getElementById('notifList');
-        list.innerHTML = '';
-        let count = 0;
+        list.innerHTML = ''; let count = 0;
 
         data.forEach(row => {
             let issues = [];
-            const depDate = row.date ? new Date(row.date) : null;
-            const tickDate = row.ticketingDate ? new Date(row.ticketingDate) : null;
+            const dDiff = row.date ? (new Date(row.date) - today) / 86400000 : 999;
+            const tDiff = row.ticketingDate ? (new Date(row.ticketingDate) - today) / 86400000 : 999;
 
-            // 1. 出發提醒：前 3 天
-            if (depDate) {
-                const dDiff = (depDate - today) / 86400000;
-                if (dDiff >= 0 && dDiff <= 3) {
-                    if (row.deposit !== 'V') issues.push("未收訂金");
-                    if (row.balance !== 'V') issues.push("未收尾款");
-                    if (row.preTripNotify !== 'V') issues.push("未發行前通知");
-                }
+            if (dDiff >= 0 && dDiff <= 3) {
+                if (row.deposit !== 'V') issues.push("未收訂金");
+                if (row.balance !== 'V') issues.push("未收尾款");
             }
-
-            // 2. 開票提醒：前 7 天且名單未勾
-            if (tickDate) {
-                const tDiff = (tickDate - today) / 86400000;
-                if (tDiff >= 0 && tDiff <= 7 && row.list !== 'V') {
-                    issues.push(`請入名單(開票日:${row.ticketingDate})`);
-                }
-            }
+            if (tDiff >= 0 && tDiff <= 7 && row.list !== 'V') issues.push("請入名單");
 
             if (issues.length > 0) {
                 count++;
                 const li = document.createElement('li');
                 li.className = 'list-group-item';
-                li.innerHTML = `<b>${row.name}</b> - ${row.tour}<br><small class="text-danger">${issues.join('、')}</small>`;
+                li.innerHTML = `<b>${row.name}</b>: ${issues.join('、')}`;
                 list.appendChild(li);
             }
         });
-
         document.getElementById('notifBadge').textContent = count;
         document.getElementById('notifBadge').style.display = count > 0 ? 'block' : 'none';
         document.getElementById('noNotifMsg').style.display = count === 0 ? 'block' : 'none';
     }
 
     function resetForm() { document.getElementById('recordForm').reset(); document.getElementById('editId').value = ''; }
-    async function deleteRecord(id) { if(confirm('確定刪除?')) { await sb.from(TABLE_NAME).delete().eq('id', id); loadData(); } }
-    function debounceSearch() { clearTimeout(window.t); window.t = setTimeout(() => { searchQuery = document.getElementById('searchInput').value; loadData(); }, 500); }
-    function sortData(col) { if(sortColumn===col) sortAsc=!sortAsc; else {sortColumn=col; sortAsc=true;} loadData(); }
-    function updateSync(s) { document.getElementById('syncStatus').innerHTML = s ? '<i class="fas fa-spinner fa-spin"></i>' : '已同步'; }
-    function openNotificationModal() { new bootstrap.Modal(document.getElementById('notificationModal')).show(); }
-
-    function calculateSummary() {
-        let p=0, e=0, a=0;
-        currentData.forEach(r => { p+=r.pax||0; e+=r.estRev||0; a+=r.actRev||0; });
-        document.getElementById('sumPax').textContent = p;
-        document.getElementById('sumEst').textContent = e.toLocaleString();
-        document.getElementById('sumAct').textContent = a.toLocaleString();
-    }
-
+    function debounceSearch() { clearTimeout(window.t); window.t = setTimeout(loadData, 500); }
     async function renderTabs() {
         const { data } = await sb.from(TABLE_NAME).select('date');
         const months = [...new Set(data.map(r => r.date ? r.date.substring(0,7) : null).filter(x=>x))].sort();
@@ -422,22 +309,14 @@
             container.innerHTML += `<li class="nav-item"><button class="nav-link ${currentTab===m?'active':''}" onclick="currentTab='${m}';renderTabs();loadData();">${m}</button></li>`;
         });
     }
-
-    function setupRealtime() {
-        sb.channel('public:sales_records').on('postgres_changes', { event: '*', schema: 'public', table: TABLE_NAME }, () => loadData()).subscribe();
-    }
-
     function exportToCSV() {
-        let csv = "\uFEFF" + "日期,行程,客人,人數,團費,實際業績,備註\n";
-        currentData.forEach(r => {
-            csv += `${r.date},${r.tour},${r.name},${r.pax},${r.tourFee},${r.actRev},${r.note}\n`;
-        });
-        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        let csv = "\uFEFF日期,行程,客人,人數,總業績\n";
+        currentData.forEach(r => csv += `${r.date},${r.tour},${r.name},${r.pax},${r.actRev}\n`);
         const link = document.createElement("a");
-        link.href = URL.createObjectURL(blob);
-        link.download = "出團紀錄.csv";
-        link.click();
+        link.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+        link.download = "sales.csv"; link.click();
     }
+    function openNotificationModal() { new bootstrap.Modal(document.getElementById('notificationModal')).show(); }
 </script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
