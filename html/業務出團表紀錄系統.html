@@ -180,6 +180,7 @@
                     <th>行程</th>
                     <th>客人</th>
                     <th>人數</th>
+                    <th>訂編</th>
                     <th>團費</th>
                     <th onclick="sortData('estRev')">預估業績 <i class="fas fa-sort sort-icon" id="sort-estRev"></i></th>
                     <th onclick="sortData('actRev')">實際業績 <i class="fas fa-sort sort-icon" id="sort-actRev"></i></th>
@@ -326,6 +327,7 @@
                 <td class="text-left fw-bold text-truncate" style="max-width:180px;">${safe(row.tour)}</td>
                 <td>${safe(row.name)}</td>
                 <td class="fw-bold text-primary">${safe(row.pax)}</td>
+                <td>${safe(row.bookingId)}</td>
                 <td>${money(row.tourFee)}</td>
                 <td>${money(row.estRev)}</td>
                 <td class="fw-bold text-success">${money(row.actRev)}</td>
@@ -351,7 +353,8 @@
                 <div class="row g-2 small">
                     <div class="col-6">代表：<b>${safe(row.name)}</b></div>
                     <div class="col-6 text-end">人數：<b>${safe(row.pax)}</b></div>
-                    <div class="col-12 text-danger">開票日：${safe(row.ticketingDate)}</div>
+                    <div class="col-6">訂編：<b>${safe(row.bookingId)}</b></div>
+                    <div class="col-6 text-end text-danger">開票：${safe(row.ticketingDate)}</div>
                 </div>
                 <div class="m-badge-row">
                     ${row.deposit==='V'?'<span class="badge bg-success-subtle text-success border border-success">訂金V</span>':''}
@@ -509,9 +512,9 @@
     }
 
     function exportToCSV() {
-        let csv = "\uFEFF出發日期,行程,客人代表,人數,團費,實際業績,備註\n";
+        let csv = "\uFEFF出發日期,行程,客人代表,人數,訂編,團費,實際業績,備註\n";
         currentData.forEach(r => {
-            csv += `${r.date},${r.tour.replace(/,/g,' ')},${r.name},${r.pax},${r.tourFee},${r.actRev},${(r.note||'').replace(/,/g,' ')}\n`;
+            csv += `${r.date},${r.tour.replace(/,/g,' ')},${r.name},${r.pax},${r.bookingId},${r.tourFee},${r.actRev},${(r.note||'').replace(/,/g,' ')}\n`;
         });
         const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
         const link = document.createElement("a");
