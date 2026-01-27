@@ -285,24 +285,32 @@
     }
 
     function calculateSummary() {
-        let p = 0, e = 0, a = 0;
-        currentData.forEach(r => {
-            // 關鍵修復：Number() 轉換確保加法
-            p += Number(r.pax) || 0;
-            e += Number(r.estRev) || 0;
-            a += Number(r.actRev) || 0;
-        });
-        document.getElementById('sumPax').textContent = p;
-        document.getElementById('sumEst').textContent = e.toLocaleString();
-        document.getElementById('sumAct').textContent = a.toLocaleString();
+        const summary = currentData.reduce((acc, r) => {
+            acc.pax += Number(r.pax) || 0;
+            acc.estRev += Number(r.estRev) || 0;
+            acc.actRev += Number(r.actRev) || 0;
+            return acc;
+        }, { pax: 0, estRev: 0, actRev: 0 });
+
+        document.getElementById('sumPax').textContent = summary.pax;
+        document.getElementById('sumEst').textContent = summary.estRev.toLocaleString();
+        document.getElementById('sumAct').textContent = summary.actRev.toLocaleString();
     }
 
     // 渲染 UI
     function renderAll() {
         const tbody = document.getElementById('tableBody');
         const mCards = document.getElementById('mobileCards');
-        tbody.innerHTML = ''; mCards.innerHTML = '';
         const today = new Date(); today.setHours(0,0,0,0);
+
+        if (currentData.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="17" class="text-center p-5 text-muted">此月份無資料或查無結果</td></tr>';
+            mCards.innerHTML = '<div class="text-center p-5 text-muted">此月份無資料或查無結果</div>';
+            return;
+        }
+
+        const tableRows = [];
+        const mobileCards = [];
 
         currentData.forEach(row => {
             const safe = (v) => v || '';
@@ -316,9 +324,9 @@
             }
 
             // PC 表格列
-            const tr = document.createElement('tr');
-            if(urgent) tr.className = 'highlight-row';
-            tr.innerHTML = `
+            const urgentClass = urgent ? 'highlight-row' : '';
+            tableRows.push(`
+                <tr class="${urgentClass}">
                 <td>
                     <button class="btn btn-sm btn-outline-primary" onclick="editRecord('${row.id}')"><i class="fas fa-edit"></i></button>
                     <button class="btn btn-sm btn-outline-danger" onclick="deleteRecord('${row.id}', '${row.name}')"><i class="fas fa-trash"></i></button>
@@ -339,13 +347,12 @@
                 <td><span class="${statusV(row.list)}">${safe(row.list)}</span></td>
                 <td><span class="${statusV(row.simCard)}">${safe(row.simCard)}</span></td>
                 <td class="text-muted text-truncate" style="max-width:120px;">${safe(row.note)}</td>
-            `;
-            tbody.appendChild(tr);
+            </tr>`);
 
             // 手機版卡片
-            const card = document.createElement('div');
-            card.className = `mobile-card ${urgent ? 'urgent' : ''}`;
-            card.innerHTML = `
+            const mobileUrgentClass = urgent ? 'urgent' : '';
+            mobileCards.push(`
+            <div class="mobile-card ${mobileUrgentClass}">
                 <div class="d-flex justify-content-between align-items-start">
                     <div class="m-title">${safe(row.tour)}</div>
                     <span class="badge bg-primary">${safe(row.date)}</span>
@@ -365,9 +372,11 @@
                 <div class="text-end mt-3">
                     <button class="btn btn-sm btn-primary" onclick="editRecord('${row.id}')"><i class="fas fa-edit"></i> 編輯</button>
                 </div>
-            `;
-            mCards.appendChild(card);
+            </div>`);
         });
+
+        tbody.innerHTML = tableRows.join('');
+        mCards.innerHTML = mobileCards.join('');
     }
 
     // CRUD 邏輯
@@ -422,28 +431,54 @@
 
     // 待辦通知邏輯 (出發前3天 & 開票前7天名單)
     async function fetchNotifications() {
-        const today = new Date(); today.setHours(0,0,0,0);
-        const { data } = await sb.from(TABLE_NAME).select('*');
+        const today = new Date();
+        const threeDaysLater = new Date(today);
+        threeDaysLater.setDate(today.getDate() + 3);
+        const sevenDaysLater = new Date(today);
+        sevenDaysLater.setDate(today.getDate() + 7);
+
+        const todayStr = today.toISOString().split('T')[0];
+        const threeDaysLaterStr = threeDaysLater.toISOString().split('T')[0];
+        const sevenDaysLaterStr = sevenDaysLater.toISOString().split('T')[0];
+
+        // 使用 .or() 篩選出發預警或開票預警的記錄，大幅減少客戶端處理的數據量
+        const { data, error } = await sb.from(TABLE_NAME)
+            .select('name, tour, date, ticketingDate, deposit, balance, preTripNotify, list')
+            .or(
+                `and(date.gte.${todayStr},date.lte.${threeDaysLaterStr},or(deposit.neq.V,balance.neq.V,preTripNotify.neq.V))`,
+                `and(ticketingDate.gte.${todayStr},ticketingDate.lte.${sevenDaysLaterStr},list.neq.V)`
+            );
+
+        if (error) {
+            console.error("讀取待辦事項失敗:", error);
+            return;
+        }
+
         const list = document.getElementById('notifList');
         list.innerHTML = '';
         let count = 0;
+        const todayDateOnly = new Date(todayStr);
 
         data.forEach(row => {
             let issues = [];
             const depDate = row.date ? new Date(row.date) : null;
             const tickDate = row.ticketingDate ? new Date(row.ticketingDate) : null;
 
+            // 檢查出發預警
             if (depDate) {
-                const diff = (depDate - today) / 86400000;
+                const diff = (depDate - todayDateOnly) / 86400000;
                 if (diff >= 0 && diff <= 3) {
                     if (row.deposit !== 'V') issues.push("未收訂金");
                     if (row.balance !== 'V') issues.push("未收尾款");
                     if (row.preTripNotify !== 'V') issues.push("未發行前");
                 }
             }
+            // 檢查開票預警
             if (tickDate) {
-                const tDiff = (tickDate - today) / 86400000;
-                if (tDiff >= 0 && tDiff <= 7 && row.list !== 'V') issues.push("需入名單(開票預警)");
+                const tDiff = (tickDate - todayDateOnly) / 86400000;
+                if (tDiff >= 0 && tDiff <= 7 && row.list !== 'V' && !issues.includes("需入名單(開票預警)")) {
+                    issues.push("需入名單(開票預警)");
+                }
             }
 
             if (issues.length > 0) {
