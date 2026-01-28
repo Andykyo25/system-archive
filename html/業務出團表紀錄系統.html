@@ -3,9 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>業務出團管理系統 v7.0 (UI Optimized)</title>
+    <title>業務出團管理系統 v8.0 (Dashboard & Analysis)</title>
     <!-- 引入 Supabase JS -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
@@ -109,6 +110,33 @@
         </div>
     </div>
 
+    <!-- Dashboard Section -->
+    <div class="row mb-4">
+        <div class="col-lg-7 mb-4 mb-lg-0">
+            <div class="card h-100">
+                <div class="card-header d-flex justify-content-between align-items-center bg-white py-3">
+                    <h5 class="m-0 text-primary fw-bold"><i class="fas fa-chart-line me-2"></i>業績趨勢分析</h5>
+                    <select id="chart-year-selector" class="form-select form-select-sm" style="width: auto;" onchange="renderAll()"></select>
+                </div>
+                <div class="card-body">
+                    <canvas id="performanceChart"></canvas>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-5">
+            <div class="card h-100">
+                <div class="card-header bg-white py-3">
+                    <h5 class="m-0 text-primary fw-bold"><i class="fas fa-crown me-2"></i>客戶價值排行榜 (TOP 5)</h5>
+                </div>
+                <div class="card-body p-0">
+                    <div id="customerAnalysis" class="p-3">
+                        <!-- Customer lists will be injected here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- 輸入表單 -->
     <div class="card form-card">
         <div class="card-header" role="button" data-bs-toggle="collapse" data-bs-target="#formBody">
@@ -117,7 +145,7 @@
                 <i class="fas fa-chevron-down"></i>
             </div>
         </div>
-        <div id="formBody" class="collapse show">
+        <div id="formBody" class="collapse">
             <div class="card-body bg-light-subtle">
                 <form id="recordForm" onsubmit="event.preventDefault(); saveRecord();">
                     <input type="hidden" id="editId" value="">
@@ -233,6 +261,7 @@
     let sortAsc = true;
     let searchQuery = '';
     let isEditing = false; 
+    let performanceChartInstance = null;
 
     // 初始化
     window.onload = async function() {
@@ -302,6 +331,10 @@
         const tbody = document.getElementById('tableBody');
         const mCards = document.getElementById('mobileCards');
         const today = new Date(); today.setHours(0,0,0,0);
+
+        // 先渲染 Dashboard
+        renderPerformanceDashboard();
+        renderCustomerAnalysis();
 
         if (currentData.length === 0) {
             tbody.innerHTML = '<tr><td colspan="17" class="text-center p-5 text-muted">此月份無資料或查無結果</td></tr>';
@@ -501,6 +534,120 @@
         document.getElementById('noNotifMsg').style.display = count === 0 ? 'block' : 'none';
     }
 
+    // Dashboard 渲染
+    function renderPerformanceDashboard() {
+        if (performanceChartInstance) {
+            performanceChartInstance.destroy();
+        }
+
+        const yearSelector = document.getElementById('chart-year-selector');
+        const selectedYear = yearSelector.value;
+        if (!selectedYear) return;
+
+        const yearlyData = currentData.filter(r => r.date && r.date.startsWith(selectedYear));
+
+        const monthlyData = Array(12).fill(0).map(() => ({ est: 0, act: 0 }));
+
+        yearlyData.forEach(row => {
+            const month = new Date(row.date).getMonth();
+            monthlyData[month].est += Number(row.estRev) || 0;
+            monthlyData[month].act += Number(row.actRev) || 0;
+        });
+
+        const ctx = document.getElementById('performanceChart').getContext('2d');
+        performanceChartInstance = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'],
+                datasets: [
+                    {
+                        label: '預估業績',
+                        data: monthlyData.map(d => d.est),
+                        backgroundColor: 'rgba(88, 163, 235, 0.6)',
+                        borderColor: 'rgba(88, 163, 235, 1)',
+                        borderWidth: 1
+                    },
+                    {
+                        label: '實際業績',
+                        data: monthlyData.map(d => d.act),
+                        backgroundColor: 'rgba(25, 135, 84, 0.6)',
+                        borderColor: 'rgba(25, 135, 84, 1)',
+                        borderWidth: 1
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            callback: function(value) { return value.toLocaleString() + ' 元'; }
+                        }
+                    }
+                },
+                plugins: {
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                let label = context.dataset.label || '';
+                                if (label) { label += ': '; }
+                                if (context.parsed.y !== null) { label += context.parsed.y.toLocaleString() + ' 元';}
+                                return label;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    function renderCustomerAnalysis() {
+        const customerData = {};
+        const dataToAnalyze = (currentTab === 'ALL') ? currentData : currentData.filter(r => r.date && r.date.startsWith(currentTab));
+
+        dataToAnalyze.forEach(row => {
+            if(!row.name) return;
+            const name = row.name.trim();
+            if (!customerData[name]) {
+                customerData[name] = { count: 0, revenue: 0 };
+            }
+            customerData[name].count++;
+            customerData[name].revenue += Number(row.actRev) || 0;
+        });
+
+        const sortedByRevenue = Object.entries(customerData).sort(([, a], [, b]) => b.revenue - a.revenue).slice(0, 5);
+        const sortedByCount = Object.entries(customerData).sort(([, a], [, b]) => b.count - a.count).slice(0, 5);
+
+        const generateListHTML = (data, valueKey, unit) => {
+            let html = '<ul class="list-group list-group-flush">';
+            if (data.length === 0) {
+                return '<div class="text-center text-muted p-4">無客戶資料</div>';
+            }
+            data.forEach(([name, values], index) => {
+                const value = (valueKey === 'revenue') ? values[valueKey].toLocaleString() : values[valueKey];
+                const icon = index === 0 ? '<i class="fas fa-trophy text-warning me-2"></i>' : `<span class="fw-bold me-2" style="width:1.2em; display: inline-block; text-align: center;">${index + 1}</span>`;
+                html += `<li class="list-group-item d-flex justify-content-between align-items-center small p-2">${icon}<span class="text-truncate" title="${name}">${name}</span><span class="badge bg-light text-primary rounded-pill">${value} ${unit}</span></li>`;
+            });
+            html += '</ul>';
+            return html;
+        };
+
+        const analysisContainer = document.getElementById('customerAnalysis');
+        analysisContainer.innerHTML = `
+            <div class="row m-0">
+                <div class="col-md-6 p-1">
+                    <h6 class="small text-center fw-bold"><i class="fas fa-dollar-sign text-success me-1"></i>貢獻金額排行</h6>
+                    ${generateListHTML(sortedByRevenue, 'revenue', '元')}
+                </div>
+                <div class="col-md-6 p-1 mt-3 mt-md-0">
+                    <h6 class="small text-center fw-bold"><i class="fas fa-users text-info me-1"></i>成交次數排行</h6>
+                    ${generateListHTML(sortedByCount, 'count', '次')}
+                </div>
+            </div>`;
+    }
+
     // 其他功能
     function resetForm() { 
         document.getElementById('recordForm').reset(); 
@@ -512,7 +659,7 @@
     
     function debounceSearch() { 
         clearTimeout(window.t); 
-        window.t = setTimeout(loadData, 500); 
+        window.t = setTimeout(() => { searchQuery = document.getElementById('searchInput').value; loadData(); }, 500); 
     }
 
     function sortData(col) { 
@@ -532,17 +679,41 @@
 
     async function renderTabs() {
         const { data } = await sb.from(TABLE_NAME).select('date');
-        const months = [...new Set(data.map(r => r.date ? r.date.substring(0,7) : null).filter(x=>x))].sort();
-        const container = document.getElementById('monthTabs');
-        container.innerHTML = `<li class="nav-item"><button class="nav-link ${currentTab==='ALL'?'active':''}" onclick="currentTab='ALL';renderTabs();loadData();">全部數據</button></li>`;
+        const dates = data.map(r => r.date).filter(x => x);
+        const months = [...new Set(dates.map(d => d.substring(0, 7)))].sort().reverse();
+        const years = [...new Set(dates.map(d => d.substring(0, 4)))].sort().reverse();
+
+        const monthContainer = document.getElementById('monthTabs');
+        let monthTabsHtml = `<li class="nav-item"><button class="nav-link ${currentTab==='ALL'?'active':''}" onclick="currentTab='ALL';renderTabs();loadData();">全部數據</button></li>`;
         months.forEach(m => {
-            container.innerHTML += `<li class="nav-item"><button class="nav-link ${currentTab===m?'active':''}" onclick="currentTab='${m}';renderTabs();loadData();">${m}</button></li>`;
+            monthTabsHtml += `<li class="nav-item"><button class="nav-link ${currentTab===m?'active':''}" onclick="currentTab='${m}';renderTabs();loadData();">${m}</button></li>`;
         });
+        monthContainer.innerHTML = monthTabsHtml;
+        
+        const yearSelector = document.getElementById('chart-year-selector');
+        const currentSelectedYear = yearSelector.value;
+        const currentYear = new Date().getFullYear().toString();
+        
+        let yearOptionsHtml = '';
+        years.forEach(y => {
+            yearOptionsHtml += `<option value="${y}">${y}年</option>`;
+        });
+        yearSelector.innerHTML = yearOptionsHtml;
+
+        if (currentSelectedYear && years.includes(currentSelectedYear)) {
+            yearSelector.value = currentSelectedYear;
+        } else if (years.includes(currentYear)) {
+            yearSelector.value = currentYear;
+        }
     }
 
     function setupRealtime() {
         sb.channel('public:sales_records').on('postgres_changes', { event: '*', schema: 'public', table: TABLE_NAME }, () => {
-            if(!isEditing) loadData(); fetchNotifications();
+            if(!isEditing) { 
+                Promise.all([loadData(), renderTabs()]).then(() => {
+                    fetchNotifications();
+                });
+            }
         }).subscribe();
     }
 
