@@ -1,0 +1,719 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="曼谷超值無購物6日 - 找到了旅行社 Yui 推薦，$15,900起含稅，免小費，全程無購物">
+    <title>曼谷超值無購物6日 | 找到了旅行社</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700;900&display=swap"
+        rel="stylesheet">
+    <style>
+        :root {
+            --primary-color: #e91e8c;
+            --primary-dark: #c4177a;
+            --accent-color: #ff6b6b;
+            --accent-warm: #feca57;
+            --text-dark: #2d3436;
+            --text-light: #636e72;
+            --bg-light: #f8f9fa;
+            --card-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+            --transition: all 0.3s ease;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Noto Sans TC', sans-serif;
+            color: var(--text-dark);
+            line-height: 1.6;
+        }
+
+        /* Navigation */
+        .navbar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 1000;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(20px);
+            box-shadow: 0 2px 20px rgba(0, 0, 0, 0.08);
+        }
+
+        .nav-container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 0 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            height: 70px;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            text-decoration: none;
+        }
+
+        .logo img {
+            height: 50px;
+        }
+
+        .logo-text {
+            font-size: 1.2rem;
+            font-weight: 700;
+            color: var(--primary-color);
+        }
+
+        .back-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 20px;
+            background: var(--primary-color);
+            color: white;
+            text-decoration: none;
+            border-radius: 50px;
+            font-weight: 500;
+            transition: var(--transition);
+        }
+
+        .back-btn:hover {
+            background: var(--primary-dark);
+            transform: translateY(-2px);
+        }
+
+        /* Hero */
+        .hero {
+            padding-top: 70px;
+            height: 60vh;
+            min-height: 400px;
+            background: linear-gradient(135deg, #ff6b6b 0%, #feca57 50%, #ff9f43 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .hero::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">🇹🇭</text></svg>') center/contain no-repeat;
+            opacity: 0.1;
+        }
+
+        .hero-content {
+            text-align: center;
+            color: white;
+            z-index: 1;
+            padding: 2rem;
+        }
+
+        .hero-badge {
+            display: inline-block;
+            background: rgba(255, 255, 255, 0.2);
+            padding: 8px 20px;
+            border-radius: 50px;
+            font-size: 0.9rem;
+            margin-bottom: 1rem;
+        }
+
+        .hero h1 {
+            font-size: clamp(2rem, 5vw, 3.5rem);
+            font-weight: 900;
+            margin-bottom: 1rem;
+        }
+
+        .hero-price {
+            font-size: 2.5rem;
+            font-weight: 900;
+            background: white;
+            color: var(--accent-color);
+            padding: 10px 30px;
+            border-radius: 20px;
+            display: inline-block;
+            margin: 1rem 0;
+        }
+
+        .hero-features {
+            display: flex;
+            justify-content: center;
+            gap: 1.5rem;
+            flex-wrap: wrap;
+            margin-top: 1rem;
+        }
+
+        .hero-features span {
+            background: rgba(255, 255, 255, 0.2);
+            padding: 8px 16px;
+            border-radius: 50px;
+        }
+
+        /* Content */
+        .content {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 4rem 2rem;
+        }
+
+        .section {
+            margin-bottom: 4rem;
+        }
+
+        .section-title {
+            font-size: 1.8rem;
+            font-weight: 700;
+            margin-bottom: 2rem;
+            padding-bottom: 1rem;
+            border-bottom: 3px solid var(--primary-color);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        /* Highlights */
+        .highlights-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1.5rem;
+        }
+
+        .highlight-card {
+            background: white;
+            border-radius: 20px;
+            padding: 2rem;
+            box-shadow: var(--card-shadow);
+            transition: var(--transition);
+        }
+
+        .highlight-card:hover {
+            transform: translateY(-5px);
+        }
+
+        .highlight-icon {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+        }
+
+        .highlight-title {
+            font-size: 1.2rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+        }
+
+        .highlight-desc {
+            color: var(--text-light);
+        }
+
+        /* Pricing */
+        .pricing-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 1.5rem;
+        }
+
+        .price-card {
+            background: white;
+            border-radius: 20px;
+            overflow: hidden;
+            box-shadow: var(--card-shadow);
+            transition: var(--transition);
+        }
+
+        .price-card:hover {
+            transform: scale(1.02);
+        }
+
+        .price-card.featured {
+            border: 3px solid var(--primary-color);
+        }
+
+        .price-header {
+            background: linear-gradient(135deg, var(--primary-color) 0%, var(--accent-color) 100%);
+            color: white;
+            padding: 1.5rem;
+            text-align: center;
+        }
+
+        .price-badge {
+            display: inline-block;
+            background: rgba(255, 255, 255, 0.2);
+            padding: 5px 15px;
+            border-radius: 20px;
+            margin-bottom: 0.5rem;
+        }
+
+        .price-amount {
+            font-size: 2.5rem;
+            font-weight: 900;
+        }
+
+        .price-amount span {
+            font-size: 1rem;
+        }
+
+        .price-body {
+            padding: 1.5rem;
+        }
+
+        .price-dates {
+            margin-bottom: 1rem;
+        }
+
+        .price-dates strong {
+            display: block;
+            margin-bottom: 0.5rem;
+            color: var(--text-dark);
+        }
+
+        .date-tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+        }
+
+        .date-tag {
+            background: var(--bg-light);
+            padding: 4px 10px;
+            border-radius: 5px;
+            font-size: 0.85rem;
+        }
+
+        .book-btn {
+            display: block;
+            width: 100%;
+            padding: 15px;
+            background: var(--primary-color);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 1.1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: var(--transition);
+        }
+
+        .book-btn:hover {
+            background: var(--primary-dark);
+        }
+
+        /* Itinerary */
+        .itinerary-list {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .itinerary-item {
+            display: flex;
+            gap: 1.5rem;
+            padding: 1.5rem;
+            background: white;
+            border-radius: 15px;
+            box-shadow: var(--card-shadow);
+        }
+
+        .day-badge {
+            width: 60px;
+            height: 60px;
+            background: var(--primary-color);
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+
+        .day-badge span:first-child {
+            font-size: 0.7rem;
+        }
+
+        .day-badge span:last-child {
+            font-size: 1.5rem;
+            font-weight: 700;
+        }
+
+        .itinerary-content h4 {
+            font-size: 1.1rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .itinerary-content p {
+            color: var(--text-light);
+        }
+
+        /* Includes */
+        .includes-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+        }
+
+        .include-box {
+            background: white;
+            border-radius: 15px;
+            padding: 2rem;
+            box-shadow: var(--card-shadow);
+        }
+
+        .include-box h4 {
+            font-size: 1.2rem;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .include-box ul {
+            list-style: none;
+        }
+
+        .include-box li {
+            padding: 0.5rem 0;
+            padding-left: 1.5rem;
+            position: relative;
+        }
+
+        .include-box.included li::before {
+            content: '✓';
+            position: absolute;
+            left: 0;
+            color: #27ae60;
+            font-weight: bold;
+        }
+
+        .include-box.not-included li::before {
+            content: '✗';
+            position: absolute;
+            left: 0;
+            color: #e74c3c;
+        }
+
+        /* CTA */
+        .cta-section {
+            background: linear-gradient(135deg, var(--primary-color) 0%, var(--accent-color) 100%);
+            padding: 4rem 2rem;
+            text-align: center;
+            color: white;
+            border-radius: 30px;
+            margin: 2rem 0;
+        }
+
+        .cta-section h2 {
+            font-size: 2rem;
+            margin-bottom: 1rem;
+        }
+
+        .cta-section p {
+            font-size: 1.2rem;
+            margin-bottom: 2rem;
+            opacity: 0.9;
+        }
+
+        .cta-buttons {
+            display: flex;
+            justify-content: center;
+            gap: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .cta-btn {
+            padding: 15px 35px;
+            border-radius: 50px;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 1.1rem;
+            transition: var(--transition);
+        }
+
+        .cta-btn-primary {
+            background: white;
+            color: var(--primary-color);
+        }
+
+        .cta-btn-secondary {
+            background: transparent;
+            color: white;
+            border: 2px solid white;
+        }
+
+        .cta-btn:hover {
+            transform: scale(1.05);
+        }
+
+        /* Footer */
+        .footer {
+            background: #1a1a2e;
+            color: white;
+            padding: 3rem 2rem;
+            text-align: center;
+        }
+
+        .footer p {
+            opacity: 0.7;
+            margin-top: 1rem;
+        }
+
+        @media (max-width: 768px) {
+            .hero {
+                height: 50vh;
+            }
+
+            .itinerary-item {
+                flex-direction: column;
+                gap: 1rem;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <nav class="navbar">
+        <div class="nav-container">
+            <a href="yuitravel-official.html" class="logo">
+                <img src="images/logo.png" alt="找到了旅行社" onerror="this.style.display='none'">
+                <span class="logo-text">找到了旅行社</span>
+            </a>
+            <a href="yuitravel-official.html" class="back-btn">← 返回首頁</a>
+        </div>
+    </nav>
+
+    <section class="hero">
+        <div class="hero-content">
+            <span class="hero-badge">🇹🇭 泰國 • 6天5夜 • 泰越捷航空</span>
+            <h1>曼谷超值無購物6日</h1>
+            <div class="hero-price">$15,900 <span>起/含稅</span></div>
+            <div class="hero-features">
+                <span>🎁 免領隊小費</span>
+                <span>🎁 免司機小費</span>
+                <span>🎁 免導遊小費</span>
+                <span>🚫 全程無購物</span>
+            </div>
+        </div>
+    </section>
+
+    <div class="content">
+        <!-- Highlights -->
+        <section class="section">
+            <h2 class="section-title">🌈 超值必玩亮點</h2>
+            <div class="highlights-grid">
+                <div class="highlight-card">
+                    <div class="highlight-icon">🐘</div>
+                    <h3 class="highlight-title">東芭樂園</h3>
+                    <p class="highlight-desc">泰國文化表演＋大象表演一次看</p>
+                </div>
+                <div class="highlight-card">
+                    <div class="highlight-icon">🏛️</div>
+                    <h3 class="highlight-title">暹羅76府古城</h3>
+                    <p class="highlight-desc">一日環遊泰國經典建築</p>
+                </div>
+                <div class="highlight-card">
+                    <div class="highlight-icon">🛶</div>
+                    <h3 class="highlight-title">華麗室內水上市場</h3>
+                    <p class="highlight-desc">🎁 泡泡馬特全球限定店必逛</p>
+                </div>
+                <div class="highlight-card">
+                    <div class="highlight-icon">💗</div>
+                    <h3 class="highlight-title">TUTU Beach</h3>
+                    <p class="highlight-desc">粉紅系海景咖啡廳，拍照超夢幻</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Pricing -->
+        <section class="section">
+            <h2 class="section-title">💰 出發日期與價格</h2>
+            <div class="pricing-grid">
+                <div class="price-card featured">
+                    <div class="price-header">
+                        <span class="price-badge">🔥 超值首選</span>
+                        <div class="price-amount">$15,900 <span>起/人</span></div>
+                    </div>
+                    <div class="price-body">
+                        <div class="price-dates">
+                            <strong>4月出發</strong>
+                            <div class="date-tags">
+                                <span class="date-tag">04/08</span>
+                                <span class="date-tag">04/15</span>
+                                <span class="date-tag">04/22</span>
+                                <span class="date-tag">04/24</span>
+                            </div>
+                        </div>
+                        <button class="book-btn" onclick="alert('請撥打 (02)7729-0729 或加LINE諮詢報名！')">立即報名</button>
+                    </div>
+                </div>
+                <div class="price-card">
+                    <div class="price-header" style="background: linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%);">
+                        <span class="price-badge">熱銷中</span>
+                        <div class="price-amount">$17,900 <span>起/人</span></div>
+                    </div>
+                    <div class="price-body">
+                        <div class="price-dates">
+                            <strong>5-6月、8-9月出發</strong>
+                            <div class="date-tags">
+                                <span class="date-tag">05/06</span>
+                                <span class="date-tag">05/08</span>
+                                <span class="date-tag">05/13</span>
+                                <span class="date-tag">05/15</span>
+                                <span class="date-tag">更多日期...</span>
+                            </div>
+                        </div>
+                        <button class="book-btn" onclick="alert('請撥打 (02)7729-0729 或加LINE諮詢報名！')">立即報名</button>
+                    </div>
+                </div>
+                <div class="price-card">
+                    <div class="price-header" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+                        <span class="price-badge">🌴 暑假出發</span>
+                        <div class="price-amount">$19,900 <span>起/人</span></div>
+                    </div>
+                    <div class="price-body">
+                        <div class="price-dates">
+                            <strong>6/24-8/21 暑假檔期</strong>
+                            <div class="date-tags">
+                                <span class="date-tag">06/24</span>
+                                <span class="date-tag">07/01</span>
+                                <span class="date-tag">07/15</span>
+                                <span class="date-tag">08/05</span>
+                                <span class="date-tag">更多日期...</span>
+                            </div>
+                        </div>
+                        <button class="book-btn" onclick="alert('請撥打 (02)7729-0729 或加LINE諮詢報名！')">立即報名</button>
+                    </div>
+                </div>
+                <div class="price-card">
+                    <div class="price-header"
+                        style="background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%); color: #333;">
+                        <span class="price-badge" style="background: rgba(0,0,0,0.1);">🍂 秋季優惠</span>
+                        <div class="price-amount">$18,900 <span>起/人</span></div>
+                    </div>
+                    <div class="price-body">
+                        <div class="price-dates">
+                            <strong>秋季出發</strong>
+                            <div class="date-tags">
+                                <span class="date-tag">09/30</span>
+                                <span class="date-tag">10/02</span>
+                                <span class="date-tag">10/14</span>
+                                <span class="date-tag">10/16</span>
+                                <span class="date-tag">10/21</span>
+                            </div>
+                        </div>
+                        <button class="book-btn" onclick="alert('請撥打 (02)7729-0729 或加LINE諮詢報名！')">立即報名</button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Itinerary -->
+        <section class="section">
+            <h2 class="section-title">📅 行程安排</h2>
+            <div class="itinerary-list">
+                <div class="itinerary-item">
+                    <div class="day-badge"><span>DAY</span><span>1</span></div>
+                    <div class="itinerary-content">
+                        <h4>台北 → 曼谷</h4>
+                        <p>搭乘泰越捷航空前往曼谷，抵達後專車接機，入住飯店休息。</p>
+                    </div>
+                </div>
+                <div class="itinerary-item">
+                    <div class="day-badge"><span>DAY</span><span>2</span></div>
+                    <div class="itinerary-content">
+                        <h4>東芭樂園 → 七珍佛山 → 九世皇廟</h4>
+                        <p>上午前往東芭樂園觀賞泰國傳統文化表演及大象表演，下午參觀七珍佛山、九世皇廟。</p>
+                    </div>
+                </div>
+                <div class="itinerary-item">
+                    <div class="day-badge"><span>DAY</span><span>3</span></div>
+                    <div class="itinerary-content">
+                        <h4>暹羅76府古城 → 華麗室內水上市場</h4>
+                        <p>全日暢遊暹羅古城，一次看遍泰國76府經典建築，下午前往華麗室內水上市場及泡泡馬特全球限定店。</p>
+                    </div>
+                </div>
+                <div class="itinerary-item">
+                    <div class="day-badge"><span>DAY</span><span>4</span></div>
+                    <div class="itinerary-content">
+                        <h4>TUTU Beach → ICONSIAM暹邏天地</h4>
+                        <p>上午前往網美必拍TUTU Beach粉紅海景咖啡廳，下午至ICONSIAM暹邏天地自由購物。</p>
+                    </div>
+                </div>
+                <div class="itinerary-item">
+                    <div class="day-badge"><span>DAY</span><span>5</span></div>
+                    <div class="itinerary-content">
+                        <h4>美軍不夜城 → Terminal 21 → 河濱夜市</h4>
+                        <p>上午自由活動，下午前往Terminal 21購物中心，晚上逛河濱夜市品嚐泰式美食。</p>
+                    </div>
+                </div>
+                <div class="itinerary-item">
+                    <div class="day-badge"><span>DAY</span><span>6</span></div>
+                    <div class="itinerary-content">
+                        <h4>曼谷 → 台北</h4>
+                        <p>享用飯店早餐後，專車送機，搭機返回溫暖的家。</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Includes -->
+        <section class="section">
+            <h2 class="section-title">📋 費用說明</h2>
+            <div class="includes-grid">
+                <div class="include-box included">
+                    <h4>✅ 團費包含</h4>
+                    <ul>
+                        <li>來回機票（含稅金、燃油附加費）</li>
+                        <li>全程飯店住宿5晚</li>
+                        <li>行程所列餐食</li>
+                        <li>行程所列景點門票</li>
+                        <li>全程專車接送</li>
+                        <li>200萬旅遊責任險+20萬醫療險</li>
+                        <li>領隊、司機、導遊小費全免</li>
+                    </ul>
+                </div>
+                <div class="include-box not-included">
+                    <h4>❌ 團費不含</h4>
+                    <ul>
+                        <li>護照申辦費用</li>
+                        <li>個人消費（電話、洗衣、飲料等）</li>
+                        <li>行程外自費項目</li>
+                        <li>單人房差價</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- CTA -->
+        <section class="cta-section">
+            <h2>👉 名額有限，看到價格就該出手！</h2>
+            <p>現在不報，真的會後悔 🇹🇭💕</p>
+            <div class="cta-buttons">
+                <a href="tel:02-77290729" class="cta-btn cta-btn-primary">📞 (02)7729-0729</a>
+                <a href="#" class="cta-btn cta-btn-secondary">📱 LINE 諮詢</a>
+            </div>
+        </section>
+    </div>
+
+    <footer class="footer">
+        <div class="logo-text">找到了旅行社</div>
+        <p>找到了旅行社股份有限公司 │ 綜合旅行社 │ 交觀綜字222700號 │ 品保北2738號</p>
+        <p>地址：台北市內湖區內湖路一段120巷15弄25號3樓 │ 電話：(02)7729-0729</p>
+    </footer>
+
+    <script src="tours-data.js"></script>
+</body>
+
+</html>

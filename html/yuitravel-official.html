@@ -1,0 +1,1874 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="找到了旅行社 - Yui 專業規劃日本、韓國、歐洲等全球精選跟團旅遊行程，品質保證，帶您輕鬆探索世界的美好。">
+    <meta name="keywords" content="旅行社, 找到了旅行社, Yui, 日本旅遊, 歐洲旅遊, 韓國旅遊, 跟團旅遊">
+    <title>找到了旅行社 | Yui 為您打造完美旅程</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700;900&display=swap"
+        rel="stylesheet">
+    <style>
+        :root {
+            --primary-color: #e91e8c;
+            --primary-dark: #c4177a;
+            --primary-light: #ff69b4;
+            --accent-color: #ff6b6b;
+            --accent-warm: #feca57;
+            --text-dark: #2d3436;
+            --text-light: #636e72;
+            --bg-light: #f8f9fa;
+            --bg-gradient: linear-gradient(135deg, #e91e8c 0%, #ff69b4 100%);
+            --card-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+            --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Noto Sans TC', sans-serif;
+            color: var(--text-dark);
+            line-height: 1.6;
+            overflow-x: hidden;
+        }
+
+        /* === NAVIGATION === */
+        .navbar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 1000;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(20px);
+            box-shadow: 0 2px 20px rgba(0, 0, 0, 0.08);
+            transition: var(--transition);
+        }
+
+        .navbar.scrolled {
+            background: rgba(255, 255, 255, 0.98);
+            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.12);
+        }
+
+        .nav-container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 0 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            height: 80px;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            text-decoration: none;
+        }
+
+        .logo-img {
+            height: 55px;
+            width: auto;
+        }
+
+        .logo-text {
+            font-size: 1.3rem;
+            font-weight: 700;
+            color: var(--primary-color);
+            letter-spacing: 1px;
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 2rem;
+            list-style: none;
+        }
+
+        .nav-links a {
+            text-decoration: none;
+            color: var(--text-dark);
+            font-weight: 500;
+            font-size: 0.95rem;
+            padding: 0.5rem 0;
+            position: relative;
+            transition: var(--transition);
+        }
+
+        .nav-links a::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 0;
+            height: 2px;
+            background: var(--bg-gradient);
+            transition: var(--transition);
+        }
+
+        .nav-links a:hover {
+            color: var(--primary-color);
+        }
+
+        .nav-links a:hover::after {
+            width: 100%;
+        }
+
+        .nav-contact {
+            display: flex;
+            align-items: center;
+            gap: 1.5rem;
+        }
+
+        .line-btn {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: #00B900;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 50px;
+            text-decoration: none;
+            font-weight: 500;
+            font-size: 0.9rem;
+            transition: var(--transition);
+        }
+
+        .line-btn:hover {
+            background: #00a000;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(0, 185, 0, 0.3);
+        }
+
+        .menu-toggle {
+            display: none;
+            flex-direction: column;
+            gap: 5px;
+            cursor: pointer;
+            padding: 10px;
+        }
+
+        .menu-toggle span {
+            width: 25px;
+            height: 3px;
+            background: var(--primary-color);
+            border-radius: 3px;
+            transition: var(--transition);
+        }
+
+        /* === HERO SLIDER === */
+        .hero-section {
+            height: 100vh;
+            min-height: 700px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .hero-slider {
+            position: relative;
+            width: 100%;
+            height: 100%;
+        }
+
+        .slide {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            opacity: 0;
+            transition: opacity 1s ease-in-out;
+        }
+
+        .slide.active {
+            opacity: 1;
+        }
+
+        .slide-bg {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-size: cover;
+            background-position: center;
+            filter: brightness(0.7);
+        }
+
+        .slide:nth-child(1) .slide-bg {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+        }
+
+        .slide:nth-child(2) .slide-bg {
+            background: linear-gradient(135deg, #2d3436 0%, #636e72 50%, #b2bec3 100%);
+        }
+
+        .slide:nth-child(3) .slide-bg {
+            background: linear-gradient(135deg, #0c3547 0%, #1a5276 50%, #2471a3 100%);
+        }
+
+        .slide-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(to bottom, rgba(0, 0, 0, 0.3) 0%, rgba(0, 0, 0, 0.5) 100%);
+        }
+
+        .slide-content {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            color: white;
+            z-index: 10;
+            width: 90%;
+            max-width: 900px;
+        }
+
+        .slide-tag {
+            display: inline-block;
+            background: rgba(255, 255, 255, 0.2);
+            backdrop-filter: blur(10px);
+            padding: 8px 24px;
+            border-radius: 50px;
+            font-size: 0.9rem;
+            margin-bottom: 1.5rem;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+
+        .slide-title {
+            font-size: clamp(2.5rem, 6vw, 4.5rem);
+            font-weight: 900;
+            margin-bottom: 1rem;
+            text-shadow: 2px 4px 20px rgba(0, 0, 0, 0.3);
+            letter-spacing: 3px;
+        }
+
+        .slide-desc {
+            font-size: 1.2rem;
+            opacity: 0.9;
+            margin-bottom: 2.5rem;
+            line-height: 1.8;
+        }
+
+        .slide-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            padding: 16px 40px;
+            background: white;
+            color: var(--primary-color);
+            text-decoration: none;
+            border-radius: 50px;
+            font-weight: 600;
+            font-size: 1rem;
+            transition: var(--transition);
+        }
+
+        .slide-btn:hover {
+            background: var(--primary-color);
+            color: white;
+            transform: scale(1.05);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+        }
+
+        .slider-nav {
+            position: absolute;
+            bottom: 80px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 12px;
+            z-index: 20;
+        }
+
+        .slider-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.4);
+            cursor: pointer;
+            transition: var(--transition);
+        }
+
+        .slider-dot.active {
+            background: white;
+            transform: scale(1.3);
+        }
+
+        .scroll-indicator {
+            position: absolute;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+            color: white;
+            font-size: 0.8rem;
+            opacity: 0.7;
+            animation: bounce 2s infinite;
+        }
+
+        @keyframes bounce {
+
+            0%,
+            100% {
+                transform: translateX(-50%) translateY(0);
+            }
+
+            50% {
+                transform: translateX(-50%) translateY(10px);
+            }
+        }
+
+        /* === TRAVEL TOOLS === */
+        .tools-section {
+            padding: 6rem 2rem;
+            background: var(--bg-light);
+        }
+
+        .section-container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .section-header {
+            text-align: center;
+            margin-bottom: 4rem;
+        }
+
+        .section-tag {
+            display: inline-block;
+            background: var(--bg-gradient);
+            color: white;
+            padding: 8px 24px;
+            border-radius: 50px;
+            font-size: 0.85rem;
+            font-weight: 500;
+            margin-bottom: 1rem;
+        }
+
+        .section-title {
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: var(--text-dark);
+            margin-bottom: 1rem;
+        }
+
+        .section-desc {
+            color: var(--text-light);
+            font-size: 1.1rem;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        .tools-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 2rem;
+        }
+
+        .tool-card {
+            background: white;
+            border-radius: 20px;
+            padding: 2.5rem;
+            text-align: center;
+            box-shadow: var(--card-shadow);
+            transition: var(--transition);
+            cursor: pointer;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .tool-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: var(--bg-gradient);
+            transform: scaleX(0);
+            transition: var(--transition);
+        }
+
+        .tool-card:hover {
+            transform: translateY(-10px);
+        }
+
+        .tool-card:hover::before {
+            transform: scaleX(1);
+        }
+
+        .tool-icon {
+            width: 80px;
+            height: 80px;
+            margin: 0 auto 1.5rem;
+            background: linear-gradient(135deg, #f5f7fa 0%, #e4e8ec 100%);
+            border-radius: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2.5rem;
+            transition: var(--transition);
+        }
+
+        .tool-card:hover .tool-icon {
+            background: var(--bg-gradient);
+            transform: scale(1.1) rotate(5deg);
+        }
+
+        .tool-card:hover .tool-icon span {
+            filter: brightness(10);
+        }
+
+        .tool-title {
+            font-size: 1.3rem;
+            font-weight: 600;
+            margin-bottom: 0.8rem;
+            color: var(--text-dark);
+        }
+
+        .tool-desc {
+            color: var(--text-light);
+            font-size: 0.95rem;
+        }
+
+        /* === POPULAR TOURS === */
+        .tours-section {
+            padding: 6rem 2rem;
+            background: white;
+        }
+
+        .tours-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 2rem;
+        }
+
+        .tour-card {
+            background: white;
+            border-radius: 24px;
+            overflow: hidden;
+            box-shadow: var(--card-shadow);
+            transition: var(--transition);
+            position: relative;
+        }
+
+        .tour-card:hover {
+            transform: translateY(-10px);
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
+        }
+
+        .tour-image {
+            height: 220px;
+            background-size: cover;
+            background-position: center;
+            position: relative;
+        }
+
+        .tour-badge {
+            position: absolute;
+            top: 16px;
+            left: 16px;
+            background: var(--accent-color);
+            color: white;
+            padding: 6px 16px;
+            border-radius: 50px;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+
+        .tour-price-badge {
+            position: absolute;
+            bottom: 16px;
+            right: 16px;
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(10px);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 12px;
+        }
+
+        .tour-price-badge .price {
+            font-size: 1.3rem;
+            font-weight: 700;
+            color: var(--accent-warm);
+        }
+
+        .tour-price-badge .text {
+            font-size: 0.75rem;
+            opacity: 0.8;
+        }
+
+        .tour-content {
+            padding: 1.5rem 2rem 2rem;
+        }
+
+        .tour-destination {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            color: var(--primary-color);
+            font-size: 0.85rem;
+            font-weight: 500;
+            margin-bottom: 0.8rem;
+        }
+
+        .tour-title {
+            font-size: 1.15rem;
+            font-weight: 600;
+            color: var(--text-dark);
+            margin-bottom: 1rem;
+            line-height: 1.5;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+
+        .tour-info {
+            display: flex;
+            gap: 1.5rem;
+            color: var(--text-light);
+            font-size: 0.9rem;
+        }
+
+        .tour-info span {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        /* === DESTINATIONS === */
+        .destinations-section {
+            padding: 6rem 2rem;
+            background: linear-gradient(135deg, #1a5f7a 0%, #0d4a61 100%);
+            color: white;
+        }
+
+        .destinations-section .section-title {
+            color: white;
+        }
+
+        .destinations-section .section-desc {
+            color: rgba(255, 255, 255, 0.8);
+        }
+
+        .destinations-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 1.5rem;
+        }
+
+        .destination-card {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 2rem 1.5rem;
+            text-align: center;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            transition: var(--transition);
+            cursor: pointer;
+        }
+
+        .destination-card:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: translateY(-8px);
+        }
+
+        .destination-flag {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+        }
+
+        .destination-name {
+            font-size: 1.2rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+        }
+
+        .destination-count {
+            font-size: 0.85rem;
+            opacity: 0.7;
+        }
+
+        /* === ABOUT YUI === */
+        .about-section {
+            padding: 6rem 2rem;
+            background: var(--bg-light);
+        }
+
+        .about-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 4rem;
+            align-items: center;
+        }
+
+        .about-image {
+            position: relative;
+        }
+
+        .about-image-main {
+            width: 100%;
+            height: 500px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 8rem;
+            box-shadow: var(--card-shadow);
+        }
+
+        .about-badge {
+            position: absolute;
+            bottom: -30px;
+            right: -30px;
+            background: white;
+            padding: 1.5rem 2rem;
+            border-radius: 20px;
+            box-shadow: var(--card-shadow);
+            text-align: center;
+        }
+
+        .about-badge-number {
+            font-size: 2.5rem;
+            font-weight: 900;
+            color: var(--primary-color);
+        }
+
+        .about-badge-text {
+            font-size: 0.9rem;
+            color: var(--text-light);
+        }
+
+        .about-content h2 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 1.5rem;
+            color: var(--text-dark);
+        }
+
+        .about-content p {
+            color: var(--text-light);
+            font-size: 1.1rem;
+            line-height: 1.8;
+            margin-bottom: 2rem;
+        }
+
+        .about-features {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .about-feature {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .about-feature-icon {
+            width: 40px;
+            height: 40px;
+            background: var(--bg-gradient);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 1.2rem;
+        }
+
+        .about-feature-text {
+            font-weight: 500;
+            color: var(--text-dark);
+        }
+
+        .contact-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            padding: 16px 32px;
+            background: var(--bg-gradient);
+            color: white;
+            text-decoration: none;
+            border-radius: 50px;
+            font-weight: 600;
+            transition: var(--transition);
+        }
+
+        .contact-btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 10px 30px rgba(102, 126, 234, 0.4);
+        }
+
+        /* === CTA SECTION === */
+        .cta-section {
+            padding: 6rem 2rem;
+            background: var(--bg-gradient);
+            text-align: center;
+            color: white;
+        }
+
+        .cta-section h2 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+        }
+
+        .cta-section p {
+            font-size: 1.2rem;
+            opacity: 0.9;
+            margin-bottom: 2rem;
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .cta-buttons {
+            display: flex;
+            justify-content: center;
+            gap: 1.5rem;
+            flex-wrap: wrap;
+        }
+
+        .cta-btn {
+            padding: 16px 36px;
+            border-radius: 50px;
+            text-decoration: none;
+            font-weight: 600;
+            transition: var(--transition);
+        }
+
+        .cta-btn-primary {
+            background: white;
+            color: var(--primary-color);
+        }
+
+        .cta-btn-primary:hover {
+            transform: scale(1.05);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+        }
+
+        .cta-btn-secondary {
+            background: transparent;
+            color: white;
+            border: 2px solid white;
+        }
+
+        .cta-btn-secondary:hover {
+            background: white;
+            color: var(--primary-color);
+        }
+
+        /* === FOOTER === */
+        .footer {
+            background: #1a1a2e;
+            color: white;
+            padding: 5rem 2rem 2rem;
+        }
+
+        .footer-container {
+            max-width: 1400px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: 2fr 1fr 1fr 1fr;
+            gap: 3rem;
+        }
+
+        .footer-brand p {
+            color: rgba(255, 255, 255, 0.7);
+            margin-top: 1.5rem;
+            line-height: 1.8;
+        }
+
+        .footer-social {
+            display: flex;
+            gap: 1rem;
+            margin-top: 1.5rem;
+        }
+
+        .footer-social a {
+            width: 45px;
+            height: 45px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 1.2rem;
+            transition: var(--transition);
+        }
+
+        .footer-social a:hover {
+            background: var(--bg-gradient);
+            transform: translateY(-5px);
+        }
+
+        .footer-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            margin-bottom: 1.5rem;
+        }
+
+        .footer-links {
+            list-style: none;
+        }
+
+        .footer-links li {
+            margin-bottom: 0.8rem;
+        }
+
+        .footer-links a {
+            color: rgba(255, 255, 255, 0.7);
+            text-decoration: none;
+            transition: var(--transition);
+        }
+
+        .footer-links a:hover {
+            color: white;
+            padding-left: 5px;
+        }
+
+        .footer-bottom {
+            max-width: 1400px;
+            margin: 4rem auto 0;
+            padding-top: 2rem;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+
+        .footer-bottom p {
+            color: rgba(255, 255, 255, 0.5);
+            font-size: 0.9rem;
+        }
+
+        .footer-info {
+            color: rgba(255, 255, 255, 0.5);
+            font-size: 0.85rem;
+        }
+
+        /* === FLOATING BUTTONS === */
+        .floating-buttons {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            z-index: 999;
+        }
+
+        .floating-btn {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 1.5rem;
+            box-shadow: 0 5px 25px rgba(0, 0, 0, 0.3);
+            transition: var(--transition);
+            cursor: pointer;
+            text-decoration: none;
+        }
+
+        .floating-btn:hover {
+            transform: scale(1.1) translateY(-5px);
+        }
+
+        .floating-line {
+            background: #00B900;
+        }
+
+        .floating-top {
+            background: var(--primary-color);
+            opacity: 0;
+            visibility: hidden;
+        }
+
+        .floating-top.visible {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        /* === RESPONSIVE === */
+        @media (max-width: 1024px) {
+            .about-container {
+                grid-template-columns: 1fr;
+                gap: 3rem;
+            }
+
+            .about-image-main {
+                height: 400px;
+            }
+
+            .about-badge {
+                bottom: -20px;
+                right: 20px;
+            }
+
+            .footer-container {
+                grid-template-columns: 1fr 1fr;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .nav-links {
+                display: none;
+                position: absolute;
+                top: 80px;
+                left: 0;
+                right: 0;
+                background: white;
+                flex-direction: column;
+                padding: 2rem;
+                box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            }
+
+            .nav-links.active {
+                display: flex;
+            }
+
+            .menu-toggle {
+                display: flex;
+            }
+
+            .nav-contact {
+                display: none;
+            }
+
+            .slide-title {
+                font-size: 2rem;
+            }
+
+            .tours-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .about-features {
+                grid-template-columns: 1fr;
+            }
+
+            .footer-container {
+                grid-template-columns: 1fr;
+            }
+
+            .footer-bottom {
+                flex-direction: column;
+                text-align: center;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <!-- Navigation -->
+    <nav class="navbar" id="navbar">
+        <div class="nav-container">
+            <a href="#" class="logo">
+                <img src="images/logo.png" alt="找到了旅行社" class="logo-img"
+                    onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+                <span class="logo-text" style="display:none;">找到了旅行社</span>
+            </a>
+            <ul class="nav-links" id="navLinks">
+                <li><a href="#home">首頁</a></li>
+                <li><a href="#tours">熱門行程</a></li>
+                <li><a href="#destinations">目的地</a></li>
+                <li><a href="#about">關於 Yui</a></li>
+                <li><a href="#contact">聯絡我們</a></li>
+            </ul>
+            <div class="nav-contact">
+                <a href="#" class="line-btn">
+                    <span>📱</span> LINE 諮詢
+                </a>
+            </div>
+            <div class="menu-toggle" id="menuToggle">
+                <span></span>
+                <span></span>
+                <span></span>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section class="hero-section" id="home">
+        <div class="hero-slider">
+            <div class="slide active">
+                <div class="slide-bg"
+                    style="background: linear-gradient(135deg, #ff6b6b 0%, #feca57 50%, #ff9f43 100%);"></div>
+                <div class="slide-overlay"></div>
+                <div class="slide-content">
+                    <span class="slide-tag">🇹🇭 超值無購物</span>
+                    <h1 class="slide-title">曼谷超值6日</h1>
+                    <p class="slide-desc">💰 $15,900起含稅 🎁 免領隊/司機/導遊小費<br>全程無購物，東芭樂園大象表演、暹羅76府古城、TUTU Beach粉紅海景</p>
+                    <a href="#tours" class="slide-btn">立即報名 →</a>
+                </div>
+            </div>
+            <div class="slide">
+                <div class="slide-bg"></div>
+                <div class="slide-overlay"></div>
+                <div class="slide-content">
+                    <span class="slide-tag">�️ 必訪景點</span>
+                    <h1 class="slide-title">暹羅76府古城</h1>
+                    <p class="slide-desc">一日環遊泰國經典建築<br>華麗室內水上市場 + 泡泡馬特全球限定店必逛</p>
+                    <a href="#tours" class="slide-btn">了解詳情 →</a>
+                </div>
+            </div>
+            <div class="slide">
+                <div class="slide-bg" style="background: linear-gradient(135deg, #fd79a8 0%, #ffeaa7 100%);"></div>
+                <div class="slide-overlay"></div>
+                <div class="slide-content">
+                    <span class="slide-tag">💗 網美必拍</span>
+                    <h1 class="slide-title">TUTU Beach</h1>
+                    <p class="slide-desc">粉紅系海景咖啡廳，拍照超夢幻<br>名額有限，看到價格就該出手！</p>
+                    <a href="#tours" class="slide-btn">了解詳情 →</a>
+                </div>
+            </div>
+        </div>
+        <div class="slider-nav">
+            <div class="slider-dot active" data-slide="0"></div>
+            <div class="slider-dot" data-slide="1"></div>
+            <div class="slider-dot" data-slide="2"></div>
+        </div>
+        <div class="scroll-indicator">
+            <span>往下滑動</span>
+            <span>↓</span>
+        </div>
+    </section>
+
+    <!-- Travel Tools -->
+    <section class="tools-section" id="tools">
+        <div class="section-container">
+            <div class="section-header">
+                <span class="section-tag">旅遊小幫手</span>
+                <h2 class="section-title">貼心服務 隨時待命</h2>
+                <p class="section-desc">讓 Yui 為您準備更好的旅程，提供實用的旅遊工具與客製化服務</p>
+            </div>
+            <div class="tools-grid">
+                <div class="tool-card" onclick="openWeatherModal()">
+                    <div class="tool-icon"><span>🌤️</span></div>
+                    <h3 class="tool-title">天氣查詢</h3>
+                    <p class="tool-desc">即時掌握目的地氣候，讓您行李準備更輕鬆</p>
+                </div>
+                <div class="tool-card" onclick="openCurrencyModal()">
+                    <div class="tool-icon"><span>💱</span></div>
+                    <h3 class="tool-title">匯率換算</h3>
+                    <p class="tool-desc">最新即時匯率資訊，出國消費精打細算</p>
+                </div>
+                <div class="tool-card" onclick="openPlugModal()">
+                    <div class="tool-icon"><span>🔌</span></div>
+                    <h3 class="tool-title">旅遊插頭查詢</h3>
+                    <p class="tool-desc">各國電壓插座資訊，讓您的電子設備無憂使用</p>
+                </div>
+                <div class="tool-card" onclick="alert('請撥打 (02)7729-0729 或加LINE諮詢客製包團！')">
+                    <div class="tool-icon"><span>✈️</span></div>
+                    <h3 class="tool-title">客製包團</h3>
+                    <p class="tool-desc">企業/家族旅遊需求，量身打造專屬行程</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Popular Tours -->
+    <section class="tours-section" id="tours">
+        <div class="section-container">
+            <div class="section-header">
+                <span class="section-tag">精選推薦</span>
+                <h2 class="section-title">熱門行程推薦</h2>
+                <p class="section-desc">Yui 精心挑選，品質保證的優質行程</p>
+            </div>
+            <div class="tours-grid">
+                <!-- 曼谷超值無購物6日 - $15,900 -->
+                <a href="tour-bangkok.html" class="tour-card" style="text-decoration: none; color: inherit;">
+                    <div class="tour-image" style="background: linear-gradient(135deg, #ff6b6b 0%, #feca57 100%);">
+                        <span class="tour-badge">🔥 超值首選</span>
+                        <div class="tour-price-badge">
+                            <span class="text">含稅</span>
+                            <span class="price">$15,900</span>
+                            <span class="text">起</span>
+                        </div>
+                    </div>
+                    <div class="tour-content">
+                        <span class="tour-destination">🇹🇭 泰國</span>
+                        <h3 class="tour-title">【超值無購物】曼谷6日．東芭樂園大象表演．暹羅76府古城．TUTU Beach粉紅海景</h3>
+                        <div class="tour-info">
+                            <span>📅 6天5夜</span>
+                            <span>🎁 免小費</span>
+                            <span>🚫 無購物</span>
+                        </div>
+                        <div style="margin-top: 0.8rem; font-size: 0.85rem; color: #636e72;">
+                            <strong>出發日：</strong>04/08、04/15、04/22、04/24
+                        </div>
+                    </div>
+                </a>
+                <!-- 曼谷超值無購物6日 - $17,900 -->
+                <a href="tour-bangkok.html" class="tour-card" style="text-decoration: none; color: inherit;">
+                    <div class="tour-image" style="background: linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%);">
+                        <span class="tour-badge">熱銷中</span>
+                        <div class="tour-price-badge">
+                            <span class="text">含稅</span>
+                            <span class="price">$17,900</span>
+                            <span class="text">起</span>
+                        </div>
+                    </div>
+                    <div class="tour-content">
+                        <span class="tour-destination">🇹🇭 泰國</span>
+                        <h3 class="tour-title">【超值無購物】曼谷6日．華麗室內水上市場．泡泡馬特全球限定店．ICONSIAM暹邏天地</h3>
+                        <div class="tour-info">
+                            <span>📅 6天5夜</span>
+                            <span>🎁 免小費</span>
+                            <span>🚫 無購物</span>
+                        </div>
+                        <div style="margin-top: 0.8rem; font-size: 0.85rem; color: #636e72;">
+                            <strong>出發日：</strong>04/10、05/06、05/08、05/13、05/15...
+                        </div>
+                    </div>
+                </a>
+                <!-- 曼谷超值無購物6日 - $19,900 暑假檔期 -->
+                <a href="tour-bangkok.html" class="tour-card" style="text-decoration: none; color: inherit;">
+                    <div class="tour-image" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+                        <span class="tour-badge">🌴 暑假出發</span>
+                        <div class="tour-price-badge">
+                            <span class="text">含稅</span>
+                            <span class="price">$19,900</span>
+                            <span class="text">起</span>
+                        </div>
+                    </div>
+                    <div class="tour-content">
+                        <span class="tour-destination">��🇭 泰國</span>
+                        <h3 class="tour-title">【暑假限定】曼谷超值無購物6日．東芭樂園．七珍佛山．九世皇廟．美軍不夜城</h3>
+                        <div class="tour-info">
+                            <span>📅 6天5夜</span>
+                            <span>🎁 免小費</span>
+                            <span>🚫 無購物</span>
+                        </div>
+                        <div style="margin-top: 0.8rem; font-size: 0.85rem; color: #636e72;">
+                            <strong>出發日：</strong>06/24~08/21 多梯次
+                        </div>
+                    </div>
+                </a>
+                <!-- 曼谷超值無購物6日 - $18,900 秋季檔期 -->
+                <a href="tour-bangkok.html" class="tour-card" style="text-decoration: none; color: inherit;">
+                    <div class="tour-image" style="background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%);">
+                        <span class="tour-badge">🍂 秋季優惠</span>
+                        <div class="tour-price-badge">
+                            <span class="text">含稅</span>
+                            <span class="price">$18,900</span>
+                            <span class="text">起</span>
+                        </div>
+                    </div>
+                    <div class="tour-content">
+                        <span class="tour-destination">🇹🇭 泰國</span>
+                        <h3 class="tour-title">【秋季出發】曼谷超值無購物6日．歐式漁村．J-PARK日本村．Terminal 21．河濱夜市</h3>
+                        <div class="tour-info">
+                            <span>📅 6天5夜</span>
+                            <span>🎁 免小費</span>
+                            <span>🚫 無購物</span>
+                        </div>
+                        <div style="margin-top: 0.8rem; font-size: 0.85rem; color: #636e72;">
+                            <strong>出發日：</strong>09/30、10/02、10/14、10/16、10/21
+                        </div>
+                    </div>
+                </a>
+            </div>
+        </div>
+    </section>
+
+    <!-- Destinations -->
+    <section class="destinations-section" id="destinations">
+        <div class="section-container">
+            <div class="section-header">
+                <span class="section-tag"
+                    style="background: rgba(255,255,255,0.2); backdrop-filter: blur(10px);">熱門目的地</span>
+                <h2 class="section-title">探索您的下一站</h2>
+                <p class="section-desc">跟著 Yui 出發，每一個目的地都是精心規劃的完美體驗</p>
+            </div>
+            <div class="destinations-grid">
+                <div class="destination-card">
+                    <div class="destination-flag">🇯🇵</div>
+                    <h3 class="destination-name">日本</h3>
+                    <p class="destination-count">12+ 行程</p>
+                </div>
+                <div class="destination-card">
+                    <div class="destination-flag">🇰🇷</div>
+                    <h3 class="destination-name">韓國</h3>
+                    <p class="destination-count">8+ 行程</p>
+                </div>
+                <div class="destination-card">
+                    <div class="destination-flag">🇪🇺</div>
+                    <h3 class="destination-name">歐洲</h3>
+                    <p class="destination-count">15+ 行程</p>
+                </div>
+                <div class="destination-card">
+                    <div class="destination-flag">🇹🇭</div>
+                    <h3 class="destination-name">泰國</h3>
+                    <p class="destination-count">6+ 行程</p>
+                </div>
+                <div class="destination-card">
+                    <div class="destination-flag">🇻🇳</div>
+                    <h3 class="destination-name">越南</h3>
+                    <p class="destination-count">5+ 行程</p>
+                </div>
+                <div class="destination-card">
+                    <div class="destination-flag">🇸🇬</div>
+                    <h3 class="destination-name">新馬</h3>
+                    <p class="destination-count">4+ 行程</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- About Yui -->
+    <section class="about-section" id="about">
+        <div class="section-container">
+            <div class="about-container">
+                <div class="about-image">
+                    <div class="about-image-main">👩‍💼</div>
+                    <div class="about-badge">
+                        <div class="about-badge-number">10+</div>
+                        <div class="about-badge-text">年旅遊業經驗</div>
+                    </div>
+                </div>
+                <div class="about-content">
+                    <h2>專業旅遊顧問<br>Yui 為您服務</h2>
+                    <p>您好！我是 Yui，找到了旅行社的專業旅遊顧問。擁有超過10年的旅遊業經驗，我致力於為每一位旅客打造最完美的旅程體驗。</p>
+                    <p>從行程規劃、機票訂購到當地導覽，我會全程用心為您把關每一個細節，讓您安心出遊、盡情享受旅途中的每一刻美好。</p>
+                    <div class="about-features">
+                        <div class="about-feature">
+                            <div class="about-feature-icon">✓</div>
+                            <span class="about-feature-text">專業行程規劃</span>
+                        </div>
+                        <div class="about-feature">
+                            <div class="about-feature-icon">✓</div>
+                            <span class="about-feature-text">24小時客服</span>
+                        </div>
+                        <div class="about-feature">
+                            <div class="about-feature-icon">✓</div>
+                            <span class="about-feature-text">品質嚴選住宿</span>
+                        </div>
+                        <div class="about-feature">
+                            <div class="about-feature-icon">✓</div>
+                            <span class="about-feature-text">客製化包團</span>
+                        </div>
+                    </div>
+                    <a href="#contact" class="contact-btn">立即諮詢 Yui →</a>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- CTA Section -->
+    <section class="cta-section" id="contact">
+        <h2>準備好出發了嗎？</h2>
+        <p>讓 Yui 為您規劃一趟難忘的旅程，現在就聯絡我們，開啟您的夢想之旅！</p>
+        <div class="cta-buttons">
+            <a href="#" class="cta-btn cta-btn-primary">📱 LINE 立即諮詢</a>
+            <a href="tel:02-77290729" class="cta-btn cta-btn-secondary">📞 (02)7729-0729</a>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="footer-container">
+            <div class="footer-brand">
+                <a href="#" class="logo">
+                    <div class="logo-icon">找</div>
+                    <div class="logo-text">
+                        <span class="logo-main" style="color: white;">找到了旅行社</span>
+                        <span class="logo-sub">FOUND TRAVEL</span>
+                    </div>
+                </a>
+                <p>我們致力於提供最優質的旅遊體驗，從行程規劃到旅途中的每一個細節，都為您精心把關。跟著 Yui 出發，找到屬於您的完美旅程。</p>
+                <div class="footer-social">
+                    <a href="#">📘</a>
+                    <a href="#">📸</a>
+                    <a href="#">💬</a>
+                </div>
+            </div>
+            <div class="footer-column">
+                <h4 class="footer-title">快速連結</h4>
+                <ul class="footer-links">
+                    <li><a href="#tours">熱門行程</a></li>
+                    <li><a href="#destinations">目的地</a></li>
+                    <li><a href="#about">關於 Yui</a></li>
+                    <li><a href="#">最新資訊</a></li>
+                    <li><a href="#">常見問題</a></li>
+                </ul>
+            </div>
+            <div class="footer-column">
+                <h4 class="footer-title">熱門目的地</h4>
+                <ul class="footer-links">
+                    <li><a href="#">日本旅遊</a></li>
+                    <li><a href="#">歐洲旅遊</a></li>
+                    <li><a href="#">韓國旅遊</a></li>
+                    <li><a href="#">泰國旅遊</a></li>
+                    <li><a href="#">越南旅遊</a></li>
+                </ul>
+            </div>
+            <div class="footer-column">
+                <h4 class="footer-title">聯絡資訊</h4>
+                <ul class="footer-links">
+                    <li><a href="tel:02-77290729">📞 (02)7729-0729</a></li>
+                    <li><a href="#">📱 LINE 諮詢</a></li>
+                    <li><a href="#">📍 台北市內湖區內湖路一段120巷15弄25號3樓</a></li>
+                </ul>
+            </div>
+        </div>
+        <div class="footer-bottom">
+            <p>© 2026 找到了旅行社 Found Travel. All rights reserved.</p>
+            <p class="footer-info">找到了旅行社股份有限公司 │ 綜合旅行社 │ 交觀綜字222700號 │ 品保北2738號 │ 統一編號 00161819 │ 負責人 艾施鴻</p>
+        </div>
+    </footer>
+
+    <!-- Weather Modal -->
+    <div id="weatherModal" class="modal" onclick="if(event.target===this)closeModal('weatherModal')">
+        <div class="modal-content">
+            <span class="modal-close" onclick="closeModal('weatherModal')">&times;</span>
+            <h2 class="modal-title">🌤️ 天氣查詢</h2>
+            <div class="modal-body">
+                <select id="weatherCity" class="modal-select">
+                    <option value="">選擇城市...</option>
+                    <option value="Bangkok,TH">🇹🇭 曼谷 Bangkok</option>
+                    <option value="Tokyo,JP">🇯🇵 東京 Tokyo</option>
+                    <option value="Osaka,JP">🇯🇵 大阪 Osaka</option>
+                    <option value="Seoul,KR">🇰🇷 首爾 Seoul</option>
+                    <option value="Singapore,SG">🇸🇬 新加坡 Singapore</option>
+                    <option value="Hanoi,VN">🇻🇳 河內 Hanoi</option>
+                    <option value="Paris,FR">🇫🇷 巴黎 Paris</option>
+                    <option value="Rome,IT">🇮🇹 羅馬 Rome</option>
+                    <option value="London,GB">🇬🇧 倫敦 London</option>
+                    <option value="Zurich,CH">🇨🇭 蘇黎世 Zurich</option>
+                    <option value="Taipei,TW">🇹🇼 台北 Taipei</option>
+                </select>
+                <button class="modal-btn" onclick="getWeather()">查詢天氣</button>
+                <div id="weatherResult" class="modal-result"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Currency Modal -->
+    <div id="currencyModal" class="modal" onclick="if(event.target===this)closeModal('currencyModal')">
+        <div class="modal-content">
+            <span class="modal-close" onclick="closeModal('currencyModal')">&times;</span>
+            <h2 class="modal-title">💱 匯率換算</h2>
+            <div class="modal-body">
+                <div class="currency-row">
+                    <input type="number" id="currencyAmount" class="modal-input" placeholder="輸入金額" value="1000">
+                    <select id="currencyFrom" class="modal-select">
+                        <option value="TWD" selected>🇹🇼 TWD 台幣</option>
+                        <option value="USD">🇺🇸 USD 美元</option>
+                        <option value="JPY">🇯🇵 JPY 日圓</option>
+                        <option value="THB">🇹🇭 THB 泰銖</option>
+                        <option value="KRW">🇰🇷 KRW 韓元</option>
+                        <option value="EUR">🇪🇺 EUR 歐元</option>
+                        <option value="SGD">🇸🇬 SGD 新幣</option>
+                        <option value="VND">🇻🇳 VND 越盾</option>
+                    </select>
+                </div>
+                <div class="currency-arrow">↓ 換算成 ↓</div>
+                <select id="currencyTo" class="modal-select">
+                    <option value="JPY">🇯🇵 JPY 日圓</option>
+                    <option value="THB" selected>🇹🇭 THB 泰銖</option>
+                    <option value="KRW">🇰🇷 KRW 韓元</option>
+                    <option value="EUR">🇪🇺 EUR 歐元</option>
+                    <option value="USD">🇺🇸 USD 美元</option>
+                    <option value="SGD">🇸🇬 SGD 新幣</option>
+                    <option value="VND">🇻🇳 VND 越盾</option>
+                    <option value="TWD">🇹🇼 TWD 台幣</option>
+                </select>
+                <button class="modal-btn" onclick="convertCurrency()">換算匯率</button>
+                <div id="currencyResult" class="modal-result"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Plug Modal -->
+    <div id="plugModal" class="modal" onclick="if(event.target===this)closeModal('plugModal')">
+        <div class="modal-content modal-large">
+            <span class="modal-close" onclick="closeModal('plugModal')">&times;</span>
+            <h2 class="modal-title">🔌 各國插頭/電壓查詢</h2>
+            <div class="modal-body">
+                <select id="plugCountry" class="modal-select" onchange="showPlugInfo()">
+                    <option value="">選擇國家...</option>
+                    <option value="taiwan">🇹🇼 台灣</option>
+                    <option value="japan">🇯🇵 日本</option>
+                    <option value="thailand">🇹🇭 泰國</option>
+                    <option value="korea">🇰🇷 韓國</option>
+                    <option value="vietnam">🇻🇳 越南</option>
+                    <option value="singapore">🇸🇬 新加坡</option>
+                    <option value="malaysia">🇲🇾 馬來西亞</option>
+                    <option value="china">🇨🇳 中國</option>
+                    <option value="hongkong">🇭🇰 香港</option>
+                    <option value="usa">🇺🇸 美國</option>
+                    <option value="uk">🇬🇧 英國</option>
+                    <option value="france">🇫🇷 法國</option>
+                    <option value="germany">🇩🇪 德國</option>
+                    <option value="italy">🇮🇹 義大利</option>
+                    <option value="spain">🇪🇸 西班牙</option>
+                    <option value="switzerland">🇨🇭 瑞士</option>
+                    <option value="australia">🇦🇺 澳洲</option>
+                    <option value="indonesia">🇮🇩 印尼</option>
+                    <option value="philippines">🇵🇭 菲律賓</option>
+                </select>
+                <div id="plugResult" class="modal-result plug-info"></div>
+            </div>
+        </div>
+    </div>
+
+    <style>
+        /* Modal Styles */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 2000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(5px);
+        }
+
+        .modal-content {
+            background: white;
+            margin: 10% auto;
+            padding: 2rem;
+            border-radius: 20px;
+            max-width: 500px;
+            width: 90%;
+            position: relative;
+            animation: modalIn 0.3s ease;
+        }
+
+        .modal-large {
+            max-width: 600px;
+        }
+
+        @keyframes modalIn {
+            from {
+                opacity: 0;
+                transform: translateY(-50px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .modal-close {
+            position: absolute;
+            right: 20px;
+            top: 15px;
+            font-size: 2rem;
+            cursor: pointer;
+            color: #999;
+        }
+
+        .modal-close:hover {
+            color: #333;
+        }
+
+        .modal-title {
+            font-size: 1.5rem;
+            margin-bottom: 1.5rem;
+            color: var(--primary-color);
+        }
+
+        .modal-body {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .modal-select,
+        .modal-input {
+            width: 100%;
+            padding: 12px 16px;
+            border: 2px solid #eee;
+            border-radius: 10px;
+            font-size: 1rem;
+            font-family: inherit;
+        }
+
+        .modal-select:focus,
+        .modal-input:focus {
+            border-color: var(--primary-color);
+            outline: none;
+        }
+
+        .modal-btn {
+            padding: 14px 24px;
+            background: var(--bg-gradient);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: var(--transition);
+        }
+
+        .modal-btn:hover {
+            transform: scale(1.02);
+            box-shadow: 0 5px 20px rgba(233, 30, 140, 0.3);
+        }
+
+        .modal-result {
+            background: var(--bg-light);
+            padding: 1.5rem;
+            border-radius: 15px;
+            min-height: 80px;
+        }
+
+        .currency-row {
+            display: flex;
+            gap: 1rem;
+        }
+
+        .currency-row input {
+            flex: 1;
+        }
+
+        .currency-row select {
+            flex: 1.5;
+        }
+
+        .currency-arrow {
+            text-align: center;
+            color: var(--primary-color);
+            font-weight: 600;
+        }
+
+        .weather-display {
+            text-align: center;
+        }
+
+        .weather-temp {
+            font-size: 3rem;
+            font-weight: 900;
+            color: var(--primary-color);
+        }
+
+        .weather-desc {
+            font-size: 1.2rem;
+            color: var(--text-light);
+            margin: 10px 0;
+        }
+
+        .weather-details {
+            display: flex;
+            justify-content: center;
+            gap: 2rem;
+            margin-top: 15px;
+            color: var(--text-light);
+        }
+
+        .plug-info table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .plug-info td {
+            padding: 10px;
+            border-bottom: 1px solid #eee;
+        }
+
+        .plug-info td:first-child {
+            font-weight: 600;
+            color: var(--text-dark);
+            width: 40%;
+        }
+
+        .plug-types {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .plug-type {
+            background: var(--bg-gradient);
+            color: white;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.9rem;
+        }
+
+        .plug-note {
+            background: #fff3cd;
+            padding: 10px 15px;
+            border-radius: 10px;
+            color: #856404;
+            margin-top: 10px;
+        }
+
+        .currency-result-big {
+            font-size: 2rem;
+            font-weight: 900;
+            color: var(--primary-color);
+            text-align: center;
+        }
+
+        .currency-result-rate {
+            text-align: center;
+            color: var(--text-light);
+            margin-top: 10px;
+        }
+    </style>
+
+    <!-- Floating Buttons -->
+    <div class="floating-buttons">
+        <a href="#home" class="floating-btn floating-top" id="scrollTop">↑</a>
+    </div>
+
+    <script src="tours-data.js"></script>
+    <script>
+        // Mobile menu toggle
+        const menuToggle = document.getElementById('menuToggle');
+        const navLinks = document.getElementById('navLinks');
+
+        menuToggle.addEventListener('click', () => {
+            navLinks.classList.toggle('active');
+        });
+
+        // Navbar scroll effect
+        const navbar = document.getElementById('navbar');
+        const scrollTop = document.getElementById('scrollTop');
+
+        window.addEventListener('scroll', () => {
+            if (window.scrollY > 100) {
+                navbar.classList.add('scrolled');
+                scrollTop.classList.add('visible');
+            } else {
+                navbar.classList.remove('scrolled');
+                scrollTop.classList.remove('visible');
+            }
+        });
+
+        // Hero Slider
+        const slides = document.querySelectorAll('.slide');
+        const dots = document.querySelectorAll('.slider-dot');
+        let currentSlide = 0;
+        let slideInterval;
+
+        function goToSlide(n) {
+            slides[currentSlide].classList.remove('active');
+            dots[currentSlide].classList.remove('active');
+            currentSlide = (n + slides.length) % slides.length;
+            slides[currentSlide].classList.add('active');
+            dots[currentSlide].classList.add('active');
+        }
+
+        function nextSlide() {
+            goToSlide(currentSlide + 1);
+        }
+
+        function startSlider() {
+            slideInterval = setInterval(nextSlide, 5000);
+        }
+
+        function stopSlider() {
+            clearInterval(slideInterval);
+        }
+
+        dots.forEach((dot, index) => {
+            dot.addEventListener('click', () => {
+                stopSlider();
+                goToSlide(index);
+                startSlider();
+            });
+        });
+
+        startSlider();
+
+        // Smooth scroll
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'start'
+                    });
+                    navLinks.classList.remove('active');
+                }
+            });
+        });
+
+        // Card hover effects
+        document.querySelectorAll('.tour-card, .tool-card, .destination-card').forEach(card => {
+            card.addEventListener('mouseenter', function () {
+                this.style.transform = 'translateY(-10px)';
+            });
+            card.addEventListener('mouseleave', function () {
+                this.style.transform = 'translateY(0)';
+            });
+        });
+
+        // ========== MODAL FUNCTIONS ==========
+        function openWeatherModal() {
+            document.getElementById('weatherModal').style.display = 'block';
+            document.getElementById('weatherResult').innerHTML = '<p style="text-align:center;color:#999;">選擇城市後點擊查詢</p>';
+        }
+
+        function openCurrencyModal() {
+            document.getElementById('currencyModal').style.display = 'block';
+            document.getElementById('currencyResult').innerHTML = '<p style="text-align:center;color:#999;">輸入金額後點擊換算</p>';
+        }
+
+        function openPlugModal() {
+            document.getElementById('plugModal').style.display = 'block';
+            document.getElementById('plugResult').innerHTML = '<p style="text-align:center;color:#999;">選擇國家查看插頭資訊</p>';
+        }
+
+        function closeModal(id) {
+            document.getElementById(id).style.display = 'none';
+        }
+
+        // ========== WEATHER API (OpenWeatherMap) ==========
+        async function getWeather() {
+            const city = document.getElementById('weatherCity').value;
+            if (!city) { alert('請選擇城市'); return; }
+
+            const resultDiv = document.getElementById('weatherResult');
+            resultDiv.innerHTML = '<p style="text-align:center;">⏳ 查詢中...</p>';
+
+            try {
+                // Using OpenWeatherMap API (free tier)
+                const API_KEY = '284b65c5e9bbccf6f9f37e214ff75b45'; // Free demo key
+                const response = await fetch(`https://api.openweathermap.org/data/2.5/weather?q=${city}&appid=${API_KEY}&units=metric&lang=zh_tw`);
+                const data = await response.json();
+
+                if (data.cod === 200) {
+                    resultDiv.innerHTML = `
+                        <div class="weather-display">
+                            <div class="weather-temp">${Math.round(data.main.temp)}°C</div>
+                            <div class="weather-desc">${data.weather[0].description}</div>
+                            <div class="weather-details">
+                                <span>💧 濕度: ${data.main.humidity}%</span>
+                                <span>💨 風速: ${data.wind.speed} m/s</span>
+                            </div>
+                            <div class="weather-details">
+                                <span>🌡️ 體感: ${Math.round(data.main.feels_like)}°C</span>
+                                <span>📊 氣壓: ${data.main.pressure} hPa</span>
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    resultDiv.innerHTML = '<p style="text-align:center;color:#e74c3c;">查詢失敗，請稍後再試</p>';
+                }
+            } catch (error) {
+                resultDiv.innerHTML = '<p style="text-align:center;color:#e74c3c;">網路錯誤，請檢查連線</p>';
+            }
+        }
+
+        // ========== CURRENCY API (ExchangeRate-API) ==========
+        async function convertCurrency() {
+            const amount = parseFloat(document.getElementById('currencyAmount').value);
+            const from = document.getElementById('currencyFrom').value;
+            const to = document.getElementById('currencyTo').value;
+
+            if (!amount || amount <= 0) { alert('請輸入有效金額'); return; }
+
+            const resultDiv = document.getElementById('currencyResult');
+            resultDiv.innerHTML = '<p style="text-align:center;">⏳ 換算中...</p>';
+
+            try {
+                // Using exchangerate-api.com (free tier)
+                const response = await fetch(`https://api.exchangerate-api.com/v4/latest/${from}`);
+                const data = await response.json();
+
+                if (data.rates && data.rates[to]) {
+                    const rate = data.rates[to];
+                    const result = (amount * rate).toLocaleString('en-US', { maximumFractionDigits: 2 });
+
+                    resultDiv.innerHTML = `
+                        <div class="currency-result-big">${result} ${to}</div>
+                        <div class="currency-result-rate">匯率: 1 ${from} = ${rate.toFixed(4)} ${to}</div>
+                        <div class="currency-result-rate" style="font-size:0.85rem;margin-top:5px;">更新時間: ${new Date(data.time_last_updated * 1000).toLocaleString('zh-TW')}</div>
+                    `;
+                } else {
+                    resultDiv.innerHTML = '<p style="text-align:center;color:#e74c3c;">換算失敗，請稍後再試</p>';
+                }
+            } catch (error) {
+                resultDiv.innerHTML = '<p style="text-align:center;color:#e74c3c;">網路錯誤，請檢查連線</p>';
+            }
+        }
+
+        // ========== PLUG INFO ==========
+        const plugData = {
+            'taiwan': { name: '台灣', voltage: '110V', frequency: '60Hz', plugTypes: ['A', 'B'], notes: '與美國相同規格，台灣電器可直接使用' },
+            'japan': { name: '日本', voltage: '100V', frequency: '50/60Hz', plugTypes: ['A', 'B'], notes: '東日本50Hz，西日本60Hz。電壓較低，部分電器可能充電較慢' },
+            'thailand': { name: '泰國', voltage: '220V', frequency: '50Hz', plugTypes: ['A', 'B', 'C', 'O'], notes: '多數飯店有萬用插座，但建議攜帶轉接頭' },
+            'korea': { name: '韓國', voltage: '220V', frequency: '60Hz', plugTypes: ['C', 'F'], notes: '需要歐規轉接頭（圓形雙腳）' },
+            'vietnam': { name: '越南', voltage: '220V', frequency: '50Hz', plugTypes: ['A', 'C', 'G'], notes: '多種插座並存，建議攜帶萬用轉接頭' },
+            'singapore': { name: '新加坡', voltage: '230V', frequency: '50Hz', plugTypes: ['G'], notes: '英式三腳方型插頭，需要轉接頭' },
+            'malaysia': { name: '馬來西亞', voltage: '240V', frequency: '50Hz', plugTypes: ['G'], notes: '英式三腳方型插頭，與新加坡相同' },
+            'china': { name: '中國', voltage: '220V', frequency: '50Hz', plugTypes: ['A', 'C', 'I'], notes: '多種插座並存，高級飯店多有萬用插座' },
+            'hongkong': { name: '香港', voltage: '220V', frequency: '50Hz', plugTypes: ['G'], notes: '英式三腳方型插頭，飯店多提供轉接頭' },
+            'usa': { name: '美國', voltage: '120V', frequency: '60Hz', plugTypes: ['A', 'B'], notes: '與台灣規格相同，可直接使用' },
+            'uk': { name: '英國', voltage: '230V', frequency: '50Hz', plugTypes: ['G'], notes: '英式三腳方型插頭，需要轉接頭' },
+            'france': { name: '法國', voltage: '230V', frequency: '50Hz', plugTypes: ['C', 'E'], notes: '歐規雙圓孔，Type E有接地孔' },
+            'germany': { name: '德國', voltage: '230V', frequency: '50Hz', plugTypes: ['C', 'F'], notes: '歐規雙圓孔，Type F有側邊接地' },
+            'italy': { name: '義大利', voltage: '230V', frequency: '50Hz', plugTypes: ['C', 'F', 'L'], notes: '有專用L型三圓孔插頭，建議帶萬用轉接頭' },
+            'spain': { name: '西班牙', voltage: '230V', frequency: '50Hz', plugTypes: ['C', 'F'], notes: '歐規雙圓孔插頭' },
+            'switzerland': { name: '瑞士', voltage: '230V', frequency: '50Hz', plugTypes: ['C', 'J'], notes: '瑞士專用J型插頭，歐規轉接頭可能不適用' },
+            'australia': { name: '澳洲', voltage: '230V', frequency: '50Hz', plugTypes: ['I'], notes: '斜角三孔插頭，需要專用轉接頭' },
+            'indonesia': { name: '印尼', voltage: '230V', frequency: '50Hz', plugTypes: ['C', 'F'], notes: '歐規雙圓孔插頭' },
+            'philippines': { name: '菲律賓', voltage: '220V', frequency: '60Hz', plugTypes: ['A', 'B', 'C'], notes: '多種插座並存，部分與美規相同' }
+        };
+
+        function showPlugInfo() {
+            const country = document.getElementById('plugCountry').value;
+            const resultDiv = document.getElementById('plugResult');
+
+            if (!country) {
+                resultDiv.innerHTML = '<p style="text-align:center;color:#999;">選擇國家查看插頭資訊</p>';
+                return;
+            }
+
+            const info = plugData[country];
+            if (info) {
+                const plugTypesHtml = info.plugTypes.map(t => `<span class="plug-type">Type ${t}</span>`).join('');
+                resultDiv.innerHTML = `
+                    <table>
+                        <tr><td>國家</td><td>${info.name}</td></tr>
+                        <tr><td>電壓</td><td>${info.voltage}</td></tr>
+                        <tr><td>頻率</td><td>${info.frequency}</td></tr>
+                        <tr><td>插頭類型</td><td><div class="plug-types">${plugTypesHtml}</div></td></tr>
+                    </table>
+                    <div class="plug-note">💡 提示：${info.notes}</div>
+                `;
+            }
+        }
+    </script>
+</body>
+
+</html>
