@@ -15,15 +15,19 @@
         :root {
             --primary-color: #e91e8c;
             --primary-dark: #c4177a;
-            --primary-light: #ff69b4;
-            --accent-color: #ff6b6b;
-            --accent-warm: #feca57;
+            --primary-light: #f8bbd0;
+            --primary-dark: #c2185b;
             --text-dark: #2d3436;
             --text-light: #636e72;
-            --bg-light: #f8f9fa;
-            --bg-gradient: linear-gradient(135deg, #e91e8c 0%, #ff69b4 100%);
-            --card-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
-            --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            --bg-light: #fcfcfc;
+            --bg-gradient: linear-gradient(135deg, #e91e8c 0%, #ff9a9e 100%);
+            --glass-bg: rgba(255, 255, 255, 0.1);
+            --glass-border: rgba(255, 255, 255, 0.2);
+            --card-shadow: 0 20px 40px rgba(0, 0, 0, 0.08);
+            /* Softer, larger shadow */
+            --card-hover-shadow: 0 30px 60px rgba(0, 0, 0, 0.12);
+            --transition: all 0.4s cubic-bezier(0.165, 0.84, 0.44, 1);
+            /* Smooth elegant transition */
         }
 
         * {
@@ -35,21 +39,26 @@
         body {
             font-family: 'Noto Sans TC', sans-serif;
             color: var(--text-dark);
-            line-height: 1.6;
+            line-height: 1.8;
+            /* Increased for readability */
+            background-color: var(--bg-light);
             overflow-x: hidden;
         }
 
-        /* === NAVIGATION === */
+        /* Modern Navigation */
         .navbar {
             position: fixed;
             top: 0;
             left: 0;
             right: 0;
             z-index: 1000;
-            background: rgba(255, 255, 255, 0.95);
+            background: rgba(255, 255, 255, 0.85);
+            /* More translucent */
             backdrop-filter: blur(20px);
-            box-shadow: 0 2px 20px rgba(0, 0, 0, 0.08);
+            /* Stronger blur */
+            border-bottom: 1px solid rgba(255, 255, 255, 0.3);
             transition: var(--transition);
+            padding: 10px 0;
         }
 
         .nav-container {
@@ -110,11 +119,15 @@
             gap: 8px;
         }
 
-        /* === HERO SECTION === */
+        /* Immersive Hero Section */
         .hero-section {
-            height: 100vh;
             position: relative;
+            height: 90vh;
+            /* Taller, more immersive */
+            min-height: 600px;
             overflow: hidden;
+            margin-top: 0;
+            /* Remove margin to go behind nav if needed, but nav is fixed */
         }
 
         .hero-slider,
@@ -151,36 +164,81 @@
             background-position: center;
             filter: brightness(0.6);
             z-index: -1;
+            transform: scale(1);
+            transition: transform 6s ease;
+            /* Subtle zoom effect */
+        }
+
+        .slide.active .slide-bg {
+            transform: scale(1.05);
+            /* Zoom in on active */
         }
 
         .slide-content {
+            position: relative;
+            z-index: 2;
+            text-align: center;
+            color: white;
+            padding: 0 20px;
             max-width: 900px;
-            padding: 2rem;
-            z-index: 10;
+            /* Glassmorphism Badge effect for text container */
+            background: rgba(0, 0, 0, 0.3);
+            backdrop-filter: blur(5px);
+            padding: 3rem;
+            border-radius: 30px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            animation: fadeInUp 1s ease forwards;
         }
 
         .slide-title {
             font-size: clamp(2.5rem, 6vw, 4.5rem);
+            /* Larger, responsive font */
             font-weight: 900;
-            margin-bottom: 1rem;
+            margin-bottom: 1.5rem;
+            text-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+            letter-spacing: -1px;
+            line-height: 1.2;
+        }
+
+        .slide-content p {
+            font-size: 1.3rem;
+            /* Larger text */
+            margin-bottom: 2.5rem;
+            text-shadow: 0 1px 5px rgba(0, 0, 0, 0.3);
+            font-weight: 300;
         }
 
         .slide-btn {
             display: inline-block;
-            padding: 16px 40px;
-            background: white;
-            color: var(--primary-color);
+            padding: 18px 45px;
+            font-size: 1.1rem;
+            background: var(--primary-color);
+            color: white;
             text-decoration: none;
             border-radius: 50px;
             font-weight: 600;
-            margin-top: 20px;
             transition: var(--transition);
+            box-shadow: 0 10px 20px rgba(233, 30, 140, 0.3);
+            border: none;
+            letter-spacing: 1px;
         }
 
         .slide-btn:hover {
-            transform: scale(1.05);
-            background: var(--primary-color);
-            color: white;
+            transform: translateY(-5px);
+            box-shadow: 0 15px 30px rgba(233, 30, 140, 0.4);
+            background: var(--primary-dark);
+        }
+
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
         }
 
         /* === TRAVEL TOOLS CARDS === */
@@ -194,32 +252,62 @@
             margin-bottom: 4rem;
         }
 
+        /* Tool Cards - Modern Glassmorphism */
         .tools-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
             gap: 2rem;
+            /* More space */
             max-width: 1400px;
             margin: 0 auto;
+            padding: 0 1rem;
         }
 
         .tool-card {
             background: white;
             padding: 2.5rem 2rem;
-            border-radius: 20px;
+            border-radius: 24px;
             text-align: center;
             box-shadow: var(--card-shadow);
             transition: var(--transition);
             cursor: pointer;
+            border: 1px solid rgba(0, 0, 0, 0.03);
+            /* Very subtle border */
+            position: relative;
+            overflow: hidden;
+        }
+
+        .tool-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 5px;
+            background: linear-gradient(90deg, var(--primary-color), #ff9a9e);
+            opacity: 0;
+            transition: opacity 0.3s ease;
         }
 
         .tool-card:hover {
             transform: translateY(-10px);
+            box-shadow: var(--card-hover-shadow);
+        }
+
+        .tool-card:hover::before {
+            opacity: 1;
         }
 
         .tool-icon {
-            font-size: 3rem;
-            margin-bottom: 1rem;
-            display: block;
+            font-size: 3.5rem;
+            margin-bottom: 1.5rem;
+            display: inline-block;
+        }
+
+        .tool-card h3 {
+            font-size: 1.4rem;
+            margin-bottom: 0.8rem;
+            color: var(--text-dark);
         }
 
         /* === TOURS GRID === */
@@ -227,12 +315,14 @@
             padding: 6rem 2rem;
         }
 
+        /* Tour Cards - Immersive & Clean */
         .tours-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-            gap: 2rem;
+            gap: 2.5rem;
             max-width: 1400px;
             margin: 0 auto;
+            padding: 0 1rem;
         }
 
         .tour-card {
@@ -240,17 +330,22 @@
             border-radius: 24px;
             overflow: hidden;
             box-shadow: var(--card-shadow);
+            transition: var(--transition);
             text-decoration: none;
             color: inherit;
-            transition: var(--transition);
+            display: flex;
+            flex-direction: column;
+            border: none;
+            /* No border */
         }
 
         .tour-card:hover {
-            transform: translateY(-10px);
+            transform: translateY(-10px) scale(1.01);
+            box-shadow: var(--card-hover-shadow);
         }
 
         .tour-image {
-            height: 220px;
+            height: 250px;
             background-size: cover;
             background-position: center;
             position: relative;
@@ -267,7 +362,23 @@
         }
 
         .tour-content {
-            padding: 1.5rem;
+            padding: 2rem;
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        .tour-content h3 {
+            font-size: 1.3rem;
+            margin-bottom: 1rem;
+            color: var(--text-dark);
+            line-height: 1.4;
+        }
+
+        .tour-content p {
+            color: var(--text-light);
+            font-size: 0.95rem;
         }
 
         /* === MODAL SYSTEM (核心修正點) === */
@@ -368,32 +479,234 @@
             }
         }
 
-        /* === ABOUT EGG === */
+        /* === MODERN ABOUT SECTION (Magazine Style) === */
         .about-section {
-            padding: 6rem 2rem;
-            background: #fff5f8;
-            /* Very light pink background */
-            text-align: center;
+            padding: 8rem 2rem;
+            background: white;
+            position: relative;
+            overflow: hidden;
         }
 
-        .about-content img {
-            max-width: 300px;
+        /* Decorative background blob */
+        .about-section::before {
+            content: '';
+            position: absolute;
+            top: -10%;
+            right: -10%;
+            width: 600px;
+            height: 600px;
+            background: linear-gradient(135deg, rgba(233, 30, 140, 0.05) 0%, rgba(255, 154, 158, 0.1) 100%);
+            border-radius: 50% 30% 70% 30% / 30% 60% 30% 60%;
+            z-index: 0;
+            animation: blobFloat 20s infinite alternate;
+        }
+
+        @keyframes blobFloat {
+            0% {
+                transform: translate(0, 0) rotate(0deg);
+            }
+
+            100% {
+                transform: translate(-30px, 30px) rotate(10deg);
+            }
+        }
+
+        .about-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 5rem;
+            align-items: center;
+            position: relative;
+            z-index: 1;
+        }
+
+        .about-image-wrapper {
+            position: relative;
+        }
+
+        .about-image {
             width: 100%;
-            border-radius: 20px;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
-            transition: transform 0.3s ease;
+            border-radius: 30px;
+            /* Creative Mask/Shape */
+            clip-path: polygon(10% 0, 100% 0, 100% 90%, 90% 100%, 0 100%, 0 10%);
+            box-shadow: 20px 20px 0 rgba(233, 30, 140, 0.1);
+            transition: var(--transition);
         }
 
-        .about-content img:hover {
+        .about-image:hover {
             transform: scale(1.02);
         }
 
-        .about-text {
-            font-size: 1.5rem;
-            color: #d63031;
-            margin-top: 2rem;
+        .about-content {
+            text-align: left;
+        }
+
+        .about-subtitle {
+            font-size: 1.1rem;
+            color: var(--primary-color);
             font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin-bottom: 1rem;
+            display: inline-block;
+            background: rgba(233, 30, 140, 0.08);
+            padding: 5px 15px;
+            border-radius: 50px;
+        }
+
+        .about-title {
+            font-size: 3rem;
+            font-weight: 800;
+            margin-bottom: 2rem;
+            line-height: 1.2;
+            background: linear-gradient(45deg, var(--text-dark), var(--primary-color));
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .about-desc {
+            font-size: 1.1rem;
+            line-height: 1.8;
+            color: var(--text-light);
+            margin-bottom: 2rem;
+        }
+
+        /* Stats in About */
+        .about-stats {
+            display: flex;
+            gap: 3rem;
+            margin-top: 2rem;
+            padding-top: 2rem;
+            border-top: 1px solid rgba(0, 0, 0, 0.05);
+        }
+
+        .stat-item h4 {
+            font-size: 2.5rem;
+            font-weight: 900;
+            color: var(--primary-color);
+            margin-bottom: 0.2rem;
+        }
+
+        .stat-item p {
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: var(--text-light);
+            text-transform: uppercase;
             letter-spacing: 1px;
+        }
+
+        /* === INSPIRATION GALLERY (Masonry) === */
+        .gallery-section {
+            padding: 6rem 2rem;
+            background: var(--bg-light);
+        }
+
+        .gallery-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1.5rem;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .gallery-item {
+            position: relative;
+            border-radius: 20px;
+            overflow: hidden;
+            height: 300px;
+            cursor: pointer;
+        }
+
+        /* Make some items span 2 cols for masonry feel */
+        @media (min-width: 768px) {
+            .gallery-item:first-child {
+                grid-column: span 2;
+            }
+
+            .gallery-item:nth-child(4) {
+                grid-column: span 2;
+            }
+        }
+
+        .gallery-img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transition: transform 0.6s ease;
+        }
+
+        .gallery-overlay {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            padding: 2rem;
+            background: linear-gradient(to top, rgba(0, 0, 0, 0.7), transparent);
+            color: white;
+            opacity: 0;
+            transition: opacity 0.4s ease;
+        }
+
+        .gallery-item:hover .gallery-img {
+            transform: scale(1.1);
+        }
+
+        .gallery-item:hover .gallery-overlay {
+            opacity: 1;
+        }
+
+        /* === WHY CHOOSE US (Features) === */
+        .features-section {
+            padding: 6rem 2rem;
+            background: white;
+        }
+
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 2.5rem;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .feature-box {
+            text-align: center;
+            padding: 2rem;
+            border-radius: 20px;
+            transition: var(--transition);
+        }
+
+        .feature-box:hover {
+            background: #fff5f8;
+            transform: translateY(-5px);
+        }
+
+        .feature-icon-wrapper {
+            width: 80px;
+            height: 80px;
+            background: linear-gradient(135deg, var(--primary-light), var(--primary-color));
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 1.5rem;
+            font-size: 2.5rem;
+            color: white;
+            box-shadow: 0 10px 20px rgba(233, 30, 140, 0.2);
+        }
+
+        .feature-box h3 {
+            font-size: 1.3rem;
+            margin-bottom: 1rem;
+            color: var(--text-dark);
+        }
+
+        .feature-box p {
+            color: var(--text-light);
+            font-size: 0.95rem;
         }
 
         /* 其他輔助樣式 */
@@ -522,17 +835,110 @@
         </div>
     </section>
 
-    <!-- About Egg Section -->
-    <section class="about-section" id="about">
-        <div class="section-header">
-            <h2>找蛋寶．環遊世界沒煩惱</h2>
-            <p>專業服務，為您打造獨一無二的旅遊回憶</p>
+    <!-- Inspiration Gallery -->
+    <section class="gallery-section">
+        <div class="section-header" style="margin-bottom: 4rem;">
+            <h2 style="font-size: 2.5rem; text-align: center;">探索旅遊靈感</h2>
+            <p style="text-align: center; color: var(--text-light);">讓每一次的凝視，都成為出發的理由</p>
         </div>
-        <div class="about-content">
-            <img src="images/goldenegg.png" alt="蛋寶旅行">
-            <p class="about-text">
-                蛋寶旅行~找蛋寶.環遊世界沒煩惱
-            </p>
+        <div class="gallery-grid">
+            <div class="gallery-item">
+                <img src="https://images.unsplash.com/photo-1528360983277-13d9b152c6d1?auto=format&fit=crop&w=800&q=80"
+                    class="gallery-img" alt="Japan">
+                <div class="gallery-overlay">
+                    <h3>日本 • 京都</h3>
+                    <p>古都的靜謐與楓紅</p>
+                </div>
+            </div>
+            <div class="gallery-item">
+                <img src="https://images.unsplash.com/photo-1503899036084-c55cdd92da26?auto=format&fit=crop&w=800&q=80"
+                    class="gallery-img" alt="Tokyo">
+                <div class="gallery-overlay">
+                    <h3>日本 • 東京</h3>
+                    <p>現代與傳統的完美交響</p>
+                </div>
+            </div>
+            <div class="gallery-item">
+                <img src="https://images.unsplash.com/photo-1552465011-b4e21bf6e79a?auto=format&fit=crop&w=800&q=80"
+                    class="gallery-img" alt="Thailand">
+                <div class="gallery-overlay">
+                    <h3>泰國 • 清邁</h3>
+                    <p>慢活山城的文青時光</p>
+                </div>
+            </div>
+            <div class="gallery-item">
+                <img src="https://images.unsplash.com/photo-1530122037265-a5f1f91d3b99?auto=format&fit=crop&w=800&q=80"
+                    class="gallery-img" alt="Europe">
+                <div class="gallery-overlay">
+                    <h3>瑞士 • 策馬特</h3>
+                    <p>阿爾卑斯山的雪白童話</p>
+                </div>
+            </div>
+            <div class="gallery-item">
+                <img src="https://images.unsplash.com/photo-1517154421773-0529f29ea451?auto=format&fit=crop&w=800&q=80"
+                    class="gallery-img" alt="Korea">
+                <div class="gallery-overlay">
+                    <h3>韓國 • 首爾</h3>
+                    <p>時尚與美食的潮流之都</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- About Egg Section (Redesigned) -->
+    <section class="about-section" id="about">
+        <div class="about-container">
+            <div class="about-image-wrapper">
+                <img src="images/goldenegg.png" alt="Yui 專業旅遊顧問" class="about-image">
+            </div>
+            <div class="about-content">
+                <span class="about-subtitle">PROFESSIONAL GUIDE</span>
+                <h2 class="about-title">找蛋寶<br>環遊世界沒煩惱</h2>
+                <div class="about-desc">
+                    <p>您好，我是 Yui。在旅遊業服務超過 10 年，我深知每一趟旅程對您的意義。</p>
+                    <p>不只是安排行程，更是為您創造無可取代的回憶。從機票簽證到在地私房景點，我將以最專業的知識與最溫暖的服務，確保您的每一次出發，都是最完美的體驗。</p>
+                </div>
+                <div class="about-stats">
+                    <div class="stat-item">
+                        <h4>10+</h4>
+                        <p>年資歷</p>
+                    </div>
+                    <div class="stat-item">
+                        <h4>500+</h4>
+                        <p>服務團體</p>
+                    </div>
+                    <div class="stat-item">
+                        <h4>98%</h4>
+                        <p>滿意好評</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Why Choose Us -->
+    <section class="features-section">
+        <div class="features-grid">
+            <div class="feature-box">
+                <div class="feature-icon-wrapper">💎</div>
+                <h3>品質保證</h3>
+                <p>嚴選優質飯店與餐食，絕不因價格犧牲品質</p>
+            </div>
+            <div class="feature-box">
+                <div class="feature-icon-wrapper">🛡️</div>
+                <h3>安心出遊</h3>
+                <p>合法立案綜合旅行社，履約保證保險俱全</p>
+            </div>
+            <div class="feature-box">
+                <div class="feature-icon-wrapper">💬</div>
+                <h3>專人服務</h3>
+                <p>一對一專業諮詢，即時解決您的旅遊疑問</p>
+            </div>
+            <div class="feature-box">
+                <div class="feature-icon-wrapper">✈️</div>
+                <h3>客製行程</h3>
+                <p>量身打造專屬行程，滿足您對旅行的所有想像</p>
+            </div>
         </div>
     </section>
 
