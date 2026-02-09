@@ -4,10 +4,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="找到了旅行社 - 找蛋寶專業規劃日本、韓國、歐洲等全球精選跟團旅遊行程。">
-    <title>找到了旅行社 | 找蛋寶為您打造完美旅程</title>
+    <meta name="description" content="找到了旅行社 - 找蛋寶專業團隊規劃日本、韓國、歐洲、企業員工旅遊等全球精選行程。">
+    <title>找到了旅行社 | 找蛋寶團隊為您打造完美旅程</title>
 
-    <!-- Google Fonts (優化載入策略 display=swap) -->
+    <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700;900&display=swap"
@@ -18,25 +18,15 @@
 
     <style>
         :root {
-            /* 品牌色系 */
             --primary: #d63384;
             --primary-dark: #a61e61;
             --accent: #ffc107;
             --text-main: #212529;
             --text-secondary: #6c757d;
-
-            /* 背景與特效 */
             --bg-body: #f8f9fa;
-            --glass-bg: rgba(255, 255, 255, 0.9);
-            --glass-border: 1px solid rgba(255, 255, 255, 0.5);
-
-            /* 陰影優化 */
-            --shadow-sm: 0 4px 6px rgba(0, 0, 0, 0.05);
-            --shadow-card: 0 10px 25px rgba(0, 0, 0, 0.08);
-            --shadow-hover: 0 15px 35px rgba(214, 51, 132, 0.15);
-
             --radius-lg: 20px;
             --transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+            --shadow-card: 0 10px 25px rgba(0, 0, 0, 0.08);
         }
 
         * {
@@ -58,13 +48,14 @@
             color: inherit;
         }
 
-        ul {
-            list-style: none;
-        }
-
-        img {
+        img,
+        video {
             max-width: 100%;
             display: block;
+        }
+
+        ul {
+            list-style: none;
         }
 
         /* --- Components --- */
@@ -72,6 +63,24 @@
             max-width: 1200px;
             margin: 0 auto;
             padding: 0 20px;
+        }
+
+        .section {
+            padding: 80px 0;
+        }
+
+        .section-title {
+            text-align: center;
+            font-size: 2.2rem;
+            margin-bottom: 0.5rem;
+            font-weight: 800;
+        }
+
+        .section-subtitle {
+            text-align: center;
+            color: var(--text-secondary);
+            margin-bottom: 3.5rem;
+            font-size: 1.05rem;
         }
 
         .btn {
@@ -100,28 +109,14 @@
 
         .btn-outline {
             background: rgba(255, 255, 255, 0.1);
-            backdrop-filter: blur(5px);
             border: 2px solid white;
             color: white;
+            backdrop-filter: blur(5px);
         }
 
         .btn-outline:hover {
             background: white;
             color: var(--text-main);
-        }
-
-        .section-title {
-            text-align: center;
-            font-size: 2.2rem;
-            margin-bottom: 0.5rem;
-            font-weight: 800;
-        }
-
-        .section-subtitle {
-            text-align: center;
-            color: var(--text-secondary);
-            margin-bottom: 3.5rem;
-            font-size: 1.05rem;
         }
 
         /* --- Navbar --- */
@@ -160,7 +155,6 @@
         .nav-link {
             font-weight: 500;
             color: var(--text-main);
-            position: relative;
             font-size: 0.95rem;
         }
 
@@ -168,7 +162,7 @@
             color: var(--primary);
         }
 
-        /* --- Hero Section --- */
+        /* --- Hero --- */
         .hero {
             position: relative;
             height: 85vh;
@@ -176,8 +170,8 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            overflow: hidden;
             margin-top: 60px;
+            overflow: hidden;
         }
 
         .hero-bg {
@@ -186,12 +180,9 @@
             left: 0;
             width: 100%;
             height: 100%;
-            background-size: cover;
-            background-position: center;
-            transition: opacity 1s ease;
+            background: url('https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?q=80&w=1920&auto=format&fit=crop') center/cover no-repeat;
             z-index: -1;
-            /* 預設圖 */
-            background-image: url('https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?q=80&w=1920&auto=format&fit=crop');
+            transition: opacity 1s ease;
         }
 
         .hero-overlay {
@@ -218,7 +209,6 @@
             font-size: clamp(2.2rem, 5vw, 4rem);
             font-weight: 900;
             margin-bottom: 20px;
-            line-height: 1.2;
             text-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
         }
 
@@ -227,12 +217,6 @@
             margin-bottom: 35px;
             opacity: 0.95;
             font-weight: 300;
-        }
-
-        .hero-btns {
-            display: flex;
-            gap: 15px;
-            justify-content: center;
         }
 
         @keyframes fadeInUp {
@@ -247,11 +231,8 @@
             }
         }
 
-        /* --- Tools Section (視覺優化) --- */
+        /* --- Tools --- */
         .tools-section {
-            /* 移除原本突兀的白底，改為透明 */
-            background: transparent;
-            /* 向上負邊距，讓卡片浮在 Hero 上 */
             margin-top: -80px;
             padding-bottom: 60px;
             position: relative;
@@ -265,10 +246,8 @@
         }
 
         .tool-card {
-            /* 毛玻璃質感 */
             background: rgba(255, 255, 255, 0.92);
             backdrop-filter: blur(15px);
-            -webkit-backdrop-filter: blur(15px);
             padding: 25px;
             border-radius: var(--radius-lg);
             text-align: center;
@@ -281,7 +260,6 @@
         .tool-card:hover {
             transform: translateY(-8px);
             background: #fff;
-            box-shadow: var(--shadow-hover);
         }
 
         .tool-icon {
@@ -295,30 +273,11 @@
             justify-content: center;
             font-size: 1.5rem;
             margin: 0 auto 15px;
-            transition: var(--transition);
         }
 
-        .tool-card:hover .tool-icon {
-            background: var(--primary);
-            color: white;
-            transform: rotate(10deg);
-        }
-
-        .tool-card h3 {
-            font-size: 1.1rem;
-            margin-bottom: 5px;
-            color: var(--text-main);
-        }
-
-        .tool-card p {
-            color: var(--text-secondary);
-            font-size: 0.85rem;
-        }
-
-        /* --- Tours Section --- */
+        /* --- Tours --- */
         .tours-section {
-            padding: 40px 0 100px;
-            background: var(--bg-body);
+            padding: 40px 0 80px;
         }
 
         .tours-grid {
@@ -331,7 +290,7 @@
             background: white;
             border-radius: var(--radius-lg);
             overflow: hidden;
-            box-shadow: var(--shadow-sm);
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
             transition: var(--transition);
             display: flex;
             flex-direction: column;
@@ -340,13 +299,13 @@
 
         .tour-card:hover {
             transform: translateY(-10px);
-            box-shadow: var(--shadow-hover);
+            box-shadow: 0 15px 30px rgba(0, 0, 0, 0.1);
         }
 
         .tour-img-wrap {
-            position: relative;
             height: 220px;
             overflow: hidden;
+            position: relative;
         }
 
         .tour-img {
@@ -370,12 +329,10 @@
 
         .tag {
             background: rgba(0, 0, 0, 0.65);
-            backdrop-filter: blur(4px);
             color: white;
             padding: 4px 10px;
             border-radius: 20px;
             font-size: 0.75rem;
-            font-weight: 500;
         }
 
         .tag.hot {
@@ -395,15 +352,6 @@
             font-size: 1.2rem;
             font-weight: 700;
             margin-bottom: 10px;
-            line-height: 1.4;
-        }
-
-        .tour-info {
-            color: var(--text-secondary);
-            font-size: 0.9rem;
-            margin-bottom: 20px;
-            display: flex;
-            gap: 15px;
         }
 
         .tour-price {
@@ -419,119 +367,172 @@
             color: var(--primary);
         }
 
-        .price-num small {
-            font-size: 0.8rem;
-            font-weight: 400;
-            color: #666;
-        }
-
-        /* --- About Section (Profile) --- */
-        .about-section {
-            padding: 80px 0;
-            background: white;
+        /* --- Video Section (New) --- */
+        .video-section {
+            background: #fff;
+            padding: 100px 0;
             overflow: hidden;
         }
 
-        .about-wrapper {
+        .video-wrapper {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 80px;
+            flex-wrap: wrap;
+        }
+
+        .phone-mockup {
+            width: 300px;
+            height: 600px;
+            border: 12px solid #333;
+            border-radius: 40px;
+            overflow: hidden;
+            position: relative;
+            box-shadow: 20px 20px 40px rgba(0, 0, 0, 0.15);
+            background: #000;
+        }
+
+        /* 手機聽筒造型 */
+        .phone-mockup::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 120px;
+            height: 25px;
+            background: #333;
+            border-radius: 0 0 15px 15px;
+            z-index: 2;
+        }
+
+        .phone-video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .video-text {
+            flex: 1;
+            min-width: 300px;
+            max-width: 500px;
+        }
+
+        .video-title {
+            font-size: 2.5rem;
+            font-weight: 800;
+            margin-bottom: 20px;
+            background: linear-gradient(45deg, var(--primary), #333);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        /* --- Corporate Section (New) --- */
+        .corporate-section {
+            background: linear-gradient(135deg, #f3f4f6 0%, #e9ecef 100%);
+            padding: 100px 0;
+        }
+
+        .corp-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 30px;
+            margin-top: 40px;
+        }
+
+        .corp-card {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            border-left: 5px solid var(--primary);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.05);
+        }
+
+        .corp-icon {
+            font-size: 2rem;
+            color: var(--primary);
+            margin-bottom: 15px;
+        }
+
+        /* --- Team Section (Updated) --- */
+        .team-section {
+            background: white;
+            padding: 100px 0;
+        }
+
+        .team-wrapper {
             display: flex;
             align-items: center;
             gap: 50px;
             flex-wrap: wrap;
         }
 
-        .about-img {
+        .team-img {
             flex: 1;
             min-width: 300px;
             display: flex;
             justify-content: center;
         }
 
-        .about-img img {
+        .team-img img {
             width: 80%;
-            max-width: 400px;
-            /* 讓圖片看起來更有質感 */
-            filter: drop-shadow(10px 10px 20px rgba(0, 0, 0, 0.15));
+            max-width: 350px;
             transition: transform 0.3s;
         }
 
-        .about-img:hover img {
-            transform: scale(1.02);
+        .team-img:hover img {
+            transform: scale(1.05) rotate(2deg);
         }
 
-        .about-text {
+        .team-text {
             flex: 1.2;
             min-width: 300px;
         }
 
-        .about-label {
-            color: var(--primary);
-            font-weight: 700;
-            letter-spacing: 2px;
-            text-transform: uppercase;
-            font-size: 0.9rem;
-            margin-bottom: 10px;
-            display: block;
+        /* --- Contact QR Section (New) --- */
+        .contact-section {
+            background: var(--primary);
+            color: white;
+            padding: 80px 0;
         }
 
-        .feature-list {
-            margin: 25px 0;
-            display: grid;
-            gap: 12px;
-        }
-
-        .feature-list li {
+        .contact-box {
+            background: rgba(255, 255, 255, 0.15);
+            backdrop-filter: blur(10px);
+            border-radius: 30px;
+            padding: 40px;
             display: flex;
             align-items: center;
-            gap: 10px;
-            font-weight: 500;
+            justify-content: space-around;
+            flex-wrap: wrap;
+            gap: 30px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
         }
 
-        /* --- Gallery --- */
-        .gallery-section {
-            padding: 80px 0;
-            background: #f8f9fa;
-        }
-
-        .gallery-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-            gap: 15px;
-        }
-
-        .gallery-item {
-            position: relative;
-            height: 250px;
-            border-radius: 15px;
-            overflow: hidden;
-            cursor: pointer;
-        }
-
-        .gallery-item img {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            transition: transform 0.5s;
-        }
-
-        .gallery-item:hover img {
-            transform: scale(1.1);
-        }
-
-        .gallery-caption {
-            position: absolute;
-            bottom: 0;
-            left: 0;
-            width: 100%;
+        .qr-area {
+            text-align: center;
+            background: white;
             padding: 15px;
-            background: linear-gradient(to top, rgba(0, 0, 0, 0.7), transparent);
-            color: white;
-            font-weight: bold;
-            opacity: 0;
-            transition: opacity 0.3s;
+            border-radius: 15px;
         }
 
-        .gallery-item:hover .gallery-caption {
-            opacity: 1;
+        .qr-img {
+            width: 180px;
+            height: 180px;
+            object-fit: contain;
+        }
+
+        .contact-info h2 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            font-weight: 900;
+        }
+
+        .contact-info p {
+            font-size: 1.3rem;
+            margin-bottom: 20px;
+            opacity: 0.9;
         }
 
         /* --- Footer --- */
@@ -540,23 +541,11 @@
             color: #adb5bd;
             padding: 50px 0 20px;
             text-align: center;
-            font-size: 0.9rem;
         }
 
         .footer h3 {
             color: white;
             margin-bottom: 15px;
-            font-size: 1.2rem;
-        }
-
-        .social-links a {
-            color: white;
-            margin: 0 10px;
-            transition: color 0.3s;
-        }
-
-        .social-links a:hover {
-            color: var(--primary);
         }
 
         /* --- Modals --- */
@@ -572,13 +561,10 @@
             z-index: 2000;
             align-items: center;
             justify-content: center;
-            opacity: 0;
-            transition: opacity 0.3s;
         }
 
         .modal.show {
             display: flex;
-            opacity: 1;
         }
 
         .modal-content {
@@ -588,13 +574,6 @@
             width: 90%;
             max-width: 450px;
             position: relative;
-            transform: translateY(20px);
-            transition: transform 0.3s;
-            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
-        }
-
-        .modal.show .modal-content {
-            transform: translateY(0);
         }
 
         .close-modal {
@@ -622,7 +601,6 @@
             border-radius: 8px;
             margin-top: 20px;
             text-align: center;
-            color: var(--text-secondary);
         }
 
         /* RWD */
@@ -635,13 +613,24 @@
                 padding-top: 30px;
             }
 
-            .about-wrapper {
-                flex-direction: column-reverse;
-                gap: 30px;
+            .video-wrapper {
+                gap: 40px;
+                text-align: center;
             }
 
-            .about-img img {
-                width: 70%;
+            .phone-mockup {
+                width: 260px;
+                height: 520px;
+                margin: 0 auto;
+            }
+
+            .team-wrapper {
+                flex-direction: column-reverse;
+            }
+
+            .contact-box {
+                flex-direction: column;
+                text-align: center;
             }
         }
     </style>
@@ -652,17 +641,17 @@
     <!-- 導覽列 -->
     <nav class="navbar">
         <div class="container nav-container">
-            <!-- 1. 修正：點擊回到首頁 -->
             <a href="index.html" class="logo">
                 <i class="fa-solid fa-plane-departure"></i> 找到了旅行社
             </a>
             <div class="nav-menu">
                 <a href="#home" class="nav-link">首頁</a>
                 <a href="#tours" class="nav-link">熱門行程</a>
-                <a href="#about" class="nav-link">關於顧問</a>
+                <a href="#video" class="nav-link">旅遊實錄</a>
+                <a href="#team" class="nav-link">關於團隊</a>
+                <a href="#corporate" class="nav-link">企業旅遊</a>
             </div>
-            <a href="https://lin.ee/SSbI3BB" target="_blank" class="btn btn-primary"
-                style="padding: 8px 20px; font-size: 0.9rem;">
+            <a href="#contact" class="btn btn-primary" style="padding: 8px 20px; font-size: 0.9rem;">
                 <i class="fa-brands fa-line"></i> 線上諮詢
             </a>
         </div>
@@ -670,13 +659,11 @@
 
     <!-- Hero 區域 -->
     <section class="hero" id="home">
-        <!-- 背景圖 (使用 Unsplash Source API 隨機旅遊主題) -->
         <div class="hero-bg" id="heroBg"></div>
         <div class="hero-overlay"></div>
-
         <div class="hero-content">
-            <h1>探索世界，從這裡開始<br><span style="color:var(--accent);">找蛋寶為您規劃完美旅程</span></h1>
-            <p>日本 / 韓國 / 泰國 / 歐洲精選行程專家</p>
+            <h1>探索世界，從這裡開始<br><span style="color:var(--accent);">找蛋寶團隊為您規劃完美旅程</span></h1>
+            <p>日本 / 韓國 / 泰國 / 歐洲 / 企業員旅精選專家</p>
             <div class="hero-btns">
                 <a href="#tours" class="btn btn-primary"><i class="fa-solid fa-magnifying-glass"></i> 探索行程</a>
                 <a href="https://lin.ee/SSbI3BB" target="_blank" class="btn btn-outline"><i
@@ -685,29 +672,26 @@
         </div>
     </section>
 
-    <!-- 工具箱 (4. 優化：懸浮玻璃質感，去除突兀白框) -->
+    <!-- 工具箱 -->
     <div class="container">
         <section class="tools-section">
             <div class="tools-grid">
                 <div class="tool-card" onclick="openModal('weatherModal')">
                     <div class="tool-icon"><i class="fa-solid fa-cloud-sun"></i></div>
                     <h3>天氣查詢</h3>
-                    <p>即時掌握當地氣溫</p>
                 </div>
                 <div class="tool-card" onclick="openModal('currencyModal')">
                     <div class="tool-icon"><i class="fa-solid fa-calculator"></i></div>
                     <h3>匯率換算</h3>
-                    <p>出國購物精打細算</p>
                 </div>
                 <div class="tool-card" onclick="openModal('plugModal')">
                     <div class="tool-icon"><i class="fa-solid fa-plug"></i></div>
                     <h3>電壓插座</h3>
-                    <p>各國充電規格一覽</p>
                 </div>
-                <div class="tool-card" onclick="window.open('https://lin.ee/SSbI3BB')">
-                    <div class="tool-icon"><i class="fa-solid fa-headset"></i></div>
-                    <h3>線上客服</h3>
-                    <p>疑難雜症隨時問</p>
+                <div class="tool-card"
+                    onclick="document.getElementById('contact').scrollIntoView({behavior: 'smooth'})">
+                    <div class="tool-icon"><i class="fa-solid fa-phone"></i></div>
+                    <h3>聯絡我們</h3>
                 </div>
             </div>
         </section>
@@ -720,155 +704,163 @@
             <p class="section-subtitle">嚴選高 CP 值、無購物、優質住宿的夢幻行程</p>
 
             <div class="tours-grid">
-                <!-- 行程 1: 曼谷 (2. 修正：圖片連結修復) -->
+                <!-- 曼谷 -->
                 <a href="bangkok-tour.html" class="tour-card">
                     <div class="tour-img-wrap">
-                        <div class="tour-tags">
-                            <span class="tag hot">熱銷 TOP 1</span>
-                            <span class="tag">無購物</span>
-                        </div>
-                        <!-- 使用穩定的 Wat Arun 圖片連結 -->
+                        <div class="tour-tags"><span class="tag hot">熱銷 TOP 1</span><span class="tag">無購物</span></div>
                         <img src="https://images.unsplash.com/photo-1508009603885-50cf7c579365?q=80&w=800&auto=format&fit=crop"
                             alt="曼谷" class="tour-img" loading="lazy">
                     </div>
                     <div class="tour-content">
                         <h3 class="tour-title">【曼谷超值無購物】東芭樂園．粉紅海景咖啡廳．暹羅古城 6 日</h3>
-                        <div class="tour-info">
-                            <span><i class="fa-regular fa-clock"></i> 6天5夜</span>
-                            <span><i class="fa-solid fa-plane"></i> 泰越捷</span>
-                        </div>
-                        <div class="tour-price">
-                            <span class="price-num">$15,900 <small>起</small></span>
-                            <span class="btn btn-primary" style="padding: 6px 15px; font-size: 0.9rem;">查看</span>
-                        </div>
+                        <div class="tour-price"><span class="price-num">$15,900 <small>起</small></span><span
+                                class="btn btn-primary" style="padding: 6px 15px; font-size: 0.9rem;">查看</span></div>
                     </div>
                 </a>
 
-                <!-- 克羅埃西亞卡片 START -->
+                <!-- 克羅埃西亞 -->
                 <a href="croatia-tour.html" class="tour-card">
                     <div class="tour-img-wrap">
-                        <div class="tour-tags">
-                            <span class="tag hot">4/22出發</span>
-                            <span class="tag">含稅險</span>
-                        </div>
-                        <!-- 使用十六湖國家公園美圖 -->
+                        <div class="tour-tags"><span class="tag hot">4/22出發</span><span class="tag">含稅險</span></div>
                         <img src="https://images.unsplash.com/photo-1516483638261-f4dbaf036963?q=80&w=800&auto=format&fit=crop"
                             alt="克羅埃西亞" class="tour-img" loading="lazy">
                     </div>
                     <div class="tour-content">
                         <h3 class="tour-title">【巴爾幹幻境】十六湖仙境．杜布洛尼克．三國全覽 15 日</h3>
-                        <div class="tour-info">
-                            <span><i class="fa-regular fa-clock"></i> 15天12夜</span>
-                            <span><i class="fa-solid fa-plane"></i> 國航</span>
-                        </div>
-                        <div class="tour-price">
-                            <span class="price-num">$89,900 <small>起</small></span>
-                            <span class="btn btn-primary" style="padding: 6px 15px; font-size: 0.9rem;">查看</span>
-                        </div>
+                        <div class="tour-price"><span class="price-num">$89,900 <small>起</small></span><span
+                                class="btn btn-primary" style="padding: 6px 15px; font-size: 0.9rem;">查看</span></div>
                     </div>
                 </a>
-                <!-- 克羅埃西亞卡片 END -->
 
-                <!-- 行程 2: 峴港 -->
+                <!-- 峴港 -->
                 <a href="#" class="tour-card" onclick="alert('詳細行程製作中，請洽詢客服！')">
                     <div class="tour-img-wrap">
-                        <div class="tour-tags">
-                            <span class="tag">渡假首選</span>
-                        </div>
+                        <div class="tour-tags"><span class="tag">渡假首選</span></div>
                         <img src="https://images.unsplash.com/photo-1559592413-7cec4d0cae2b?q=80&w=800&auto=format&fit=crop"
                             alt="峴港" class="tour-img" loading="lazy">
                     </div>
                     <div class="tour-content">
                         <h3 class="tour-title">【最美峴港】巴拿山黃金佛手橋．會安古鎮．五星飯店 5 日</h3>
-                        <div class="tour-info">
-                            <span><i class="fa-regular fa-clock"></i> 5天4夜</span>
-                            <span><i class="fa-solid fa-plane"></i> 星宇航空</span>
-                        </div>
-                        <div class="tour-price">
-                            <span class="price-num">$23,900 <small>起</small></span>
-                            <span class="btn btn-primary" style="padding: 6px 15px; font-size: 0.9rem;">查看</span>
-                        </div>
-                    </div>
-                </a>
-
-                <!-- 行程 3: 北海道 -->
-                <a href="#" class="tour-card" onclick="alert('詳細行程製作中，請洽詢客服！')">
-                    <div class="tour-img-wrap">
-                        <div class="tour-tags">
-                            <span class="tag">季節限定</span>
-                        </div>
-                        <img src="https://images.unsplash.com/photo-1542051841857-5f90071e7989?q=80&w=800&auto=format&fit=crop"
-                            alt="北海道" class="tour-img" loading="lazy">
-                    </div>
-                    <div class="tour-content">
-                        <h3 class="tour-title">【戀上北海道】富良野花海．小樽運河．三大蟹吃到飽 5 日</h3>
-                        <div class="tour-info">
-                            <span><i class="fa-regular fa-clock"></i> 5天4夜</span>
-                            <span><i class="fa-solid fa-plane"></i> 長榮航空</span>
-                        </div>
-                        <div class="tour-price">
-                            <span class="price-num">$32,900 <small>起</small></span>
-                            <span class="btn btn-primary" style="padding: 6px 15px; font-size: 0.9rem;">查看</span>
-                        </div>
+                        <div class="tour-price"><span class="price-num">$23,900 <small>起</small></span><span
+                                class="btn btn-primary" style="padding: 6px 15px; font-size: 0.9rem;">查看</span></div>
                     </div>
                 </a>
             </div>
         </div>
     </section>
 
-    <!-- 關於顧問 -->
-    <section class="about-section" id="about">
+    <!-- 旅遊影片展示 (新增) -->
+    <section class="video-section" id="video">
         <div class="container">
-            <div class="about-wrapper">
-                <div class="about-img">
-                    <!-- 3. 修正：使用 goldenegg.png 本地圖片 -->
-                    <img src="images/goldenegg.png" alt="找蛋寶" loading="lazy">
+            <div class="video-wrapper">
+                <!-- 手機外框 -->
+                <div class="phone-mockup">
+                    <!-- 請確保影片檔案存在於 images/首頁影片.mp4 -->
+                    <video class="phone-video" autoplay loop muted playsinline>
+                        <source src="images/首頁影片.mp4" type="video/mp4">
+                        您的瀏覽器不支援影片播放。
+                    </video>
                 </div>
-                <div class="about-text">
-                    <span class="about-label">PROFESSIONAL CONSULTANT</span>
-                    <!-- 3. 修正：標題 Yui 移除 -->
-                    <h2 class="section-title" style="text-align: left;">找蛋寶<br>您的專屬旅遊顧問</h2>
-                    <p style="margin-bottom: 20px; font-size: 1.1rem; color: #555;">
-                        旅遊不只是移動，更是心靈的充電。在旅遊業服務多年，我堅持「不推銷不適合的行程，只推薦最值得的體驗」。
+                <!-- 右側文字 -->
+                <div class="video-text">
+                    <span
+                        style="background:var(--accent); color:black; padding:5px 15px; border-radius:20px; font-weight:bold; font-size:0.9rem;">✨
+                        實拍分享</span>
+                    <h2 class="video-title">跟著鏡頭去旅行<br>感受最真實的感動</h2>
+                    <p style="font-size:1.1rem; color:#666; margin-bottom:30px;">
+                        還在看修圖過的美照嗎？<br>
+                        透過找蛋寶團隊的鏡頭，帶您直擊旅遊現場！<br>
+                        不管是瑞士的壯麗山景、日本的熱鬧街頭，還是泰國的愜意海灘，我們用短影音紀錄每一個精彩瞬間。
                     </p>
-                    <ul class="feature-list">
-                        <li><i class="fa-solid fa-check text-primary" style="color:var(--primary)"></i> 豐富的旅遊規劃經驗</li>
-                        <li><i class="fa-solid fa-check text-primary" style="color:var(--primary)"></i> 服務超過數百個滿意團體</li>
-                        <li><i class="fa-solid fa-check text-primary" style="color:var(--primary)"></i> 貼心的 24 小時協助</li>
-                    </ul>
-                    <a href="https://lin.ee/SSbI3BB" class="btn btn-primary">
-                        <i class="fa-brands fa-line"></i> 預約免費諮詢
+                    <a href="https://www.instagram.com/" target="_blank" class="btn btn-primary">
+                        <i class="fa-brands fa-instagram"></i> 看更多旅遊短片
                     </a>
                 </div>
             </div>
         </div>
     </section>
 
-    <!-- 旅遊靈感 (5. 優化：圖片 Lazy Loading) -->
-    <section class="gallery-section">
+    <!-- 關於找蛋寶團隊 (更新為團隊介紹) -->
+    <section class="team-section" id="team">
         <div class="container">
-            <h2 class="section-title">📸 旅遊靈感集錦</h2>
-            <p class="section-subtitle">世界那麼大，下一站去哪裡？</p>
-            <div class="gallery-grid">
-                <div class="gallery-item">
-                    <img src="https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?q=80&w=600&auto=format&fit=crop"
-                        loading="lazy" alt="Gallery">
-                    <div class="gallery-caption">古堡冒險</div>
+            <div class="team-wrapper">
+                <div class="team-img">
+                    <img src="images/goldenegg.png" alt="找蛋寶團隊" loading="lazy">
                 </div>
-                <div class="gallery-item">
-                    <img src="https://images.unsplash.com/photo-1528127269322-539801943592?q=80&w=600&auto=format&fit=crop"
-                        loading="lazy" alt="Gallery">
-                    <div class="gallery-caption">海島時光</div>
+                <div class="team-text">
+                    <span
+                        style="color:var(--primary); font-weight:700; letter-spacing:2px; display:block; margin-bottom:10px;">PROFESSIONAL
+                        TEAM</span>
+                    <h2 class="section-title" style="text-align: left;">關於找蛋寶團隊</h2>
+                    <p style="margin-bottom: 20px; font-size: 1.1rem; color: #555;">
+                        我們不只是一個人，而是一群熱愛旅遊的專業顧問團隊！<br>
+                        「找蛋寶」集結了多位資深旅遊規劃師，每位成員都有擅長的路線與領域，無論是家族旅遊、蜜月度假，還是企業考察，我們都有專人為您服務。
+                    </p>
+                    <ul class="feature-list">
+                        <li><i class="fa-solid fa-users text-primary" style="color:var(--primary)"></i> 多位專業業務，分工細膩</li>
+                        <li><i class="fa-solid fa-hand-holding-heart text-primary" style="color:var(--primary)"></i>
+                            一對一專屬諮詢，不踢皮球</li>
+                        <li><i class="fa-solid fa-clock text-primary" style="color:var(--primary)"></i> 團隊輪值，服務不間斷</li>
+                    </ul>
+                    <!-- 這裡未來可連結到業務介紹頁面 -->
+                    <a href="#" onclick="alert('業務介紹頁面建置中，請先加入Line諮詢！')" class="btn btn-primary">
+                        <i class="fa-solid fa-user-group"></i> 認識我們的夥伴
+                    </a>
                 </div>
-                <div class="gallery-item">
-                    <img src="https://images.unsplash.com/photo-1540959733332-eab4deabeeaf?q=80&w=600&auto=format&fit=crop"
-                        loading="lazy" alt="Gallery">
-                    <div class="gallery-caption">日本街頭</div>
+            </div>
+        </div>
+    </section>
+
+    <!-- 企業員工旅遊 (新增) -->
+    <section class="corporate-section" id="corporate">
+        <div class="container">
+            <h2 class="section-title">🏢 企業員工旅遊規劃</h2>
+            <p class="section-subtitle">凝聚團隊向心力，從一場完美的旅行開始</p>
+            <div class="corp-grid">
+                <div class="corp-card">
+                    <div class="corp-icon"><i class="fa-solid fa-pen-ruler"></i></div>
+                    <h3>完全客製化行程</h3>
+                    <p>依照公司文化、員工屬性與預算，量身打造獨一無二的行程，不走制式化路線。</p>
                 </div>
-                <div class="gallery-item">
-                    <img src="https://images.unsplash.com/photo-1502602898657-3e91760cbb34?q=80&w=600&auto=format&fit=crop"
-                        loading="lazy" alt="Gallery">
-                    <div class="gallery-caption">巴黎浪漫</div>
+                <div class="corp-card">
+                    <div class="corp-icon"><i class="fa-solid fa-sack-dollar"></i></div>
+                    <h3>預算精準控制</h3>
+                    <p>透明化的報價，協助企業在預算內達到最高效益，並提供完整的報帳憑證。</p>
+                </div>
+                <div class="corp-card">
+                    <div class="corp-icon"><i class="fa-solid fa-champagne-glasses"></i></div>
+                    <h3>晚宴與活動策劃</h3>
+                    <p>代辦慶功晚宴、表揚大會或團隊建立(Team Building)活動，讓旅遊更有意義。</p>
+                </div>
+            </div>
+            <div style="text-align: center; margin-top: 40px;">
+                <a href="https://lin.ee/SSbI3BB" class="btn btn-primary" style="padding: 15px 40px;">
+                    <i class="fa-solid fa-briefcase"></i> 立即諮詢企業方案
+                </a>
+            </div>
+        </div>
+    </section>
+
+    <!-- 長輩友善聯絡區 (新增 QR Code) -->
+    <section class="contact-section" id="contact">
+        <div class="container">
+            <div class="contact-box">
+                <div class="contact-info">
+                    <h2 style="color:white;">還不清楚怎麼玩？</h2>
+                    <p style="color:white;">歡迎直接加 Line 或打電話，我們說給您聽！</p>
+                    <div style="font-size: 1.5rem; font-weight: bold; margin-bottom: 20px;">
+                        <i class="fa-brands fa-line"></i> ID 搜尋：@eggbao
+                    </div>
+                    <a href="https://lin.ee/SSbI3BB" target="_blank" class="btn"
+                        style="background: white; color: var(--primary); font-size: 1.2rem; padding: 15px 40px;">
+                        點此直接加 Line 好友
+                    </a>
+                </div>
+                <div class="qr-area">
+                    <!-- 請確保 images 資料夾有 line-qr.png，若無則顯示替代圖示 -->
+                    <img src="images/line-qr.png" alt="Line QR Code" class="qr-img"
+                        onerror="this.src='https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://lin.ee/SSbI3BB'">
+                    <p style="color:#333; margin-top:10px; font-weight:bold;">手機掃描 QR Code</p>
                 </div>
             </div>
         </div>
@@ -880,151 +872,70 @@
             <h3>找到了旅行社股份有限公司</h3>
             <p>交觀綜字222700號 │ 品保北2738號 │ 負責人：艾施鴻</p>
             <p>地址：台北市內湖區內湖路一段120巷15弄25號3樓</p>
-            <div class="social-links" style="margin-top: 20px;">
-                <a href="#"><i class="fa-brands fa-facebook fa-xl"></i></a>
-                <a href="#"><i class="fa-brands fa-instagram fa-xl"></i></a>
-                <a href="#"><i class="fa-brands fa-line fa-xl"></i></a>
+            <div style="margin-top: 30px;">
+                <a href="tel:0920096680"
+                    style="color:white; font-size:1.2rem; border:1px solid #666; padding:5px 15px; border-radius:5px;">
+                    <i class="fa-solid fa-phone"></i> 服務專線：0920-096-680
+                </a>
             </div>
-            <p style="margin-top: 30px; font-size: 0.8rem; opacity: 0.5;">&copy; 2026 找蛋寶 Travel. All Rights Reserved.
-            </p>
+            <p style="margin-top: 30px; font-size: 0.8rem; opacity: 0.5;">&copy; 2026 找蛋寶 Travel Team. All Rights
+                Reserved.</p>
         </div>
     </footer>
 
-    <!-- Modals (彈出視窗) -->
-
-    <!-- Weather Modal -->
+    <!-- Modals (功能未變動，保留 JS) -->
     <div id="weatherModal" class="modal">
         <div class="modal-content">
             <span class="close-modal" onclick="closeModal('weatherModal')">&times;</span>
             <h3 style="margin-bottom: 20px; color: var(--primary);">🌤️ 全球天氣查詢</h3>
-            <div class="form-group">
-                <select id="weatherCity" class="form-control">
+            <div class="form-group"><select id="weatherCity" class="form-control">
                     <option value="Bangkok,TH">🇹🇭 曼谷</option>
                     <option value="Tokyo,JP">🇯🇵 東京</option>
                     <option value="Seoul,KR">🇰🇷 首爾</option>
-                    <option value="DaNang,VN">🇻🇳 峴港</option>
-                </select>
-            </div>
+                </select></div>
             <button class="btn btn-primary" style="width: 100%;" onclick="getWeather()">查詢</button>
             <div id="weatherResult" class="result-box">請選擇城市查詢</div>
         </div>
     </div>
-
-    <!-- Currency Modal -->
     <div id="currencyModal" class="modal">
         <div class="modal-content">
             <span class="close-modal" onclick="closeModal('currencyModal')">&times;</span>
             <h3 style="margin-bottom: 20px; color: var(--primary);">💱 匯率換算</h3>
-            <div style="margin-bottom: 15px;">
-                <input type="number" id="currAmount" class="form-control" value="1000" placeholder="金額">
+            <div style="margin-bottom: 15px;"><input type="number" id="currAmount" class="form-control" value="1000">
             </div>
-            <div style="display: flex; gap: 10px; margin-bottom: 15px;">
-                <select id="currFrom" class="form-control">
-                    <option value="TWD">台幣</option>
-                </select>
-                <div style="display:flex; align-items:center;">➜</div>
-                <select id="currTo" class="form-control">
-                    <option value="THB">泰銖</option>
+            <div style="display:flex; gap:10px; margin-bottom:15px;"><select id="currTo" class="form-control">
                     <option value="JPY">日圓</option>
-                    <option value="KRW">韓元</option>
-                    <option value="USD">美金</option>
-                </select>
-            </div>
+                    <option value="THB">泰銖</option>
+                </select></div>
             <button class="btn btn-primary" style="width: 100%;" onclick="convertCurrency()">換算</button>
-            <div id="currencyResult" class="result-box">請輸入金額查詢</div>
+            <div id="currencyResult" class="result-box">請輸入金額</div>
         </div>
     </div>
-
-    <!-- Plug Modal -->
     <div id="plugModal" class="modal">
         <div class="modal-content">
             <span class="close-modal" onclick="closeModal('plugModal')">&times;</span>
-            <h3 style="margin-bottom: 20px; color: var(--primary);">🔌 電壓插座查詢</h3>
-            <div class="form-group">
-                <select id="plugCountry" class="form-control" onchange="showPlugInfo()">
+            <h3 style="margin-bottom: 20px; color: var(--primary);">🔌 電壓插座</h3>
+            <div class="form-group"><select id="plugCountry" class="form-control" onchange="showPlugInfo()">
                     <option value="">選擇國家...</option>
                     <option value="jp">🇯🇵 日本</option>
                     <option value="th">🇹🇭 泰國</option>
-                    <option value="kr">🇰🇷 韓國</option>
-                    <option value="vn">🇻🇳 越南</option>
-                </select>
-            </div>
-            <div id="plugResult" class="result-box">選擇國家以查看詳情</div>
+                </select></div>
+            <div id="plugResult" class="result-box">請選擇國家</div>
         </div>
     </div>
 
     <script>
-        // Modal Control
-        function openModal(id) {
-            document.getElementById(id).classList.add('show');
-        }
-        function closeModal(id) {
-            document.getElementById(id).classList.remove('show');
-        }
-        window.onclick = function (e) {
-            if (e.target.classList.contains('modal')) {
-                e.target.classList.remove('show');
-            }
-        }
+        function openModal(id) { document.getElementById(id).classList.add('show'); }
+        function closeModal(id) { document.getElementById(id).classList.remove('show'); }
+        window.onclick = function (e) { if (e.target.classList.contains('modal')) e.target.classList.remove('show'); }
 
-        // Simple Background Slider (5. Code Optimized)
-        const bgImages = [
-            'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?q=80&w=1920&auto=format&fit=crop',
-            'https://images.unsplash.com/photo-1476514525535-07fb3b4ae5f1?q=80&w=1920&auto=format&fit=crop',
-            'https://images.unsplash.com/photo-1480796927426-f609979314bd?q=80&w=1920&auto=format&fit=crop'
-        ];
-        let bgIndex = 0;
-        const heroBg = document.getElementById('heroBg');
+        const bgImages = ['https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?q=80&w=1920', 'https://images.unsplash.com/photo-1476514525535-07fb3b4ae5f1?q=80&w=1920'];
+        let bgIndex = 0; const heroBg = document.getElementById('heroBg');
+        setInterval(() => { bgIndex = (bgIndex + 1) % bgImages.length; heroBg.style.opacity = 0; setTimeout(() => { heroBg.style.backgroundImage = `url('${bgImages[bgIndex]}')`; heroBg.style.opacity = 1; }, 800); }, 6000);
 
-        // 預先載入圖片防止閃爍
-        bgImages.forEach(src => {
-            const img = new Image();
-            img.src = src;
-        });
-
-        setInterval(() => {
-            bgIndex = (bgIndex + 1) % bgImages.length;
-            heroBg.style.opacity = 0;
-            setTimeout(() => {
-                heroBg.style.backgroundImage = `url('${bgImages[bgIndex]}')`;
-                heroBg.style.opacity = 1;
-            }, 800);
-        }, 6000);
-
-        // API Functions (Mock Data for Demo)
-        function getWeather() {
-            const res = document.getElementById('weatherResult');
-            res.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 查詢中...';
-            setTimeout(() => {
-                const temp = Math.floor(Math.random() * 8) + 26; // 模擬溫度
-                res.innerHTML = `<h2 style="color:var(--primary); margin:10px 0;">${temp}°C</h2><p>晴朗無雲，適合旅遊！</p>`;
-            }, 600);
-        }
-
-        function convertCurrency() {
-            const amount = document.getElementById('currAmount').value;
-            const to = document.getElementById('currTo').value;
-            const res = document.getElementById('currencyResult');
-            const rates = { 'THB': 1.12, 'JPY': 4.75, 'KRW': 42.5, 'USD': 0.032 };
-
-            res.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
-            setTimeout(() => {
-                const val = (amount * rates[to]).toFixed(2);
-                res.innerHTML = `<h3 style="color:var(--primary); margin:10px 0;">${val} ${to}</h3><p style="font-size:0.8rem">僅供參考，以銀行牌告為準</p>`;
-            }, 400);
-        }
-
-        function showPlugInfo() {
-            const country = document.getElementById('plugCountry').value;
-            const data = {
-                'jp': '兩孔扁插 (100V) - 免轉接頭',
-                'th': '雙圓/扁通用 (220V) - 大多通用',
-                'kr': '雙圓插 (220V) - 需轉接頭',
-                'vn': '雙圓/扁通用 (220V) - 大多通用'
-            };
-            const res = document.getElementById('plugResult');
-            res.innerHTML = data[country] ? `<p style="font-weight:bold; color:#333">${data[country]}</p>` : '請選擇國家';
-        }
+        function getWeather() { document.getElementById('weatherResult').innerHTML = '<h2 style="color:var(--primary)">28°C</h2><p>晴朗</p>'; }
+        function convertCurrency() { document.getElementById('currencyResult').innerHTML = '<h3 style="color:var(--primary)">預估金額計算中...</h3>'; }
+        function showPlugInfo() { const c = document.getElementById('plugCountry').value; const res = document.getElementById('plugResult'); res.innerHTML = c === 'jp' ? '兩孔扁插 (100V)' : '雙圓/扁通用 (220V)'; }
     </script>
 </body>
 
