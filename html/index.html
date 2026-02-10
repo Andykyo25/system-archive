@@ -1,3 +1,4 @@
+```html
 <!DOCTYPE html>
 <html lang="zh-TW">
 
@@ -840,11 +841,6 @@
                     <h3>預算精準控制</h3>
                     <p>透明化的報價，協助企業在預算內達到最高效益，並提供完整的報帳憑證。</p>
                 </div>
-                <div class="corp-card">
-                    <div class="corp-icon"><i class="fa-solid fa-champagne-glasses"></i></div>
-                    <h3>晚宴與活動策劃</h3>
-                    <p>代辦慶功晚宴、表揚大會或團隊建立(Team Building)活動，讓旅遊更有意義。</p>
-                </div>
             </div>
             <div style="text-align: center; margin-top: 40px;">
                 <a href="https://lin.ee/SSbI3BB" class="btn btn-primary" style="padding: 15px 40px;">
@@ -902,9 +898,11 @@
             <span class="close-modal" onclick="closeModal('weatherModal')">&times;</span>
             <h3 style="margin-bottom: 20px; color: var(--primary);">🌤️ 全球天氣查詢</h3>
             <div class="form-group"><select id="weatherCity" class="form-control">
-                    <option value="Bangkok,TH">🇹🇭 曼谷</option>
-                    <option value="Tokyo,JP">🇯🇵 東京</option>
-                    <option value="Seoul,KR">🇰🇷 首爾</option>
+                    <option value="Bangkok">🇹🇭 曼谷</option>
+                    <option value="Tokyo">🇯🇵 東京</option>
+                    <option value="Seoul">🇰🇷 首爾</option>
+                    <option value="Zagreb">🇭🇷 札格雷布</option>
+                    <option value="Paris">🇫🇷 巴黎</option>
                 </select></div>
             <button class="btn btn-primary" style="width: 100%;" onclick="getWeather()">查詢</button>
             <div id="weatherResult" class="result-box">請選擇城市查詢</div>
@@ -913,15 +911,24 @@
     <div id="currencyModal" class="modal">
         <div class="modal-content">
             <span class="close-modal" onclick="closeModal('currencyModal')">&times;</span>
-            <h3 style="margin-bottom: 20px; color: var(--primary);">💱 匯率換算</h3>
-            <div style="margin-bottom: 15px;"><input type="number" id="currAmount" class="form-control" value="1000">
+            <h3 style="margin-bottom: 20px; color: var(--primary);">💱 匯率換算 (台幣轉換)</h3>
+            <div style="margin-bottom: 15px;">
+                <label for="currAmount">輸入金額 (NT$):</label>
+                <input type="number" id="currAmount" class="form-control" value="1000">
             </div>
-            <div style="display:flex; gap:10px; margin-bottom:15px;"><select id="currTo" class="form-control">
-                    <option value="JPY">日圓</option>
-                    <option value="THB">泰銖</option>
-                </select></div>
+            <div style="display:flex; gap:10px; margin-bottom:15px;">
+                <label for="currTo">目標貨幣:</label>
+                <select id="currTo" class="form-control">
+                    <option value="JPY">日圓 (JPY)</option>
+                    <option value="THB">泰銖 (THB)</option>
+                    <option value="KRW">韓元 (KRW)</option>
+                    <option value="EUR">歐元 (EUR)</option>
+                </select>
+            </div>
             <button class="btn btn-primary" style="width: 100%;" onclick="convertCurrency()">換算</button>
             <div id="currencyResult" class="result-box">請輸入金額</div>
+            <p style="font-size: 0.8rem; color: #999; text-align: center; margin-top: 10px;">匯率數據更新於 2026/02/10
+                (約值，實際以銀行為準)</p>
         </div>
     </div>
     <div id="plugModal" class="modal">
@@ -932,6 +939,9 @@
                     <option value="">選擇國家...</option>
                     <option value="jp">🇯🇵 日本</option>
                     <option value="th">🇹🇭 泰國</option>
+                    <option value="kr">🇰🇷 韓國</option>
+                    <option value="hr">🇭🇷 克羅埃西亞</option>
+                    <option value="fr">🇫🇷 法國</option>
                 </select></div>
             <div id="plugResult" class="result-box">請選擇國家</div>
         </div>
@@ -946,10 +956,84 @@
         let bgIndex = 0; const heroBg = document.getElementById('heroBg');
         setInterval(() => { bgIndex = (bgIndex + 1) % bgImages.length; heroBg.style.opacity = 0; setTimeout(() => { heroBg.style.backgroundImage = `url('${bgImages[bgIndex]}')`; heroBg.style.opacity = 1; }, 800); }, 6000);
 
-        function getWeather() { document.getElementById('weatherResult').innerHTML = '<h2 style="color:var(--primary)">28°C</h2><p>晴朗</p>'; }
-        function convertCurrency() { document.getElementById('currencyResult').innerHTML = '<h3 style="color:var(--primary)">預估金額計算中...</h3>'; }
-        function showPlugInfo() { const c = document.getElementById('plugCountry').value; const res = document.getElementById('plugResult'); res.innerHTML = c === 'jp' ? '兩孔扁插 (100V)' : '雙圓/扁通用 (220V)'; }
+        async function getWeather() {
+            const city = document.getElementById('weatherCity').value;
+            const cityCoords = {
+                'Bangkok': { lat: 13.7563, lon: 100.5018 },
+                'Tokyo': { lat: 35.6895, lon: 139.6917 },
+                'Seoul': { lat: 37.5665, lon: 126.9780 },
+                'Zagreb': { lat: 45.8144, lon: 15.9780 },
+                'Paris': { lat: 48.8566, lon: 2.3522 }
+            };
+            const coords = cityCoords[city];
+            if (!coords) {
+                document.getElementById('weatherResult').innerHTML = '請選擇城市';
+                return;
+            }
+            try {
+                const response = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${coords.lat}&longitude=${coords.lon}&current_weather=true`);
+                const data = await response.json();
+                const weather = data.current_weather;
+                document.getElementById('weatherResult').innerHTML = `<h2 style="color:var(--primary)">${weather.temperature}°C</h2><p>風速: ${weather.windspeed} km/h, 風向: ${weather.winddirection}°</p>`;
+            } catch (error) {
+                document.getElementById('weatherResult').innerHTML = '無法獲取天氣數據，請稍後再試';
+            }
+        }
+        async function convertCurrency() {
+            const amount = parseFloat(document.getElementById('currAmount').value);
+            const toCurrency = document.getElementById('currTo').value;
+            let symbol = '';
+            switch (toCurrency) {
+                case 'JPY': symbol = '¥'; break;
+                case 'THB': symbol = '฿'; break;
+                case 'KRW': symbol = '₩'; break;
+                case 'EUR': symbol = '€'; break;
+            }
+            if (amount <= 0) {
+                document.getElementById('currencyResult').innerHTML = '請輸入有效金額';
+                return;
+            }
+            try {
+                const response = await fetch('https://open.er-api.com/v6/latest/TWD');
+                const data = await response.json();
+                const rate = data.rates[toCurrency];
+                if (rate) {
+                    const result = (amount * rate).toFixed(2);
+                    document.getElementById('currencyResult').innerHTML = `<h3 style="color:var(--primary)">NT$${amount} ≈ ${symbol}${result}</h3>`;
+                } else {
+                    document.getElementById('currencyResult').innerHTML = '無法獲取匯率';
+                }
+            } catch (error) {
+                document.getElementById('currencyResult').innerHTML = '無法獲取匯率數據，請稍後再試';
+            }
+        }
+        function showPlugInfo() {
+            const c = document.getElementById('plugCountry').value;
+            const res = document.getElementById('plugResult');
+            let info = '';
+            switch (c) {
+                case 'jp':
+                    info = '插座類型: A/B (兩扁腳/三腳)<br>電壓: 100V<br>頻率: 50/60Hz<br>需轉換器: 是 (若您的設備為220V)';
+                    break;
+                case 'th':
+                    info = '插座類型: A/B/C/F/O (多樣化)<br>電壓: 220V<br>頻率: 50Hz<br>需轉換器: 否 (若您的設備為110-240V)';
+                    break;
+                case 'kr':
+                    info = '插座類型: C/F (兩圓腳)<br>電壓: 220V<br>頻率: 60Hz<br>需轉換器: 否 (若您的設備為110-240V)';
+                    break;
+                case 'hr':
+                    info = '插座類型: C/F (兩圓腳)<br>電壓: 230V<br>頻率: 50Hz<br>需轉換器: 否 (若您的設備為110-240V)';
+                    break;
+                case 'fr':
+                    info = '插座類型: C/E (兩圓腳/有接地)<br>電壓: 230V<br>頻率: 50Hz<br>需轉換器: 否 (若您的設備為110-240V)';
+                    break;
+                default:
+                    info = '請選擇國家';
+            }
+            res.innerHTML = info;
+        }
     </script>
 </body>
 
 </html>
+```
