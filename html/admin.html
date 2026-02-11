@@ -3,7 +3,7 @@
 
 <head>
     <meta charset="UTF-8">
-    <title>找到了旅行社 - 行程管理中心 (格式修復版)</title>
+    <title>找到了旅行社 - 行程管理中心 (旗艦升級版)</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
@@ -76,13 +76,12 @@
 
         #quickPasteText {
             width: 100%;
-            height: 180px;
+            height: 150px;
             border-radius: 10px;
             border: 1px solid #ddd;
             padding: 15px;
             font-family: inherit;
             font-size: 0.95rem;
-            resize: vertical;
             margin-bottom: 15px;
         }
 
@@ -131,11 +130,6 @@
             color: white;
         }
 
-        .btn-danger {
-            background: #ff4757;
-            color: white;
-        }
-
         .btn-edit {
             background: #2f3542;
             color: white;
@@ -168,7 +162,7 @@
         .modal-content {
             background: white;
             width: 90%;
-            max-width: 850px;
+            max-width: 900px;
             max-height: 90vh;
             border-radius: 20px;
             padding: 40px;
@@ -202,27 +196,22 @@
         }
 
         .img-preview-container {
-            margin-top: 10px;
             width: 100%;
-            height: 180px;
-            border: 2px dashed #ddd;
+            height: 150px;
+            border: 1px solid #eee;
             border-radius: 12px;
             display: flex;
             align-items: center;
             justify-content: center;
             overflow: hidden;
-            background-color: #f9f9f9;
+            background: #fafafa;
+            margin-bottom: 15px;
         }
 
         .img-preview-container img {
             width: 100%;
             height: 100%;
             object-fit: cover;
-        }
-
-        .img-preview-container span {
-            color: #999;
-            font-size: 0.9rem;
         }
     </style>
 </head>
@@ -238,14 +227,14 @@
     <div class="main-content">
         <div class="header">
             <h1>行程管理中心</h1>
-            <button class="btn btn-primary" onclick="showModal()"><i class="fa-solid fa-plus"></i> 手動新增</button>
+            <button class="btn btn-primary" onclick="showModal()"><i class="fa-solid fa-plus"></i> 手動新增行程</button>
         </div>
 
         <div class="card">
-            <h3><i class="fa-solid fa-bolt" style="color:#fbc531"></i> 快速文案解析</h3>
-            <textarea id="quickPasteText" placeholder="在此貼上 LINE 或 FB 廣告文案..."></textarea>
+            <h3><i class="fa-solid fa-bolt" style="color:#fbc531"></i> 快速文案解析 (LINE/FB 廣告)</h3>
+            <textarea id="quickPasteText" placeholder="在此貼上廣告文案..."></textarea>
             <button class="btn btn-info" onclick="parseQuickText()">
-                <i class="fa-solid fa-wand-magic-sparkles"></i> 自動識別並填入表單
+                <i class="fa-solid fa-wand-magic-sparkles"></i> 智能識別文案內容
             </button>
         </div>
 
@@ -255,7 +244,8 @@
                     <tr>
                         <th>預覽</th>
                         <th>行程標題</th>
-                        <th>最低價格</th>
+                        <th>航空公司</th>
+                        <th>價格</th>
                         <th>操作</th>
                     </tr>
                 </thead>
@@ -264,44 +254,37 @@
         </div>
     </div>
 
+    <!-- Modal -->
     <div id="tourModal" class="modal">
         <div class="modal-content">
             <span class="close-btn" onclick="closeModal()">&times;</span>
-            <h2 id="modalTitle">編輯行程資料</h2>
+            <h2 id="modalTitle">行程編輯</h2>
             <form id="tourForm">
                 <input type="hidden" id="tourId">
+
                 <label>行程標題</label>
                 <input type="text" id="title" required>
 
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px;">
                     <div><label>最低價格 (數字)</label><input type="number" id="price" required></div>
-                    <div>
-                        <label>封面圖片網址</label>
-                        <div style="display: flex; gap: 8px;">
-                            <input type="text" id="image" placeholder="https://..." oninput="updatePreview()">
-                            <button type="button" class="btn btn-info" onclick="setRandomImage()"
-                                style="margin: 8px 0 15px; padding: 0 15px; white-space: nowrap;">
-                                <i class="fa-solid fa-image"></i> 隨機圖
-                            </button>
-                        </div>
+                    <div><label>航空公司</label><input type="text" id="airline" placeholder="如：土耳其航空"></div>
+                    <div><label>封面圖片</label><input type="text" id="image" placeholder="圖片網址" oninput="updatePreview()">
                     </div>
                 </div>
 
-                <div class="img-preview-container" id="imgPreview">
-                    <span>圖片預覽區</span>
-                </div>
+                <div class="img-preview-container" id="imgPreview"><span>圖片預覽</span></div>
 
-                <label>標籤 (JSON 格式陣列)</label>
+                <label>行程標籤 (JSON)</label>
                 <input type="text" id="tags">
 
-                <label>行程亮點 (JSON 格式陣列)</label>
-                <textarea id="highlights" rows="6"></textarea>
+                <label>行程亮點 (JSON)</label>
+                <textarea id="highlights" rows="4"></textarea>
 
-                <label>廣告備註 (文字說明)</label>
-                <textarea id="description" rows="5"></textarea>
+                <label>每日行程明細 (JSON - 包含餐食與住宿)</label>
+                <textarea id="itinerary" rows="8"></textarea>
 
-                <label>每日行程明細 (JSON 格式陣列)</label>
-                <textarea id="itinerary" rows="3"></textarea>
+                <label>費用說明 / 注意事項</label>
+                <textarea id="description" rows="4"></textarea>
 
                 <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 10px;">
                     <button type="button" class="btn" onclick="closeModal()">取消</button>
@@ -315,8 +298,9 @@
         const SB_URL = "https://luozejormlpayqbcvwis.supabase.co";
         const SB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imx1b3plam9ybWxwYXlxYmN2d2lzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA3NTY4NDQsImV4cCI6MjA4NjMzMjg0NH0.ASyVqZRPZeZtGKB2r_P0fEOhVczY0eptpHHy7jff08c";
         const _supabase = supabase.createClient(SB_URL, SB_KEY);
+        const FALLBACK_IMG = "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?q=80&w=800";
 
-        // 快速解析
+        // 快速文案解析
         function parseQuickText() {
             try {
                 const raw = document.getElementById('quickPasteText').value;
@@ -324,197 +308,138 @@
 
                 const lines = raw.split('\n').map(l => l.trim()).filter(l => l);
 
-                // 1. 標題處理: 移除開頭和結尾的裝飾性 Emoji，但保留中文/日文/韓文等文字
-                // \p{Extended_Pictographic} 需要配合 u 旗標
-                const emojiCleanRegex = /^\p{Extended_Pictographic}+|\p{Extended_Pictographic}+$/gu;
-                let title = lines[0].replace(emojiCleanRegex, "").trim();
-                if (!title) title = lines[0].substring(0, 30);
+                // 1. 標題與航空
+                let title = lines[0].replace(/[^\u4e00-\u9fa5a-zA-Z0-9\s]/g, "").trim();
+                let airline = "精選航空";
+                const airlineMatch = raw.match(/(航空公司：|航空公司:)\s?([^\n\s]+)/);
+                if (airlineMatch) airline = airlineMatch[2];
 
-                // 2. 價格處理: 強化正則，捕捉多種格式
-                const priceRegex = /(?:團費：|只要|價：|NT\$|\$|費用：)\s?(\d{1,3}(?:,\d{3})*)/gi;
+                // 2. 價格 (取最小值)
+                const priceRegex = /(?:團費：|只要|價：|\$)\s?(\d{1,3}(?:,\d{3})*)/g;
                 let minPrice = Infinity;
-                let match;
-                while ((match = priceRegex.exec(raw)) !== null) {
-                    const val = parseInt(match[1].replace(/,/g, ''));
-                    if (!isNaN(val) && val < minPrice) minPrice = val;
+                let m;
+                while ((m = priceRegex.exec(raw)) !== null) {
+                    const val = parseInt(m[1].replace(/,/g, ''));
+                    if (val < minPrice) minPrice = val;
                 }
 
                 // 3. 標籤與亮點
-                const tagsObj = [];
-                const highlightsObj = [];
-                let currentCat = "特色";
+                const tags = [];
+                const highlights = [];
+                let currentCat = "精選亮點";
 
                 lines.forEach(line => {
-                    // 抓標籤: 帶圖示且長度較短的行
-                    if (line.match(/^[\u2700-\u27bf\u1f300-\u1f5ff\u1f600-\u1f64f\u1f680-\u1f6ff\u2600-\u26ff]/) && line.length < 25) {
-                        const cleanedTag = line.replace(/^\p{Extended_Pictographic}+\s*/u, "").substring(0, 15).trim();
-                        if (cleanedTag && !tagsObj.includes(cleanedTag)) {
-                            tagsObj.push(cleanedTag);
-                        }
+                    if (line.match(/^[📌🚫✨✅🌊🚫🏨🎠🍽]/)) {
+                        const content = line.substring(2).trim();
+                        if (content.length < 15) tags.push(content);
+                        else highlights.push({ title: content.substring(0, 15), desc: currentCat, img: "" });
                     }
-
-                    // 判斷分類目錄
-                    if (line.includes("必玩") || line.includes("行程") || line.includes("體驗")) currentCat = "玩樂";
-                    if (line.includes("必吃") || line.includes("美食") || line.includes("風味")) currentCat = "美食";
-                    if (line.includes("住") || line.includes("飯店") || line.includes("住宿")) currentCat = "住宿";
-
-                    // 抓亮點: 使用 Emoji 開頭的項目
-                    // 這裡使用 unicode property escape 偵測開頭 Emoji
-                    if (/^\p{Extended_Pictographic}/u.test(line)) {
-                        const highlightTitle = line.replace(/^\p{Extended_Pictographic}+\s*/u, "").substring(0, 20).trim();
-                        if (highlightTitle && highlightTitle.length > 1) {
-                            highlightsObj.push({
-                                title: highlightTitle,
-                                desc: currentCat,
-                                img: ""
-                            });
-                        }
-                    }
+                    if (line.includes("必玩") || line.includes("行程")) currentCat = "玩樂行程";
+                    if (line.includes("必吃") || line.includes("美食")) currentCat = "道地美食";
+                    if (line.includes("住宿") || line.includes("飯店")) currentCat = "優質住宿";
                 });
 
-                // 4. 備註/描述處理: 尋找團費或航班資訊開始的地方
-                const descKeywords = ["【團費", "航班資訊", "出發日期", "機型"];
-                let descStartIndex = -1;
-                for (const kw of descKeywords) {
-                    const idx = raw.indexOf(kw);
-                    if (idx !== -1 && (descStartIndex === -1 || idx < descStartIndex)) {
-                        descStartIndex = idx;
-                    }
+                // 4. 備註 (自動切割出日期區塊)
+                const dateIndex = raw.indexOf("【團費");
+                const description = dateIndex !== -1 ? raw.substring(dateIndex).trim() : raw;
+
+                // 5. 行程明細模板 (自動生成天數，方便手動填入)
+                const dayMatch = raw.match(/天數：(\d+)天/);
+                const dayCount = dayMatch ? parseInt(dayMatch[1]) : 5;
+                const itineraryTemplate = [];
+                for (let i = 1; i <= dayCount; i++) {
+                    itineraryTemplate.push({ day: i, title: `第${i}天行程名稱`, spots: [], breakfast: "", lunch: "", dinner: "", hotel: "" });
                 }
 
-                const description = descStartIndex !== -1 ? raw.substring(descStartIndex).trim() : raw;
-
-                // 填入表單
                 showModal();
-                document.getElementById('modalTitle').innerText = "新增行程 (自動解析)";
-                document.getElementById('tourId').value = ""; // 清空 ID
                 document.getElementById('title').value = title;
                 document.getElementById('price').value = (minPrice === Infinity) ? 0 : minPrice;
-                document.getElementById('tags').value = JSON.stringify(tagsObj);
-                document.getElementById('highlights').value = JSON.stringify(highlightsObj, null, 2);
+                document.getElementById('airline').value = airline;
+                document.getElementById('tags').value = JSON.stringify(tags.slice(0, 6));
+                document.getElementById('highlights').value = JSON.stringify(highlights.slice(0, 8), null, 2);
+                document.getElementById('itinerary').value = JSON.stringify(itineraryTemplate, null, 2);
                 document.getElementById('description').value = description;
-                document.getElementById('itinerary').value = "[]";
 
-                alert("解析成功！請核對各項資料是否有誤。");
+                alert("解析成功！已建立旗艦版結構，請補齊每日詳細行程、餐食與圖片。");
             } catch (err) {
-                console.error(err);
-                alert("解析失敗，請手動輸入或檢查格式。\n錯誤細節: " + err.message);
+                alert("解析錯誤：" + err.message);
             }
         }
-        // 載入列表
+
         async function fetchTours() {
             const { data } = await _supabase.from('tours').select('*').order('id', { ascending: false });
             document.getElementById('tourTableBody').innerHTML = data.map(t => `
                 <tr>
                     <td><img src="${t.image || FALLBACK_IMG}" class="tour-img-preview"></td>
-                    <td>${t.title}</td>
+                    <td><b>${t.title}</b></td>
+                    <td>${t.airline || '---'}</td>
                     <td>$${Number(t.price).toLocaleString()}</td>
                     <td>
-                        <button class="btn btn-edit" onclick='editTour(${JSON.stringify(t)})'>修改</button>
-                        <button class="btn btn-danger" onclick="deleteTour(${t.id})|">刪除</button>
+                        <button class="btn btn-edit" onclick='editTour(${JSON.stringify(t)})'><i class="fa-solid fa-pen"></i></button>
+                        <button class="btn btn-danger" onclick="deleteTour(${t.id})"><i class="fa-solid fa-trash"></i></button>
                     </td>
                 </tr>
             `).join('');
         }
 
-        // 儲存邏輯
         document.getElementById('tourForm').onsubmit = async (e) => {
             e.preventDefault();
-            const btn = e.submitter;
-            btn.disabled = true;
-            btn.innerText = "儲存中...";
+            const saveBtn = document.getElementById('saveBtn');
+            saveBtn.disabled = true;
 
             try {
                 const id = document.getElementById('tourId').value;
-
-                // 核心修正：使用 JSON.parse 驗證並清理格式
-                const tagsVal = document.getElementById('tags').value.trim() || "[]";
-                const highVal = document.getElementById('highlights').value.trim() || "[]";
-                const itinVal = document.getElementById('itinerary').value.trim() || "[]";
-
                 const payload = {
                     title: document.getElementById('title').value,
-                    price: parseInt(document.getElementById('price').value || 0),
+                    price: parseInt(document.getElementById('price').value),
+                    airline: document.getElementById('airline').value,
                     image: document.getElementById('image').value,
-                    tags: JSON.parse(tagsVal),
-                    highlights: JSON.parse(highVal),
-                    description: document.getElementById('description').value,
-                    itinerary: JSON.parse(itinVal)
+                    tags: JSON.parse(document.getElementById('tags').value || "[]"),
+                    highlights: JSON.parse(document.getElementById('highlights').value || "[]"),
+                    itinerary: JSON.parse(document.getElementById('itinerary').value || "[]"),
+                    description: document.getElementById('description').value
                 };
 
-                const action = id
-                    ? _supabase.from('tours').update(payload).eq('id', id)
-                    : _supabase.from('tours').insert([payload]);
-
+                const action = id ? _supabase.from('tours').update(payload).eq('id', id) : _supabase.from('tours').insert([payload]);
                 const { error } = await action;
                 if (error) throw error;
 
-                alert("雲端儲存成功！");
-                closeModal();
-                fetchTours();
+                alert("同步成功！"); closeModal(); fetchTours();
             } catch (err) {
-                alert("儲存失敗：JSON 格式錯誤。\n請檢查輸入的 [ ] 是否完整。\n錯誤訊息: " + err.message);
+                alert("錯誤：" + err.message);
             } finally {
-                btn.disabled = false;
-                btn.innerText = "儲存並同步";
+                saveBtn.disabled = false;
             }
         };
 
-        async function deleteTour(id) {
-            if (confirm("確定刪除？")) { await _supabase.from('tours').delete().eq('id', id); fetchTours(); }
-        }
-
         function editTour(t) {
             showModal();
-            document.getElementById('modalTitle').innerText = "修改行程資料";
             document.getElementById('tourId').value = t.id;
             document.getElementById('title').value = t.title;
             document.getElementById('price').value = t.price;
+            document.getElementById('airline').value = t.airline || "精選航空";
             document.getElementById('image').value = t.image || "";
             document.getElementById('tags').value = JSON.stringify(t.tags || []);
             document.getElementById('highlights').value = JSON.stringify(t.highlights || [], null, 2);
-            document.getElementById('description').value = t.description || "";
             document.getElementById('itinerary').value = JSON.stringify(t.itinerary || [], null, 2);
+            document.getElementById('description').value = t.description || "";
             updatePreview();
         }
 
-        function showModal() {
-            document.getElementById('tourModal').classList.add('show');
-            updatePreview();
-        }
-        function closeModal() {
-            document.getElementById('tourModal').classList.remove('show');
-            document.getElementById('tourForm').reset();
-            document.getElementById('tourId').value = "";
-            updatePreview();
-        }
-
-        // 圖片預覽與隨機圖
-        const FALLBACK_IMG = "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?q=80&w=800";
-        const TRAVEL_IMGS = [
-            "https://images.unsplash.com/photo-1503220317375-aaad61436b1b?q=80&w=800",
-            "https://images.unsplash.com/photo-1476514525535-07fb3b4ae5f1?q=80&w=800",
-            "https://images.unsplash.com/photo-1527631746610-bca00a040d60?q=80&w=800",
-            "https://images.unsplash.com/photo-1502602898657-3e91760cbb34?q=80&w=800",
-            "https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?q=80&w=800",
-            "https://images.unsplash.com/photo-1493246507139-91e8bef99c02?q=80&w=800"
-        ];
-
-        function updatePreview() {
-            const url = document.getElementById('image').value;
-            const container = document.getElementById('imgPreview');
-            if (url) {
-                container.innerHTML = `<img src="${url}" onerror="this.src='${FALLBACK_IMG}'">`;
-            } else {
-                container.innerHTML = `<span>圖片預覽區</span>`;
+        async function deleteTour(id) {
+            if (confirm("確定刪除此行程？")) {
+                await _supabase.from('tours').delete().eq('id', id);
+                fetchTours();
             }
         }
 
-        function setRandomImage() {
-            const randomImg = TRAVEL_IMGS[Math.floor(Math.random() * TRAVEL_IMGS.length)];
-            document.getElementById('image').value = randomImg;
-            updatePreview();
+        function updatePreview() {
+            const url = document.getElementById('image').value;
+            document.getElementById('imgPreview').innerHTML = url ? `<img src="${url}">` : `<span>圖片預覽</span>`;
         }
+
+        function showModal() { document.getElementById('tourModal').classList.add('show'); }
+        function closeModal() { document.getElementById('tourModal').classList.remove('show'); document.getElementById('tourForm').reset(); }
 
         fetchTours();
     </script>
