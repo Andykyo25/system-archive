@@ -122,7 +122,7 @@
             line-height: 1.3;
         }
 
-        /* Stats Area */
+        /* Stats Area (修正為3欄) */
         .quick-stats {
             background: white;
             border-radius: var(--radius);
@@ -132,7 +132,7 @@
             z-index: 5;
             box-shadow: var(--shadow);
             display: grid;
-            grid-template-columns: repeat(4, 1fr);
+            grid-template-columns: repeat(3, 1fr);
             gap: 10px;
         }
 
@@ -228,10 +228,6 @@
             transition: 0.5s;
         }
 
-        .highlight-img:hover img {
-            transform: scale(1.05);
-        }
-
         .highlight-text {
             flex: 1.2;
         }
@@ -243,18 +239,12 @@
             margin-bottom: 15px;
         }
 
-        .highlight-text p {
-            font-size: 1.05rem;
-            color: var(--text-secondary);
-        }
-
-        /* Itinerary - EzTrip Style */
+        /* Itinerary Style */
         .day-group {
             margin-bottom: 25px;
             border-radius: 12px;
             overflow: hidden;
             border: 1px solid #eee;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.02);
         }
 
         .day-header {
@@ -280,11 +270,6 @@
             display: flex;
             gap: 10px;
             align-items: center;
-        }
-
-        .day-title i {
-            font-size: 0.9rem;
-            opacity: 0.5;
         }
 
         .spot-item {
@@ -320,7 +305,6 @@
         }
 
         .info-box strong {
-            color: var(--text-main);
             display: block;
             margin-bottom: 4px;
             font-size: 0.8rem;
@@ -365,26 +349,17 @@
             text-decoration: none;
             font-weight: 900;
             font-size: 1.1rem;
-            transition: 0.3s;
-        }
-
-        .btn-booking:hover {
-            background: var(--primary-dark);
-            transform: scale(1.05);
         }
 
         @media (max-width: 768px) {
             .quick-stats {
-                grid-template-columns: 1fr 1fr;
-                gap: 15px;
-                margin-top: -30px;
+                grid-template-columns: 1fr;
             }
 
             .stat-item {
                 border-right: none;
-                text-align: left;
-                padding-left: 10px;
-                border-left: 3px solid #eee;
+                border-bottom: 1px solid #eee;
+                padding: 10px 0;
             }
 
             .highlight-item,
@@ -405,10 +380,6 @@
             .tabs {
                 display: none;
             }
-
-            .detail-card {
-                padding: 25px 20px;
-            }
         }
     </style>
 </head>
@@ -426,7 +397,6 @@
         </div>
     </nav>
 
-    <!-- 主視覺 -->
     <section class="hero" id="heroBg">
         <div class="container hero-content">
             <div class="hero-tags" id="tourTags"></div>
@@ -435,14 +405,20 @@
     </section>
 
     <div class="container">
-        <!-- 行程摘要 -->
+        <!-- 行程摘要 (修正為3格) -->
         <div class="quick-stats">
-            <div class="stat-item"><small><i class="fa-regular fa-calendar"></i> 行程天數</small><strong id="statDays">--
-                    天</strong></div>
-            <div class="stat-item"><small><i class="fa-solid fa-plane"></i> 航空公司</small><strong
-                    id="statAirlines">優質航空</strong></div>
-            <div class="stat-item"><small><i class="fa-solid fa-hotel"></i> 飯店等級</small><strong>精選 4~5 星</strong></div>
-            <div class="stat-item"><small><i class="fa-solid fa-gift"></i> 特別贈送</small><strong>專屬禮包</strong></div>
+            <div class="stat-item">
+                <small><i class="fa-regular fa-calendar"></i> 行程天數</small>
+                <strong id="statDays">-- 天</strong>
+            </div>
+            <div class="stat-item">
+                <small><i class="fa-solid fa-plane"></i> 航空公司</small>
+                <strong id="statAirlines">載入中...</strong>
+            </div>
+            <div class="stat-item">
+                <small><i class="fa-solid fa-hotel"></i> 飯店等級</small>
+                <strong>精選 4~5 星</strong>
+            </div>
         </div>
 
         <!-- Sticky Tabs 選單 -->
@@ -455,17 +431,13 @@
         <!-- 行程特色亮點 -->
         <section id="section-highlights" class="detail-card">
             <h2 class="section-header">行程亮點特色</h2>
-            <div id="tourHighlights">
-                <p style="text-align:center; opacity:0.5;">載入中...</p>
-            </div>
+            <div id="tourHighlights"></div>
         </section>
 
         <!-- 每日行程 -->
         <section id="section-itinerary">
             <h2 class="section-header">每日精彩行程</h2>
-            <div id="tourTimeline">
-                <!-- 由 JavaScript 自動填充 -->
-            </div>
+            <div id="tourTimeline"></div>
         </section>
 
         <!-- 費用說明 -->
@@ -474,7 +446,7 @@
             <div class="info-grid" style="border:none; padding:0; margin:0;">
                 <div class="info-box">
                     <strong><i class="fa-solid fa-circle-check" style="color:green"></i> 費用包含</strong>
-                    <ul style="font-size:0.85rem; padding-left:15px; color:var(--text-secondary);">
+                    <ul style="font-size:0.85rem; padding-left:15px; color:var(--text-secondary); list-style:disc;">
                         <li>機票：團體經濟艙來回機票。</li>
                         <li>稅金：機場稅、燃油附加費。</li>
                         <li>住宿：行程所列之優質飯店。</li>
@@ -483,7 +455,7 @@
                 </div>
                 <div class="info-box">
                     <strong><i class="fa-solid fa-circle-xmark" style="color:red"></i> 費用不包含</strong>
-                    <ul style="font-size:0.85rem; padding-left:15px; color:var(--text-secondary);">
+                    <ul style="font-size:0.85rem; padding-left:15px; color:var(--text-secondary); list-style:disc;">
                         <li>規費：個人護照、簽證費用。</li>
                         <li>小費：床頭小費、領隊司機小費。</li>
                         <li>其他：個人私人消費、純屬私人支出。</li>
@@ -497,7 +469,7 @@
         </section>
     </div>
 
-    <!-- 底部固定預約列 -->
+    <!-- 底部預約列 -->
     <div class="booking-bar">
         <div class="container booking-content">
             <div class="booking-price">
@@ -508,7 +480,6 @@
     </div>
 
     <script>
-        // Supabase 配置
         const SB_URL = "https://luozejormlpayqbcvwis.supabase.co";
         const SB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imx1b3plam9ybWxwYXlxYmN2d2lzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA3NTY4NDQsImV4cCI6MjA4NjMzMjg0NH0.ASyVqZRPZeZtGKB2r_P0fEOhVczY0eptpHHy7jff08c";
         const _supabase = supabase.createClient(SB_URL, SB_KEY);
@@ -519,81 +490,72 @@
             if (!tourId) return;
 
             const { data: tour, error } = await _supabase.from('tours').select('*').eq('id', tourId).single();
-            if (error || !tour) {
-                document.getElementById('tourTitle').innerText = "行程已下架或不存在";
-                return;
-            }
+            if (error || !tour) return;
 
-            // 1. 基本資訊填充
+            // 1. 基本資訊
             document.title = `${tour.title} | 找到了旅行社`;
             document.getElementById('tourTitle').innerText = tour.title;
-            const priceStr = `$${Number(tour.price).toLocaleString()}`;
-            document.getElementById('bookingPrice').innerText = priceStr;
-            document.getElementById('heroBg').style.backgroundImage = `url('${tour.image || 'https://via.placeholder.com/1920x800?text=找到了旅行社'}')`;
-            document.getElementById('tourDescription').innerText = tour.description || "歡迎聯繫我們的旅遊專員，為您提供最詳細的行程說明。";
+            document.getElementById('bookingPrice').innerText = `$${Number(tour.price).toLocaleString()}`;
+            document.getElementById('heroBg').style.backgroundImage = `url('${tour.image || ''}')`;
+            document.getElementById('tourDescription').innerText = tour.description || "";
 
-            // 2. 統計摘要
+            // 2. 統計摘要連動
             document.getElementById('statDays').innerText = `${tour.itinerary?.length || '--'} 天`;
+            document.getElementById('statAirlines').innerText = tour.airline || "精選航空";
 
-            // 3. 標籤 (Pills)
-            if (tour.tags && tour.tags.length > 0) {
+            // 3. 標籤
+            if (tour.tags) {
                 document.getElementById('tourTags').innerHTML = tour.tags.map(t => `<span class="tag-pill">${t}</span>`).join('');
             }
 
-            // 4. 行程亮點特色 (交錯圖文排版)
-            if (tour.highlights && tour.highlights.length > 0) {
+            // 4. 行程亮點 (Zig-Zag)
+            if (tour.highlights) {
                 document.getElementById('tourHighlights').innerHTML = tour.highlights.map(h => `
                     <div class="highlight-item">
-                        <div class="highlight-img">
-                            <img src="${h.img || 'https://via.placeholder.com/600x400?text=精選特色'}" alt="${h.title}" loading="lazy">
-                        </div>
+                        <div class="highlight-img"><img src="${h.img || 'https://via.placeholder.com/600x400?text=精選特色'}" loading="lazy"></div>
                         <div class="highlight-text">
                             <h3>${h.title}</h3>
-                            <p>${h.desc || '這是專為您挑選的精選行程亮點，結合當地最精華的景色與文化體驗，給您最高品質的旅遊時光。'}</p>
+                            <p>${h.desc || '專業規劃的深度行程，帶您領略在地文化之美。'}</p>
                         </div>
                     </div>
                 `).join('');
             }
 
-            // 5. 每日詳細行程
-            if (tour.itinerary && tour.itinerary.length > 0) {
-                document.getElementById('tourTimeline').innerHTML = tour.itinerary.map(day => {
-                    const spotsHTML = day.spots.map(s => `<div class="spot-item">${s}</div>`).join('');
-
-                    return `
-                        <div class="day-group">
-                            <div class="day-header">
-                                <span>第 ${day.day} 天</span>
-                                <small><i class="fa-solid fa-location-dot"></i> 當地行程</small>
+            // 5. 每日行程
+            if (tour.itinerary) {
+                document.getElementById('tourTimeline').innerHTML = tour.itinerary.map(day => `
+                    <div class="day-group">
+                        <div class="day-header">
+                            <span>第 ${day.day} 天</span>
+                            <small><i class="fa-solid fa-location-dot"></i> 當地遊覽</small>
+                        </div>
+                        <div class="day-body">
+                            <h3 class="day-title"><i class="fa-solid fa-plane-arrival"></i> ${day.title}</h3>
+                            <div style="margin-bottom:15px;">
+                                ${day.spots.map(s => `<div class="spot-item">${s}</div>`).join('')}
                             </div>
-                            <div class="day-body">
-                                <h3 class="day-title"><i class="fa-solid fa-plane-arrival"></i> ${day.title}</h3>
-                                <div class="spot-container">${spotsHTML}</div>
-                                
-                                <div class="info-grid">
-                                    <div class="info-box">
-                                        <strong>🍱 今日餐食</strong>
-                                        早：${day.breakfast || '飯店內享用'} / 
-                                        午：${day.lunch || '在地風味料理'} / 
-                                        晚：${day.dinner || '敬請自理'}
-                                    </div>
-                                    <div class="info-box">
-                                        <strong>🏠 下榻飯店</strong>
-                                        ${day.hotel || '精選優質 4-5 星飯店或同級'}
-                                    </div>
+                            <div class="info-grid">
+                                <div class="info-box">
+                                    <strong>🍱 今日餐食</strong>
+                                    早：${day.breakfast || '飯店內享用'} / 
+                                    午：${day.lunch || '在地風味料理'} / 
+                                    晚：${day.dinner || '敬請自理'}
+                                </div>
+                                <div class="info-box">
+                                    <strong>🏠 下榻飯店</strong>
+                                    ${day.hotel || '精選優質 4-5 星飯店或同級'}
                                 </div>
                             </div>
                         </div>
-                    `;
-                }).join('');
+                    </div>
+                `).join('');
             }
         }
 
-        // 監聽捲動更新 Tab 狀態 (簡單版)
+        // 滾動偵測 Tabs
         window.addEventListener('scroll', () => {
             const sections = ['section-highlights', 'section-itinerary', 'section-notes'];
             const scrollPos = window.scrollY + 100;
-
             sections.forEach(id => {
                 const el = document.getElementById(id);
                 if (el && scrollPos >= el.offsetTop && scrollPos < (el.offsetTop + el.offsetHeight)) {
