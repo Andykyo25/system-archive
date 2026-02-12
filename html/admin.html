@@ -3,7 +3,7 @@
 
 <head>
     <meta charset="UTF-8">
-    <title>找到了旅行社 - 業務行程管理中心 (視覺化版)</title>
+    <title>找到了旅行社 - 業務行程管理中心 (視覺化強化版)</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
@@ -120,6 +120,7 @@
             color: #ff4757;
             cursor: pointer;
             font-size: 1.2rem;
+            z-index: 5;
         }
 
         .add-btn {
@@ -134,7 +135,6 @@
             display: inline-block;
         }
 
-        /* 每日行程表單優化 */
         .day-form-grid {
             display: grid;
             grid-template-columns: 1fr 1fr 1fr;
@@ -211,6 +211,12 @@
             font-size: 1.8rem;
             cursor: pointer;
         }
+
+        .section-split {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
     </style>
 </head>
 
@@ -228,16 +234,14 @@
             <button class="btn btn-primary" onclick="showModal()"><i class="fa-solid fa-plus"></i> 手動建立行程</button>
         </div>
 
-        <!-- 快速解析 -->
         <div class="card">
             <h3><i class="fa-solid fa-bolt" style="color:#fbc531"></i> 智慧文案解析</h3>
             <textarea id="quickPasteText" rows="4" placeholder="請貼上 LINE/FB 文案..."></textarea>
             <button class="btn btn-info" onclick="handleQuickParse()">
-                <i class="fa-solid fa-wand-magic-sparkles"></i> 智慧填入表單
+                <i class="fa-solid fa-wand-magic-sparkles"></i> 智慧填入表單 (視覺化)
             </button>
         </div>
 
-        <!-- 行程列表 -->
         <div class="card">
             <table style="width: 100%; border-collapse: collapse;">
                 <thead>
@@ -275,20 +279,29 @@
                 <label>標籤 (多個請用逗號隔開)</label>
                 <input type="text" id="tagsInput" placeholder="例如：無購物, 星宇航空, 季節限定">
 
-                <label>行程特色亮點 (視覺化列表)</label>
+                <label>行程特色亮點</label>
                 <div id="highlightsList"></div>
                 <button type="button" class="add-btn" onclick="addHighlightRow()"><i class="fa-solid fa-plus"></i>
                     增加亮點</button>
 
-                <label>每日行程明細 (視覺化列表)</label>
+                <label>每日行程明細 (包含下榻飯店)</label>
                 <div id="itineraryList"></div>
                 <button type="button" class="add-btn" onclick="addItineraryRow()"><i class="fa-solid fa-plus"></i>
                     增加一天行程</button>
 
-                <label>費用說明與備註 (不含 Emoji)</label>
-                <textarea id="description" rows="5"></textarea>
+                <div class="section-split">
+                    <div>
+                        <label>✅ 費用包含</label>
+                        <textarea id="included" rows="6" placeholder="列出機票、住宿、門票等..."></textarea>
+                    </div>
+                    <div>
+                        <label>❌ 注意事項 / 費用不含</label>
+                        <textarea id="notes" rows="6" placeholder="列出簽證、個人消費、小費等..."></textarea>
+                    </div>
+                </div>
 
-                <div style="display: flex; justify-content: flex-end; gap: 15px; margin-top: 30px;">
+                <div
+                    style="display: flex; justify-content: flex-end; gap: 15px; margin-top: 30px; padding-bottom: 20px;">
                     <button type="button" class="btn" style="background:#eee;" onclick="closeModal()">取消</button>
                     <button type="submit" class="btn btn-primary" id="saveBtn">儲存並更新官網</button>
                 </div>
@@ -301,13 +314,12 @@
         const SB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imx1b3plam9ybWxwYXlxYmN2d2lzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA3NTY4NDQsImV4cCI6MjA4NjMzMjg0NH0.ASyVqZRPZeZtGKB2r_P0fEOhVczY0eptpHHy7jff08c";
         const _supabase = supabase.createClient(SB_URL, SB_KEY);
 
-        // --- 輔助函式：徹底移除 Emoji ---
         function stripEmojis(str) {
             if (!str) return "";
             return str.replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{27BF}\u{1F000}-\u{1Faff}\u{1F600}-\u{1F64F}\u{1F680}-\u{1F6FF}]/gu, '').trim();
         }
 
-        // --- 核心：亮點與行程的 UI 渲染器 ---
+        // --- UI 渲染器 ---
 
         function addHighlightRow(data = { title: '', desc: '', img: '' }) {
             const container = document.getElementById('highlightsList');
@@ -316,85 +328,68 @@
             div.innerHTML = `
                 <i class="fa-solid fa-circle-xmark remove-btn" onclick="this.parentElement.remove()"></i>
                 <div style="display:flex; gap:10px;">
-                    <input type="text" placeholder="亮點標題" value="${stripEmojis(data.title)}" class="h-title" style="flex:1">
-                    <input type="text" placeholder="分類 (如:美食/玩樂)" value="${stripEmojis(data.desc)}" class="h-desc" style="width:150px">
+                    <input type="text" placeholder="亮點標題" value="${data.title}" class="h-title" style="flex:1">
+                    <input type="text" placeholder="分類 (如:玩樂/美食)" value="${data.desc}" class="h-desc" style="width:150px">
                 </div>
-                <input type="text" placeholder="亮點圖片網址 (可選)" value="${data.img}" class="h-img">
+                <input type="text" placeholder="圖片網址" value="${data.img}" class="h-img">
             `;
             container.appendChild(div);
         }
 
         function addItineraryRow(data = { day: 0, title: '', spots: [], breakfast: '', lunch: '', dinner: '', hotel: '' }) {
             const container = document.getElementById('itineraryList');
-            const index = container.children.length;
-            const displayDay = data.day || (index + 1);
-
+            const dayNum = data.day || (container.children.length + 1);
             const div = document.createElement('div');
             div.className = 'dynamic-row';
             div.innerHTML = `
                 <i class="fa-solid fa-circle-xmark remove-btn" onclick="this.parentElement.remove()"></i>
                 <div class="day-title-row">
-                    <strong>第 ${displayDay} 天</strong>
-                    <input type="text" placeholder="當日行程大標題" value="${stripEmojis(data.title)}" class="i-title" style="flex:1; margin:0;">
+                    <strong>DAY ${dayNum}</strong>
+                    <input type="text" placeholder="當日大標題" value="${data.title}" class="i-title" style="flex:1; margin:0;">
                 </div>
-                <textarea placeholder="當日景點清單 (一列一個景點)" class="i-spots" rows="2">${data.spots ? data.spots.map(s => stripEmojis(s)).join('\n') : ''}</textarea>
+                <textarea placeholder="行程景點 (一行一個)" class="i-spots" rows="2">${data.spots ? data.spots.join('\n') : ''}</textarea>
                 <div class="day-form-grid">
-                    <input type="text" placeholder="早餐" value="${stripEmojis(data.breakfast)}" class="i-breakfast">
-                    <input type="text" placeholder="午餐" value="${stripEmojis(data.lunch)}" class="i-lunch">
-                    <input type="text" placeholder="晚餐" value="${stripEmojis(data.dinner)}" class="i-dinner">
+                    <input type="text" placeholder="早餐" value="${data.breakfast}" class="i-breakfast">
+                    <input type="text" placeholder="午餐" value="${data.lunch}" class="i-lunch">
+                    <input type="text" placeholder="晚餐" value="${data.dinner}" class="i-dinner">
                 </div>
-                <input type="text" placeholder="下榻飯店" value="${stripEmojis(data.hotel)}" class="i-hotel">
+                <input type="text" placeholder="🏨 下榻飯店名稱" value="${data.hotel}" class="i-hotel">
             `;
             container.appendChild(div);
         }
 
-        // --- 核心：智慧文案解析邏輯 (優化版) ---
+        // --- 智慧解析對接 ---
 
         function handleQuickParse() {
             const raw = document.getElementById('quickPasteText').value;
-            if (!raw.trim()) return alert("請先貼上文案內容");
+            if (!raw.trim()) return alert("請貼上文案");
 
             const lines = raw.split('\n').map(l => l.trim()).filter(l => l);
 
-            // 1. 標題識別 (取第一行，移除 Emoji)
+            // 基本識別
             const title = stripEmojis(lines[0]).split('－')[0].split('-')[0].trim();
-
-            // 2. 航空公司識別 (擴大搜尋常見航空)
-            let airline = "精選航空";
-            const AIRLINE_LIST = ["星宇", "長榮", "華航", "酷航", "越捷", "虎航", "易斯達", "德威", "韓亞", "大韓", "國泰", "澳門"];
+            const AIRLINE_LIST = ["星宇", "長榮", "華航", "酷航", "越捷", "虎航", "易斯達", "德威"];
             const foundAir = AIRLINE_LIST.find(name => raw.includes(name));
-            if (foundAir) airline = foundAir + "航空";
 
-            // 3. 天數識別 (例如: 9日 或 9天)
+            // 天數與切割
             const dayMatch = raw.match(/(\d+)\s*[日天]/);
             const dayCount = dayMatch ? parseInt(dayMatch[1]) : 5;
-
-            // 4. 價格識別 (尋找數字)
-            const priceRegex = /(?:團費|售價|只要|價|[\$￥])[:：]?\s*(\d{1,3}(?:,\d{3})*)/;
-            const priceMatch = raw.replace(/,/g, '').match(priceRegex);
-            const price = priceMatch ? parseInt(priceMatch[1]) : 0;
-
-            // 5. 每日行程解析 (段落切割)
             const dayBlocks = raw.split(/第\s?\d+\s?天/);
-            const descriptionBlock = stripEmojis(dayBlocks[0].trim());
 
-            // 清空 UI
+            // 清空並開啟彈窗
             document.getElementById('highlightsList').innerHTML = '';
             document.getElementById('itineraryList').innerHTML = '';
-
-            // 填寫基本資料
             showModal();
-            document.getElementById('title').value = title;
-            document.getElementById('price').value = price;
-            document.getElementById('airline').value = airline;
-            document.getElementById('description').value = descriptionBlock;
 
-            // 填充每日行程列
+            document.getElementById('title').value = title;
+            document.getElementById('airline').value = foundAir ? foundAir + "航空" : "精選航空";
+
+            // 解析行程
             for (let i = 1; i < dayBlocks.length; i++) {
                 const block = dayBlocks[i].trim();
                 const blockLines = block.split('\n').map(l => l.trim()).filter(l => l);
 
-                let dayTitle = blockLines[0] || "精彩行程";
+                let dayTitle = blockLines[0] || "";
                 let breakfast = "", lunch = "", dinner = "", hotel = "", spots = [];
 
                 blockLines.forEach(line => {
@@ -402,31 +397,28 @@
                     else if (line.includes("午餐：")) lunch = line.split('：')[1];
                     else if (line.includes("晚餐：")) dinner = line.split('：')[1];
                     else if (line.includes("住宿：")) hotel = line.split('：')[1];
-                    else if (line.includes("→")) {
-                        spots.push(...line.split('→').map(s => s.trim()));
-                    } else if (line.length > 2 && line.length < 40 && line !== dayTitle) {
-                        spots.push(line);
-                    }
+                    else if (line.includes("→")) spots.push(...line.split('→').map(s => s.trim()));
+                    else if (line.length > 2 && line.length < 30 && line !== dayTitle) spots.push(line);
                 });
 
-                addItineraryRow({
-                    day: i,
-                    title: dayTitle,
-                    spots: [...new Set(spots)],
-                    breakfast, lunch, dinner, hotel
-                });
+                addItineraryRow({ day: i, title: dayTitle, spots, breakfast, lunch, dinner, hotel });
             }
 
-            // 若沒抓到行程 (例如天數抓錯)，補齊空白模板
+            // 若沒抓到行程則補空位
             if (dayBlocks.length <= 1) {
                 for (let i = 1; i <= dayCount; i++) addItineraryRow({ day: i });
             }
 
-            addHighlightRow({ title: '精選秘境行程', desc: '特色', img: '' });
-            alert(`智慧解析完成！\n識別天數：${dayBlocks.length - 1 || dayCount} 天\n識別航空：${airline}`);
+            // 抓取費用包含區塊 (簡單判斷)
+            if (raw.includes("包含:")) {
+                const includePart = raw.split("包含:")[1].split("不包含")[0];
+                document.getElementById('included').value = includePart.trim();
+            }
+
+            alert("智慧解析完成，請業務確認飯店與費用細節。");
         }
 
-        // --- 核心：儲存時將表單轉回 JSON ---
+        // --- 儲存邏輯 ---
 
         document.getElementById('tourForm').onsubmit = async (e) => {
             e.preventDefault();
@@ -434,8 +426,6 @@
             saveBtn.disabled = true;
 
             try {
-                const tags = document.getElementById('tagsInput').value.split(/[,，\s]+/).filter(t => t).map(t => stripEmojis(t));
-
                 const highlights = Array.from(document.querySelectorAll('#highlightsList .dynamic-row')).map(row => ({
                     title: stripEmojis(row.querySelector('.h-title').value),
                     desc: stripEmojis(row.querySelector('.h-desc').value),
@@ -457,37 +447,34 @@
                     price: parseInt(document.getElementById('price').value || 0),
                     airline: stripEmojis(document.getElementById('airline').value),
                     image: document.getElementById('image').value,
-                    description: stripEmojis(document.getElementById('description').value),
-                    tags: tags,
+                    description: stripEmojis(document.getElementById('notes').value), // 注意事項存入 description
+                    tags: document.getElementById('tagsInput').value.split(/[,，\s]+/).filter(t => t),
                     highlights: highlights,
-                    itinerary: itinerary
+                    itinerary: itinerary,
+                    // 若資料庫有加欄位，請對應如下：
+                    // included: document.getElementById('included').value 
                 };
 
                 const id = document.getElementById('tourId').value;
-                const action = id ? _supabase.from('tours').update(payload).eq('id', id) : _supabase.from('tours').insert([payload]);
+                const { error } = id ? await _supabase.from('tours').update(payload).eq('id', id) : await _supabase.from('tours').insert([payload]);
 
-                const { error } = await action;
                 if (error) throw error;
-
-                alert("同步至官網成功！");
+                alert("官網已同步更新！");
                 closeModal();
                 fetchTours();
-            } catch (err) {
-                alert("錯誤：" + err.message);
-            } finally {
-                saveBtn.disabled = false;
-            }
+            } catch (err) { alert("儲存失敗：" + err.message); }
+            finally { saveBtn.disabled = false; }
         };
 
-        // --- CRUD 基本功能 ---
+        // --- 基本功能 ---
 
         async function fetchTours() {
             const { data } = await _supabase.from('tours').select('*').order('id', { ascending: false });
-            document.getElementById('tourTableBody').innerHTML = data.map(t => `
+            document.getElementById('tourTableBody').innerHTML = (data || []).map(t => `
                 <tr>
                     <td style="padding:15px;"><b>${t.title}</b></td>
                     <td>${t.airline || '---'}</td>
-                    <td>$${Number(t.price).toLocaleString()}</td>
+                    <td>$${t.price}</td>
                     <td>
                         <button class="btn btn-primary" onclick='editTour(${JSON.stringify(t)})'>編輯</button>
                         <button class="btn" style="color:red; background:none;" onclick="deleteTour(${t.id})">刪除</button>
@@ -503,7 +490,7 @@
             document.getElementById('price').value = t.price;
             document.getElementById('airline').value = t.airline || "";
             document.getElementById('image').value = t.image || "";
-            document.getElementById('description').value = t.description || "";
+            document.getElementById('notes').value = t.description || "";
             document.getElementById('tagsInput').value = (t.tags || []).join(', ');
 
             document.getElementById('highlightsList').innerHTML = '';
@@ -513,7 +500,7 @@
             (t.itinerary || []).forEach(i => addItineraryRow(i));
         }
 
-        async function deleteTour(id) { if (confirm("確定刪除行程？")) { await _supabase.from('tours').delete().eq('id', id); fetchTours(); } }
+        async function deleteTour(id) { if (confirm("確定刪除？")) { await _supabase.from('tours').delete().eq('id', id); fetchTours(); } }
         function showModal() { document.getElementById('tourModal').classList.add('show'); document.getElementById('tourForm').reset(); document.getElementById('highlightsList').innerHTML = ''; document.getElementById('itineraryList').innerHTML = ''; }
         function closeModal() { document.getElementById('tourModal').classList.remove('show'); }
 

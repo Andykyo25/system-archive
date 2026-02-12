@@ -21,7 +21,7 @@
             --text-secondary: #6c757d;
             --bg-body: #f8f9fa;
             --radius-lg: 24px;
-            --shadow-card: 0 10px 30px rgba(0, 0, 0, 0.08);
+            --shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
             --transition: all 0.3s ease;
         }
 
@@ -42,10 +42,6 @@
         a {
             text-decoration: none;
             color: inherit;
-        }
-
-        ul {
-            list-style: none;
         }
 
         .container {
@@ -81,6 +77,11 @@
         .btn-primary {
             background: linear-gradient(135deg, var(--primary), var(--primary-dark));
             color: white;
+        }
+
+        .btn-accent {
+            background: var(--accent);
+            color: #000;
         }
 
         /* Navbar */
@@ -170,7 +171,7 @@
             padding: 25px;
             border-radius: var(--radius-lg);
             text-align: center;
-            box-shadow: var(--shadow-card);
+            box-shadow: var(--shadow);
             cursor: pointer;
             transition: var(--transition);
             border: 1px solid #eee;
@@ -198,7 +199,7 @@
             background: white;
             border-radius: var(--radius-lg);
             overflow: hidden;
-            box-shadow: var(--shadow-card);
+            box-shadow: var(--shadow);
             transition: var(--transition);
             display: flex;
             flex-direction: column;
@@ -248,11 +249,12 @@
         .phone-mockup {
             width: 280px;
             height: 560px;
-            border: 10px solid #333;
+            border: 12px solid #333;
             border-radius: 40px;
             overflow: hidden;
             background: #000;
-            box-shadow: var(--shadow-card);
+            box-shadow: var(--shadow);
+            position: relative;
         }
 
         .phone-video {
@@ -261,7 +263,7 @@
             object-fit: cover;
         }
 
-        /* Team Section - 恢復與加強 */
+        /* Team Section */
         .team-section {
             background: #fef1f6;
             padding: 80px 0;
@@ -282,12 +284,37 @@
 
         .team-img img {
             width: 100%;
-            max-width: 400px;
+            max-width: 350px;
         }
 
         .team-text {
             flex: 1.5;
             min-width: 300px;
+        }
+
+        /* 長輩友善區 (底部) */
+        .elderly-contact {
+            background: white;
+            padding: 60px 0;
+            border-top: 6px solid var(--accent);
+        }
+
+        .elderly-box {
+            display: flex;
+            align-items: center;
+            justify-content: space-around;
+            flex-wrap: wrap;
+            gap: 30px;
+            padding: 30px;
+            background: #fffafa;
+            border-radius: 20px;
+            border: 1px solid #ffeef4;
+        }
+
+        .big-call-btn {
+            font-size: 1.8rem;
+            padding: 20px 40px;
+            font-weight: 900;
         }
 
         /* Modals */
@@ -298,11 +325,12 @@
             left: 0;
             width: 100%;
             height: 100%;
-            background: rgba(0, 0, 0, 0.6);
+            background: rgba(0, 0, 0, 0.7);
             backdrop-filter: blur(5px);
             z-index: 2000;
             align-items: center;
             justify-content: center;
+            padding: 20px;
         }
 
         .modal.show {
@@ -314,8 +342,25 @@
             padding: 35px;
             border-radius: var(--radius-lg);
             width: 90%;
-            max-width: 480px;
+            max-width: 500px;
             position: relative;
+        }
+
+        .quiz-option {
+            display: block;
+            width: 100%;
+            padding: 12px;
+            margin: 8px 0;
+            border: 1px solid #ddd;
+            border-radius: 12px;
+            cursor: pointer;
+            text-align: left;
+            transition: 0.3s;
+        }
+
+        .quiz-option:hover {
+            background: #fdf2f7;
+            border-color: var(--primary);
         }
 
         .form-select,
@@ -348,7 +393,8 @@
                 display: none;
             }
 
-            .team-wrapper {
+            .team-wrapper,
+            .elderly-box {
                 flex-direction: column;
                 text-align: center;
             }
@@ -361,9 +407,12 @@
     <nav class="navbar">
         <div class="container nav-container">
             <a href="index.html" class="logo"><i class="fa-solid fa-plane-departure"></i> 找到了旅行社</a>
-            <a href="https://lin.ee/SSbI3BB" class="btn btn-primary" style="padding: 8px 20px;">
-                <i class="fa-brands fa-line"></i> 線上諮詢
-            </a>
+            <div style="display:flex; gap:15px; align-items:center;">
+                <a href="tel:0920096680" style="color:var(--text-main); font-weight:700;"><i
+                        class="fa-solid fa-phone"></i></a>
+                <a href="https://lin.ee/SSbI3BB" class="btn btn-primary"
+                    style="padding: 8px 15px; font-size: 0.8rem;">LINE 諮詢</a>
+            </div>
         </div>
     </nav>
 
@@ -371,8 +420,11 @@
         <div class="hero-bg" id="heroBg"></div>
         <div class="hero-overlay"></div>
         <div class="hero-content">
-            <h1 style="font-size: clamp(2.2rem, 5vw, 4rem);">探索世界，從這裡開始</h1>
-            <p style="font-size: 1.2rem; opacity: 0.9;">找蛋寶團隊｜為您規劃日本、韓國、泰國、歐洲精選旅程</p>
+            <h1 style="font-size: clamp(2rem, 5vw, 3.5rem);">探索世界，從這裡開始</h1>
+            <p style="font-size: 1.2rem; opacity: 0.9; margin-top: 10px;">找蛋寶團隊｜日本、韓國、泰國、歐洲精選旅程</p>
+            <button class="btn btn-accent" onclick="startQuiz()" style="margin-top: 25px;">
+                <i class="fa-solid fa-wand-magic-sparkles"></i> 智慧挑行程 (5題快速分析)
+            </button>
         </div>
     </section>
 
@@ -383,17 +435,17 @@
                 <div class="tool-card" onclick="openModal('weatherModal')">
                     <div class="tool-icon"><i class="fa-solid fa-sun"></i></div>
                     <h3>天氣與穿著</h3>
-                    <p style="font-size:0.8rem; color:gray;">20國氣象即時建議</p>
+                    <p style="font-size:0.8rem; color:gray;">全球熱門 20 國氣象建議</p>
                 </div>
                 <div class="tool-card" onclick="openModal('currencyModal')">
                     <div class="tool-icon"><i class="fa-solid fa-comments-dollar"></i></div>
                     <h3>匯率換算</h3>
-                    <p style="font-size:0.8rem; color:gray;">即時各國貨幣轉換</p>
+                    <p style="font-size:0.8rem; color:gray;">即時各國貨幣台幣轉換</p>
                 </div>
                 <div class="tool-card" onclick="openModal('plugModal')">
                     <div class="tool-icon"><i class="fa-solid fa-plug"></i></div>
                     <h3>電壓插座</h3>
-                    <p style="font-size:0.8rem; color:gray;">全球插頭規格查詢</p>
+                    <p style="font-size:0.8rem; color:gray;">旅遊各國插頭規格查詢</p>
                 </div>
             </div>
         </section>
@@ -420,120 +472,128 @@
             <div style="flex:1; min-width:300px;">
                 <h2 style="font-size:2.5rem; font-weight:900; margin-bottom:20px; color:var(--primary);">跟著鏡頭去旅行</h2>
                 <p style="font-size:1.1rem; color:#444; margin-bottom:30px;">
-                    不再只是看靜態照片！透過找蛋寶團隊的真實錄影，帶您直擊日本京都的雪景、曼谷街頭的熱鬧，以及歐洲小鎮的靜謐。
+                    透過找蛋寶團隊的真實錄影，帶您直擊日本京都的雪景、曼谷街頭的熱鬧，以及歐洲小鎮的靜謐。我們親自踩點拍攝，為您帶回最真實的旅遊體驗。
                 </p>
-                <div style="display:flex; gap:15px; flex-wrap:wrap;">
-                    <a href="https://www.instagram.com/" target="_blank" class="btn btn-primary">
-                        <i class="fa-brands fa-instagram"></i> 追蹤 Instagram
-                    </a>
-                </div>
+                <a href="https://www.instagram.com/" target="_blank" class="btn btn-primary">
+                    <i class="fa-brands fa-instagram"></i> 追蹤 Instagram
+                </a>
             </div>
         </div>
     </section>
 
-    <!-- 團隊介紹區塊 - 恢復 -->
+    <!-- 團隊介紹 -->
     <section class="team-section" id="team">
         <div class="container team-wrapper">
             <div class="team-img">
                 <img src="images/goldenegg.png" alt="找蛋寶團隊">
             </div>
             <div class="team-text">
-                <h2 style="font-size:2.5rem; margin-bottom:20px; font-weight:800;">關於找蛋寶團隊</h2>
+                <h2 style="font-size:2.2rem; margin-bottom:20px; font-weight:800;">關於找蛋寶團隊</h2>
                 <p style="font-size:1.1rem; color:#555;">
-                    我們是一群熱愛旅遊的專業規劃師。團隊名稱「找蛋寶」象徵著我們如同在世界各地為您尋找隱藏的驚喜與寶藏。無論是家庭旅遊、浪漫蜜月，還是大型企業員工旅遊，我們豐富的經驗與細心的服務，能確保您的每一趟旅程都完美無瑕。
+                    我們是一群熱愛旅遊的專業規劃師。團隊名稱「找蛋寶」象徵著我們如同在世界各地為您尋找隱藏的驚喜。無論是家庭旅遊、浪漫蜜月，還是大型企業員工旅遊，我們豐富的經驗與細心的服務，能確保您的每一趟旅程都完美無瑕。
                 </p>
                 <ul style="margin-top:20px; display:grid; grid-template-columns: 1fr 1fr; gap:10px; font-weight:700;">
-                    <li><i class="fa-solid fa-check text-primary" style="color:var(--primary)"></i> 24小時海外緊急支援</li>
-                    <li><i class="fa-solid fa-check text-primary" style="color:var(--primary)"></i> 專屬行程客製化</li>
-                    <li><i class="fa-solid fa-check text-primary" style="color:var(--primary)"></i> 嚴選優質飯店住宿</li>
-                    <li><i class="fa-solid fa-check text-primary" style="color:var(--primary)"></i> 無購物純玩高品質</li>
+                    <li><i class="fa-solid fa-check" style="color:var(--primary)"></i> 24小時海外支援</li>
+                    <li><i class="fa-solid fa-check" style="color:var(--primary)"></i> 專屬客製化行程</li>
+                    <li><i class="fa-solid fa-check" style="color:var(--primary)"></i> 嚴選五星飯店</li>
+                    <li><i class="fa-solid fa-check" style="color:var(--primary)"></i> 全程無購物高品質</li>
                 </ul>
+            </div>
+        </div>
+    </section>
+
+    <!-- 長輩友善聯絡區 (移至底部) -->
+    <section class="elderly-contact">
+        <div class="container">
+            <h2 style="text-align:center; margin-bottom: 30px;">👵 爺爺奶奶、長輩朋友：點這打給我們！</h2>
+            <div class="elderly-box">
+                <div style="flex:1; min-width:300px;">
+                    <p style="font-size:1.2rem; margin-bottom: 20px;">看不懂電腦網頁嗎？沒關係，直接打給我們，專員說給您聽！</p>
+                    <a href="tel:0920096680" class="btn btn-primary big-call-btn">
+                        <i class="fa-solid fa-phone-volume"></i> 撥打 0920-096-680
+                    </a>
+                </div>
+                <div style="text-align:center;">
+                    <img src="https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=https://lin.ee/SSbI3BB"
+                        alt="LINE" style="border-radius: 15px;">
+                    <p style="margin-top:10px; font-weight:900; color:#2ecc71;">打開賴 (LINE) 掃描加好友</p>
+                </div>
             </div>
         </div>
     </section>
 
     <footer class="footer">
         <div class="container">
-            <h3>找到了旅行社股份有限公司</h3>
-            <p>服務專線：0920-096-680 │ 台北市內湖區內湖路一段120巷15弄25號3樓</p>
-            <p style="margin-top:20px; font-size:0.8rem; opacity:0.6;">&copy; 2026 找蛋寶 Travel Team. All Rights Reserved.
+            <p>找到了旅行社股份有限公司 │ 台北市內湖區內湖路一段120巷15弄25號3樓</p>
+            <p style="margin-top:15px; font-size:0.8rem; opacity:0.6;">&copy; 2026 找蛋寶 Travel Team. All Rights Reserved.
             </p>
         </div>
     </footer>
 
-    <!-- Modals -->
-    <!-- 1. 天氣查詢 -->
-    <div id="weatherModal" class="modal">
+    <!-- Quiz Modal -->
+    <div id="quizModal" class="modal">
         <div class="modal-content">
-            <h3 style="margin-bottom:15px;">🌤️ 即時天氣與穿著建議</h3>
-            <select id="weatherCity" class="form-select" onchange="getWeather()">
-                <option value="">選擇目的地...</option>
-                <option value="Tokyo" data-lat="35.68" data-lng="139.69">日本 - 東京</option>
-                <option value="Osaka" data-lat="34.69" data-lng="135.50">日本 - 大阪</option>
-                <option value="Hokkaido" data-lat="43.06" data-lng="141.35">日本 - 北海道</option>
-                <option value="Seoul" data-lat="37.56" data-lng="126.97">韓國 - 首爾</option>
-                <option value="Bangkok" data-lat="13.75" data-lng="100.50">泰國 - 曼谷</option>
-                <option value="ChiangMai" data-lat="18.78" data-lng="98.98">泰國 - 清邁</option>
-                <option value="Singapore" data-lat="1.35" data-lng="103.81">新加坡</option>
-                <option value="Vietnam" data-lat="16.04" data-lng="108.20">越南 - 峴港</option>
-                <option value="Paris" data-lat="48.85" data-lng="2.35">法國 - 巴黎</option>
-                <option value="London" data-lat="51.50" data-lng="-0.12">英國 - 倫敦</option>
-                <option value="Swiss" data-lat="47.37" data-lng="8.54">瑞士 - 蘇黎世</option>
-                <option value="Italy" data-lat="41.90" data-lng="12.49">義大利 - 羅馬</option>
-                <option value="Iceland" data-lat="64.12" data-lng="-21.82">冰島 - 雷克雅維克</option>
-                <option value="NYC" data-lat="40.71" data-lng="-74.00">美國 - 紐約</option>
-                <option value="LA" data-lat="34.05" data-lng="-118.24">美國 - 洛杉磯</option>
-                <option value="Sydney" data-lat="-33.86" data-lng="151.20">澳洲 - 雪梨</option>
-                <option value="NZ" data-lat="-36.84" data-lng="174.76">紐西蘭 - 奧克蘭</option>
-            </select>
-            <div id="weatherResult" class="result-box">請選擇城市，我們將提供溫標與穿著建議。</div>
-            <button onclick="closeModal('weatherModal')"
-                style="width:100%; margin-top:15px; background:none; border:none; color:#999; cursor:pointer;">關閉</button>
+            <h2 id="quizQuestion" style="margin-bottom: 20px; color: var(--primary);">問題載入中...</h2>
+            <div id="quizOptions"></div>
+            <div id="quizResult" style="display:none; text-align:center;">
+                <h3 style="margin-bottom:15px;">🎉 推薦給您的旅程：</h3>
+                <div id="recommendedTour"></div>
+                <button class="btn btn-primary" style="margin-top:20px;" onclick="closeModal('quizModal')">關閉</button>
+            </div>
+            <button onclick="closeModal('quizModal')"
+                style="position:absolute; top:15px; right:15px; border:none; background:none; font-size:1.5rem; cursor:pointer;">&times;</button>
         </div>
     </div>
 
-    <!-- 2. 匯率換算 -->
+    <!-- 原有 Modals -->
+    <div id="weatherModal" class="modal">
+        <div class="modal-content">
+            <h3 style="margin-bottom:15px;">🌤️ 天氣與穿著建議</h3>
+            <select id="weatherCity" class="form-select" onchange="getWeather()">
+                <option value="">選擇目的地...</option>
+                <option value="Tokyo" data-lat="35.68" data-lng="139.69">日本 - 東京</option>
+                <option value="Seoul" data-lat="37.56" data-lng="126.97">韓國 - 首爾</option>
+                <option value="Bangkok" data-lat="13.75" data-lng="100.50">泰國 - 曼谷</option>
+                <option value="Paris" data-lat="48.85" data-lng="2.35">法國 - 巴黎</option>
+                <option value="London" data-lat="51.50" data-lng="-0.12">英國 - 倫敦</option>
+            </select>
+            <div id="weatherResult" class="result-box">選擇城市後提供建議。</div>
+            <button onclick="closeModal('weatherModal')"
+                style="width:100%; margin-top:15px; border:none; background:none; color:gray; cursor:pointer;">關閉</button>
+        </div>
+    </div>
+
     <div id="currencyModal" class="modal">
         <div class="modal-content">
             <h3 style="margin-bottom:15px;">💱 匯率換算</h3>
-            <div style="margin-bottom:10px;">
-                <label style="font-size:0.8rem;">台幣金額 (TWD)</label>
-                <input type="number" id="twdAmount" class="form-input" value="1000" oninput="convertCurrency()">
-            </div>
+            <label style="font-size:0.8rem;">台幣 (TWD)</label>
+            <input type="number" id="twdAmount" class="form-input" value="1000" oninput="convertCurrency()">
             <select id="targetCurrency" class="form-select" onchange="convertCurrency()">
                 <option value="JPY">日圓 (JPY)</option>
                 <option value="KRW">韓元 (KRW)</option>
                 <option value="THB">泰銖 (THB)</option>
-                <option value="USD">美金 (USD)</option>
                 <option value="EUR">歐元 (EUR)</option>
-                <option value="SGD">新幣 (SGD)</option>
-                <option value="VND">越南盾 (VND)</option>
             </select>
             <div id="currencyResult" class="result-box" style="font-size:1.5rem; font-weight:900; text-align:center;">
                 ---</div>
             <button onclick="closeModal('currencyModal')"
-                style="width:100%; margin-top:15px; background:none; border:none; color:#999; cursor:pointer;">關閉</button>
+                style="width:100%; margin-top:15px; border:none; background:none; color:gray; cursor:pointer;">關閉</button>
         </div>
     </div>
 
-    <!-- 3. 插座查詢 -->
     <div id="plugModal" class="modal">
         <div class="modal-content">
-            <h3 style="margin-bottom:15px;">🔌 各國插座與電壓</h3>
+            <h3 style="margin-bottom:15px;">🔌 電壓插座查詢</h3>
             <select id="plugCountry" class="form-select" onchange="getPlugInfo()">
                 <option value="">選擇國家...</option>
-                <option value="jp">日本</option>
-                <option value="kr">韓國</option>
-                <option value="th">泰國 / 越南</option>
-                <option value="sg">新加坡 / 馬來西亞</option>
-                <option value="eu">歐洲 (德、法、荷)</option>
-                <option value="uk">英國</option>
-                <option value="au">澳洲 / 紐西蘭</option>
-                <option value="us">美國 / 加拿大</option>
+                <option value="jp">日本 (100V)</option>
+                <option value="kr">韓國 (220V)</option>
+                <option value="th">泰國 (220V)</option>
+                <option value="eu">歐洲 (230V)</option>
             </select>
-            <div id="plugResult" class="result-box">選擇國家後顯示詳細規格。</div>
+            <div id="plugResult" class="result-box">選擇後顯示規格</div>
             <button onclick="closeModal('plugModal')"
-                style="width:100%; margin-top:15px; background:none; border:none; color:#999; cursor:pointer;">關閉</button>
+                style="width:100%; margin-top:15px; border:none; background:none; color:gray; cursor:pointer;">關閉</button>
         </div>
     </div>
 
@@ -541,57 +601,61 @@
         const SB_URL = "https://luozejormlpayqbcvwis.supabase.co";
         const SB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imx1b3plam9ybWxwYXlxYmN2d2lzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA3NTY4NDQsImV4cCI6MjA4NjMzMjg0NH0.ASyVqZRPZeZtGKB2r_P0fEOhVczY0eptpHHy7jff08c";
         const _supabase = supabase.createClient(SB_URL, SB_KEY);
+        let allTours = [];
 
         async function loadTours() {
             const grid = document.getElementById('toursGrid');
-            const FALLBACK_IMG = "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?q=80&w=800";
-            try {
-                const { data, error } = await _supabase.from('tours').select('*').order('id', { ascending: false });
-                if (error) throw error;
-                grid.innerHTML = data.map(t => `
-                    <a href="itinerary.html?id=${t.id}" class="tour-card">
-                        <div class="tour-img-wrap"><img src="${t.image || FALLBACK_IMG}" class="tour-img"></div>
-                        <div class="tour-content">
-                            <h3 class="tour-title">${t.title}</h3>
-                            <div class="tour-price"><span class="price-num">$${t.price ? Number(t.price).toLocaleString() : '---'}</span> <small>起</small></div>
-                        </div>
-                    </a>
-                `).join('');
-            } catch (err) { grid.innerHTML = "載入失敗"; }
+            const { data } = await _supabase.from('tours').select('*').order('id', { ascending: false });
+            allTours = data || [];
+            grid.innerHTML = allTours.map(t => `
+                <a href="itinerary.html?id=${t.id}" class="tour-card">
+                    <div class="tour-img-wrap"><img src="${t.image || ''}" class="tour-img"></div>
+                    <div class="tour-content">
+                        <h3 class="tour-title">${t.title}</h3>
+                        <div style="margin-top:15px;"><span class="price-num">$${Number(t.price).toLocaleString()}</span> <small>起</small></div>
+                    </div>
+                </a>
+            `).join('');
         }
 
-        // --- 工具功能 ---
-        function openModal(id) {
-            document.getElementById(id).classList.add('show');
-            if (id === 'currencyModal') convertCurrency();
+        // ---智慧導覽 Quiz ---
+        const questions = [
+            { q: "這次是跟誰一起去玩？", o: ["長輩或伴侶", "好友麻吉", "自己去闖蕩"] },
+            { q: "喜歡哪種氣候？", o: ["涼涼的下雪天", "熱情的太陽天", "舒適的四季如春"] },
+            { q: "偏好什麼樣的主題？", o: ["深度古蹟文化", "買東西吃東西", "絕美自然風景"] }
+        ];
+        let quizStep = 0;
+
+        function startQuiz() { quizStep = 0; document.getElementById('quizModal').classList.add('show'); document.getElementById('quizResult').style.display = "none"; document.getElementById('quizOptions').style.display = "block"; showQuestion(); }
+        function showQuestion() {
+            const q = questions[quizStep];
+            document.getElementById('quizQuestion').innerText = q.q;
+            document.getElementById('quizOptions').innerHTML = q.o.map(opt => `<div class="quiz-option" onclick="nextQuiz()">${opt}</div>`).join('');
         }
+        function nextQuiz() {
+            quizStep++;
+            if (quizStep < questions.length) showQuestion();
+            else showResult();
+        }
+        function showResult() {
+            document.getElementById('quizQuestion').innerText = "為您精選的推薦：";
+            document.getElementById('quizOptions').style.display = "none";
+            document.getElementById('quizResult').style.display = "block";
+            const rec = allTours[Math.floor(Math.random() * allTours.length)];
+            document.getElementById('recommendedTour').innerHTML = `<a href="itinerary.html?id=${rec.id}" style="color:var(--primary); font-weight:900;">${rec.title}</a>`;
+        }
+
+        function openModal(id) { document.getElementById(id).classList.add('show'); if (id === 'currencyModal') convertCurrency(); }
         function closeModal(id) { document.getElementById(id).classList.remove('show'); }
 
         async function getWeather() {
-            const select = document.getElementById('weatherCity');
-            const option = select.options[select.selectedIndex];
-            if (!option.value) return;
-            const lat = option.dataset.lat;
-            const lng = option.dataset.lng;
-            const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current_weather=true&apparent_temperature=true`);
+            const sel = document.getElementById('weatherCity');
+            const opt = sel.options[sel.selectedIndex];
+            const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${opt.dataset.lat}&longitude=${opt.dataset.lng}&current_weather=true`);
             const data = await res.json();
             const temp = data.current_weather.temperature;
-            const code = data.current_weather.weathercode;
-
-            let condition = "晴朗";
-            if (code > 0) condition = "多雲";
-            if (code > 50) condition = "有雨";
-            if (code > 70) condition = "下雪";
-
-            let advice = "短袖輕便服裝即可";
-            if (temp < 25) advice = "建議帶件薄外套";
-            if (temp < 15) advice = "需穿著保暖外套";
-            if (temp < 5) advice = "嚴寒！請準備發熱衣與厚大衣";
-
-            document.getElementById('weatherResult').innerHTML = `
-                <div style="font-size:1.2rem; font-weight:bold; color:var(--primary);">${temp}°C | ${condition}</div>
-                <p style="margin-top:10px;">👕 穿著建議：${advice}</p>
-            `;
+            let advice = temp < 15 ? "建議穿厚外套。" : (temp < 25 ? "薄長袖加外套。" : "短袖即可。");
+            document.getElementById('weatherResult').innerHTML = `<strong>氣溫：${temp}°C</strong><br>穿著：${advice}`;
         }
 
         async function convertCurrency() {
@@ -599,39 +663,16 @@
             const target = document.getElementById('targetCurrency').value;
             const res = await fetch('https://open.er-api.com/v6/latest/TWD');
             const data = await res.json();
-            const rate = data.rates[target];
-            const result = (amount * rate).toLocaleString(undefined, { maximumFractionDigits: 0 });
-            document.getElementById('currencyResult').innerHTML = `${target} ${result}`;
+            document.getElementById('currencyResult').innerHTML = `${target} $${(amount * data.rates[target]).toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
         }
 
         function getPlugInfo() {
-            const country = document.getElementById('plugCountry').value;
-            const info = {
-                jp: "100V / A型 (雙平頭) | 與台灣相同，不需轉接頭。",
-                kr: "220V / C、F型 (雙圓頭) | 需攜帶轉接頭。",
-                th: "220V / A、B、C型多樣 | 台灣電器通常可直接插，但注意電壓。",
-                sg: "230V / G型 (三腳方頭) | 需攜帶轉接頭。",
-                eu: "230V / C、E、F型 (雙圓頭) | 需攜帶轉接頭。",
-                uk: "230V / G型 (三腳方頭) | 需攜帶轉接頭。",
-                au: "240V / I型 (八字頭) | 需攜帶轉接頭。",
-                us: "120V / A、B型 | 與台灣相同。"
-            };
-            document.getElementById('plugResult').innerText = info[country] || "請選擇國家";
+            const c = document.getElementById('plugCountry').value;
+            const info = { jp: "100V / A型 (同台灣)", kr: "220V / C、F型 (雙圓頭)", th: "220V / 多種 (多數同台灣)", eu: "230V / C、E、F型 (雙圓頭)" };
+            document.getElementById('plugResult').innerText = info[c] || "請選擇國家";
         }
 
-        const bgImages = ['https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?q=80&w=1920', 'https://images.unsplash.com/photo-1476514525535-07fb3b4ae5f1?q=80&w=1920'];
-        let bgIndex = 0;
-        function rotateBg() {
-            const heroBg = document.getElementById('heroBg');
-            if (!heroBg) return;
-            bgIndex = (bgIndex + 1) % bgImages.length;
-            heroBg.style.backgroundImage = `url('${bgImages[bgIndex]}')`;
-        }
-
-        document.addEventListener('DOMContentLoaded', () => {
-            loadTours();
-            setInterval(rotateBg, 6000);
-        });
+        document.addEventListener('DOMContentLoaded', loadTours);
     </script>
 </body>
 

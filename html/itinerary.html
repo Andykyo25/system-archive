@@ -122,7 +122,7 @@
             line-height: 1.3;
         }
 
-        /* Stats Area (修正為3欄) */
+        /* Stats Area */
         .quick-stats {
             background: white;
             border-radius: var(--radius);
@@ -184,7 +184,7 @@
             border-bottom-color: var(--primary);
         }
 
-        /* Generic Detail Card */
+        /* Detail Cards */
         .detail-card {
             background: white;
             border-radius: var(--radius);
@@ -201,7 +201,7 @@
             padding-left: 15px;
         }
 
-        /* Highlights (Zig-Zag) */
+        /* Highlights */
         .highlight-item {
             display: flex;
             gap: 40px;
@@ -239,7 +239,7 @@
             margin-bottom: 15px;
         }
 
-        /* Itinerary Style */
+        /* Itinerary */
         .day-group {
             margin-bottom: 25px;
             border-radius: 12px;
@@ -277,6 +277,7 @@
             color: #444;
             position: relative;
             padding-left: 25px;
+            word-break: break-all;
         }
 
         .spot-item::before {
@@ -309,6 +310,15 @@
             margin-bottom: 4px;
             font-size: 0.8rem;
             color: var(--text-secondary);
+        }
+
+        /* 底部資訊區塊修正 */
+        .notes-text {
+            font-size: 0.95rem;
+            color: #555;
+            white-space: pre-line;
+            line-height: 1.8;
+            word-break: break-word;
         }
 
         /* Bottom Fixed Bar */
@@ -351,6 +361,14 @@
             font-size: 1.1rem;
         }
 
+        /* 解決底部卡字：增加 footer 的 padding-bottom */
+        footer {
+            background: #1a1a2e;
+            color: rgba(255, 255, 255, 0.6);
+            padding: 60px 0 120px;
+            text-align: center;
+        }
+
         @media (max-width: 768px) {
             .quick-stats {
                 grid-template-columns: 1fr;
@@ -362,17 +380,6 @@
                 padding: 10px 0;
             }
 
-            .highlight-item,
-            .highlight-item:nth-child(even) {
-                flex-direction: column;
-                gap: 20px;
-            }
-
-            .highlight-img {
-                height: 220px;
-                width: 100%;
-            }
-
             .info-grid {
                 grid-template-columns: 1fr;
             }
@@ -380,6 +387,22 @@
             .tabs {
                 display: none;
             }
+
+            .highlight-item,
+            .highlight-item:nth-child(even) {
+                flex-direction: column;
+            }
+
+            .highlight-img {
+                height: 220px;
+                width: 100%;
+            }
+
+            footer {
+                padding-bottom: 140px;
+            }
+
+            /* 手機版間距更大一點 */
         }
     </style>
 </head>
@@ -405,20 +428,13 @@
     </section>
 
     <div class="container">
-        <!-- 行程摘要 (修正為3格) -->
+        <!-- 行程摘要 -->
         <div class="quick-stats">
-            <div class="stat-item">
-                <small><i class="fa-regular fa-calendar"></i> 行程天數</small>
-                <strong id="statDays">-- 天</strong>
-            </div>
-            <div class="stat-item">
-                <small><i class="fa-solid fa-plane"></i> 航空公司</small>
-                <strong id="statAirlines">載入中...</strong>
-            </div>
-            <div class="stat-item">
-                <small><i class="fa-solid fa-hotel"></i> 飯店等級</small>
-                <strong>精選 4~5 星</strong>
-            </div>
+            <div class="stat-item"><small><i class="fa-regular fa-calendar"></i> 行程天數</small><strong id="statDays">--
+                    天</strong></div>
+            <div class="stat-item"><small><i class="fa-solid fa-plane"></i> 航空公司</small><strong
+                    id="statAirlines">載入中...</strong></div>
+            <div class="stat-item"><small><i class="fa-solid fa-hotel"></i> 飯店等級</small><strong>精選 4~5 星</strong></div>
         </div>
 
         <!-- Sticky Tabs 選單 -->
@@ -446,30 +462,40 @@
             <div class="info-grid" style="border:none; padding:0; margin:0;">
                 <div class="info-box">
                     <strong><i class="fa-solid fa-circle-check" style="color:green"></i> 費用包含</strong>
-                    <ul style="font-size:0.85rem; padding-left:15px; color:var(--text-secondary); list-style:disc;">
-                        <li>機票：團體經濟艙來回機票。</li>
-                        <li>稅金：機場稅、燃油附加費。</li>
-                        <li>住宿：行程所列之優質飯店。</li>
-                        <li>行李：每人 20kg 託運行李。</li>
-                    </ul>
+                    <div id="includedContent" class="notes-text">
+                        <!-- 若資料庫沒填，顯示預設值 -->
+                        1. 團體經濟艙來回機票、機場稅、燃油費。<br>
+                        2. 行程所列之飯店、餐食、門票、交通費用。<br>
+                        3. 每人 20kg 託運行李。
+                    </div>
                 </div>
                 <div class="info-box">
-                    <strong><i class="fa-solid fa-circle-xmark" style="color:red"></i> 費用不包含</strong>
-                    <ul style="font-size:0.85rem; padding-left:15px; color:var(--text-secondary); list-style:disc;">
-                        <li>規費：個人護照、簽證費用。</li>
-                        <li>小費：床頭小費、領隊司機小費。</li>
-                        <li>其他：個人私人消費、純屬私人支出。</li>
-                    </ul>
+                    <strong><i class="fa-solid fa-circle-xmark" style="color:red"></i> 費用不包含 / 注意事項</strong>
+                    <div id="notesContent" class="notes-text">
+                        <!-- 若資料庫沒填，顯示預設值 -->
+                        1. 個人護照、簽證規費。<br>
+                        2. 領隊、導遊、司機小費。<br>
+                        3. 個人私人消費（如床頭小費、行李小費）。
+                    </div>
                 </div>
             </div>
-            <div style="margin-top:25px; font-size:0.9rem; color:#666; border-top:1px solid #eee; padding-top:20px;">
-                <strong>💡 專員備註：</strong><br>
-                <div id="tourDescription" style="white-space: pre-line; margin-top:10px;"></div>
+            <div id="additionalDescWrap"
+                style="margin-top:25px; font-size:0.9rem; color:#666; border-top:1px solid #eee; padding-top:20px; display:none;">
+                <strong>💡 專員補充：</strong><br>
+                <div id="tourDescription" class="notes-text" style="margin-top:10px;"></div>
             </div>
         </section>
     </div>
 
-    <!-- 底部預約列 -->
+    <footer id="footer">
+        <div class="container">
+            <p style="color: white; margin-bottom: 10px; font-weight: 700;">找到了旅行社股份有限公司</p>
+            <p>服務專線：0920-096-680 │ 台北市內湖區內湖路一段120巷15弄25號3樓</p>
+            <p style="margin-top:20px; font-size:0.8rem; opacity:0.6;">註冊編號：交觀甲字第04712號 | 品保北2738號</p>
+        </div>
+    </footer>
+
+    <!-- 底部固定預約列 -->
     <div class="booking-bar">
         <div class="container booking-content">
             <div class="booking-price">
@@ -497,9 +523,15 @@
             document.getElementById('tourTitle').innerText = tour.title;
             document.getElementById('bookingPrice').innerText = `$${Number(tour.price).toLocaleString()}`;
             document.getElementById('heroBg').style.backgroundImage = `url('${tour.image || ''}')`;
-            document.getElementById('tourDescription').innerText = tour.description || "";
 
-            // 2. 統計摘要連動
+            // 注意事項 / 包含內容 (動態讀取)
+            if (tour.included) document.getElementById('includedContent').innerText = tour.included;
+            if (tour.description) {
+                document.getElementById('notesContent').innerText = tour.description; // 舊欄位作為注意事項
+            }
+            // 如果你有開新的 notes 欄位，請改讀 tour.notes
+
+            // 2. 統計摘要
             document.getElementById('statDays').innerText = `${tour.itinerary?.length || '--'} 天`;
             document.getElementById('statAirlines').innerText = tour.airline || "精選航空";
 
@@ -508,7 +540,7 @@
                 document.getElementById('tourTags').innerHTML = tour.tags.map(t => `<span class="tag-pill">${t}</span>`).join('');
             }
 
-            // 4. 行程亮點 (Zig-Zag)
+            // 4. 行程亮點
             if (tour.highlights) {
                 document.getElementById('tourHighlights').innerHTML = tour.highlights.map(h => `
                     <div class="highlight-item">
@@ -527,7 +559,7 @@
                     <div class="day-group">
                         <div class="day-header">
                             <span>第 ${day.day} 天</span>
-                            <small><i class="fa-solid fa-location-dot"></i> 當地遊覽</small>
+                            <small><i class="fa-solid fa-location-dot"></i> 當地行程</small>
                         </div>
                         <div class="day-body">
                             <h3 class="day-title"><i class="fa-solid fa-plane-arrival"></i> ${day.title}</h3>
@@ -542,8 +574,8 @@
                                     晚：${day.dinner || '敬請自理'}
                                 </div>
                                 <div class="info-box">
-                                    <strong>🏠 下榻飯店</strong>
-                                    ${day.hotel || '精選優質 4-5 星飯店或同級'}
+                                    <strong>🏨 下榻飯店</strong>
+                                    ${day.hotel || '精選優質飯店或同級'}
                                 </div>
                             </div>
                         </div>
