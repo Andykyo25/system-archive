@@ -3,69 +3,90 @@
 
 <head>
     <meta charset="UTF-8">
-    <title>找到了旅行社 - 業務行程管理中心 (視覺化強化版)</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>找到了旅行社 - 業務行程管理中心</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&display=swap" rel="stylesheet">
 
     <style>
         :root {
-            --primary: #d63384;
-            --primary-dark: #a61e61;
-            --dark: #1a1a2e;
-            --light: #f8f9fa;
+            --primary: #E83E8C;
+            --primary-dark: #C2185B;
+            --sidebar-bg: #0F172A;
+            --sidebar-hover: #1E293B;
+            --bg-color: #F8FAFC;
+            --card-bg: #FFFFFF;
+            --text-main: #334155;
+            --text-light: #64748B;
+            --border-color: #E2E8F0;
+            --danger: #EF4444;
+            --success: #10B981;
+            --radius-md: 12px;
+            --radius-lg: 16px;
+            --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
         }
 
         body {
             font-family: 'Noto Sans TC', sans-serif;
             margin: 0;
-            background: #f0f2f5;
+            background: var(--bg-color);
+            color: var(--text-main);
             display: flex;
-            color: #333;
+            height: 100vh;
+            overflow: hidden;
         }
 
+        /* 側邊欄 */
         .sidebar {
             width: 260px;
-            background: var(--dark);
+            background: var(--sidebar-bg);
             color: white;
             height: 100vh;
-            position: fixed;
-            padding: 20px;
+            padding: 25px 20px;
             box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
         }
 
         .sidebar h2 {
             color: var(--primary);
-            font-size: 1.5rem;
-            margin-bottom: 30px;
-        }
-
-        .nav-item {
-            padding: 12px 15px;
-            cursor: pointer;
-            border-radius: 8px;
-            transition: 0.3s;
-            margin-bottom: 8px;
-            opacity: 0.8;
+            font-size: 1.4rem;
+            margin-bottom: 40px;
+            font-weight: 900;
             display: flex;
             align-items: center;
             gap: 10px;
         }
 
-        .nav-item:hover {
-            background: rgba(255, 255, 255, 0.1);
-            opacity: 1;
+        .nav-item {
+            padding: 14px 16px;
+            cursor: pointer;
+            border-radius: 10px;
+            transition: all 0.3s ease;
+            margin-bottom: 10px;
+            color: #94A3B8;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-weight: 500;
+        }
+
+        .nav-item:hover, .nav-item.active {
+            background: var(--sidebar-hover);
+            color: white;
         }
 
         .nav-item.active {
-            background: var(--primary);
-            opacity: 1;
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            box-shadow: 0 4px 12px rgba(232, 62, 140, 0.3);
         }
 
+        /* 主內容區 */
         .main-content {
-            margin-left: 260px;
-            padding: 40px;
             flex: 1;
-            width: calc(100% - 260px);
+            padding: 40px;
+            overflow-y: auto;
         }
 
         .header {
@@ -75,363 +96,500 @@
             margin-bottom: 30px;
         }
 
-        .card {
-            background: white;
-            border-radius: 15px;
-            padding: 25px;
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
-            margin-bottom: 30px;
-        }
-
-        /* 表單元素 */
-        input,
-        textarea,
-        select {
-            width: 100%;
-            padding: 12px;
-            margin: 8px 0;
-            border: 1px solid #ddd;
-            border-radius: 8px;
-            font-family: inherit;
-            font-size: 0.95rem;
-        }
-
-        label {
+        .header h1 {
+            font-size: 1.8rem;
             font-weight: 800;
-            color: var(--dark);
-            display: block;
-            margin-top: 15px;
+            color: #1E293B;
         }
 
-        /* 視覺化列表樣式 */
-        .dynamic-row {
-            background: #f9f9f9;
-            padding: 15px;
-            border-radius: 10px;
-            border: 1px solid #eee;
+        .card {
+            background: var(--card-bg);
+            border-radius: var(--radius-lg);
+            padding: 30px;
+            box-shadow: var(--shadow);
+            margin-bottom: 30px;
+            border: 1px solid var(--border-color);
+        }
+
+        .card-title {
+            font-size: 1.1rem;
+            font-weight: 700;
             margin-bottom: 15px;
-            position: relative;
-        }
-
-        .remove-btn {
-            position: absolute;
-            top: 10px;
-            right: 10px;
-            color: #ff4757;
-            cursor: pointer;
-            font-size: 1.2rem;
-            z-index: 5;
-        }
-
-        .add-btn {
-            background: #2ecc71;
-            color: white;
-            padding: 8px 15px;
-            border-radius: 5px;
-            cursor: pointer;
-            border: none;
-            font-weight: bold;
-            margin-top: 10px;
-            display: inline-block;
-        }
-
-        .day-form-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr 1fr;
-            gap: 10px;
-        }
-
-        .day-title-row {
+            color: #1E293B;
             display: flex;
-            gap: 10px;
-            align-items: center;
-            background: #eee;
-            padding: 10px;
-            border-radius: 8px;
-            margin-bottom: 10px;
-        }
-
-        .btn {
-            padding: 10px 20px;
-            border-radius: 8px;
-            border: none;
-            cursor: pointer;
-            font-weight: 600;
-            display: inline-flex;
             align-items: center;
             gap: 8px;
         }
 
-        .btn-primary {
-            background: var(--primary);
-            color: white;
+        /* 表單與輸入框 */
+        input, textarea, select {
+            width: 100%;
+            padding: 12px 15px;
+            margin: 8px 0 15px 0;
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            font-family: inherit;
+            font-size: 0.95rem;
+            background: #F8FAFC;
+            transition: 0.3s;
+            box-sizing: border-box;
         }
 
-        .btn-info {
-            background: #0097e6;
-            color: white;
-            width: 100%;
-            justify-content: center;
+        input:focus, textarea:focus {
+            outline: none;
+            border-color: var(--primary);
+            background: #FFF;
+            box-shadow: 0 0 0 3px rgba(232, 62, 140, 0.1);
         }
 
-        /* Modal */
-        .modal {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
+        label {
+            font-weight: 700;
+            color: var(--text-main);
+            display: block;
+            font-size: 0.95rem;
+        }
+
+        /* 視覺化動態列表 (亮點/每日行程) */
+        .dynamic-row {
+            background: #F1F5F9;
+            padding: 20px;
+            border-radius: var(--radius-md);
+            border: 1px dashed #CBD5E1;
+            margin-bottom: 15px;
+            position: relative;
+            transition: 0.3s;
+        }
+        .dynamic-row:hover { border-color: var(--primary); background: #F8FAFC; }
+
+        .remove-btn {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            color: var(--text-light);
+            cursor: pointer;
+            font-size: 1.2rem;
+            transition: 0.3s;
+        }
+        .remove-btn:hover { color: var(--danger); transform: scale(1.1); }
+
+        .add-btn {
+            background: #F1F5F9;
+            color: var(--text-main);
+            padding: 10px 20px;
+            border-radius: var(--radius-md);
+            cursor: pointer;
+            border: 1px dashed #CBD5E1;
+            font-weight: 600;
             width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.7);
-            z-index: 2000;
+            transition: 0.3s;
+            display: flex;
             align-items: center;
             justify-content: center;
-            overflow: hidden;
+            gap: 8px;
         }
+        .add-btn:hover { background: #E2E8F0; color: var(--primary); border-color: var(--primary); }
 
-        .modal.show {
-            display: flex;
-        }
+        .day-form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; }
+        .day-badge { background: var(--primary); color: white; padding: 4px 12px; border-radius: 20px; font-weight: 900; font-size: 0.85rem; }
 
-        .modal-content {
-            background: white;
-            width: 95%;
-            max-width: 1000px;
-            max-height: 90vh;
-            border-radius: 20px;
-            padding: 40px;
-            overflow-y: auto;
-            position: relative;
-        }
-
-        .close-btn {
-            position: absolute;
-            top: 20px;
-            right: 20px;
-            font-size: 1.8rem;
+        /* 按鈕系統 */
+        .btn {
+            padding: 12px 24px;
+            border-radius: var(--radius-md);
+            border: none;
             cursor: pointer;
+            font-weight: 700;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            transition: 0.3s;
+            font-size: 0.95rem;
         }
+        .btn-primary { background: linear-gradient(135deg, var(--primary), var(--primary-dark)); color: white; box-shadow: 0 4px 12px rgba(232, 62, 140, 0.2); }
+        .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 6px 15px rgba(232, 62, 140, 0.3); }
+        .btn-magic { background: linear-gradient(135deg, #6366F1, #8B5CF6); color: white; box-shadow: 0 4px 12px rgba(99, 102, 241, 0.2); }
+        .btn-magic:hover { transform: translateY(-2px); }
+        .btn-outline { background: transparent; border: 1px solid var(--border-color); color: var(--text-main); }
+        .btn-outline:hover { background: #F1F5F9; }
 
-        .section-split {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 20px;
+        /* 表格設計 */
+        table { width: 100%; border-collapse: separate; border-spacing: 0; }
+        th { padding: 16px; text-align: left; background: #F8FAFC; color: var(--text-light); font-weight: 700; border-bottom: 2px solid var(--border-color); }
+        td { padding: 16px; border-bottom: 1px solid var(--border-color); vertical-align: middle; }
+        tr:hover td { background: #F8FAFC; }
+        .price-tag { font-weight: 900; color: var(--primary); font-size: 1.1rem; }
+        .action-btns { display: flex; gap: 8px; }
+        .btn-sm { padding: 6px 12px; font-size: 0.85rem; border-radius: 8px; }
+
+        /* Modal (彈窗) 優化 */
+        .modal {
+            display: none; position: fixed; inset: 0; background: rgba(15, 23, 42, 0.75); backdrop-filter: blur(4px);
+            z-index: 2000; align-items: center; justify-content: center;
+            opacity: 0; transition: opacity 0.3s ease;
         }
+        .modal.show { display: flex; opacity: 1; }
+        .modal-content {
+            background: white; width: 95%; max-width: 1000px; height: 90vh;
+            border-radius: var(--radius-lg); display: flex; flex-direction: column;
+            transform: translateY(20px); transition: transform 0.3s ease; overflow: hidden;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+        }
+        .modal.show .modal-content { transform: translateY(0); }
+        
+        .modal-header { padding: 25px 30px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; background: #FFF; }
+        .modal-header h2 { margin: 0; font-size: 1.5rem; color: #1E293B; }
+        .close-btn { font-size: 1.8rem; cursor: pointer; color: var(--text-light); transition: 0.3s; }
+        .close-btn:hover { color: var(--danger); }
+        
+        .modal-body { padding: 30px; overflow-y: auto; flex: 1; background: #F8FAFC; }
+        .form-section { background: #FFF; padding: 25px; border-radius: var(--radius-lg); border: 1px solid var(--border-color); margin-bottom: 25px; }
+        .section-title { font-size: 1.2rem; font-weight: 800; margin-bottom: 20px; color: var(--primary); border-left: 4px solid var(--primary); padding-left: 10px; }
+        
+        .modal-footer { padding: 20px 30px; border-top: 1px solid var(--border-color); display: flex; justify-content: flex-end; gap: 15px; background: #FFF; }
+
+        .section-split { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+
+        /* Toast 提示 */
+        #toast {
+            position: fixed; bottom: 30px; right: 30px; background: white; color: var(--text-main);
+            padding: 15px 25px; border-radius: var(--radius-md); box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+            display: flex; align-items: center; gap: 12px; font-weight: 700; border-left: 5px solid var(--success);
+            transform: translateX(120%); transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1); z-index: 3000;
+        }
+        #toast.show { transform: translateX(0); }
+        #toast.error { border-left-color: var(--danger); }
     </style>
 </head>
 
 <body>
 
     <div class="sidebar">
-        <h2>找到管理中心</h2>
-        <div class="nav-item active" onclick="location.reload()"><i class="fa-solid fa-map-location-dot"></i> 行程管理</div>
-        <div class="nav-item" onclick="window.open('index.html')"><i class="fa-solid fa-house"></i> 前往首頁</div>
+        <h2><i class="fa-solid fa-plane-departure"></i> 找蛋寶後台</h2>
+        <div class="nav-item active" onclick="location.reload()"><i class="fa-solid fa-map-location-dot"></i> 行程管理中心</div>
+        <div class="nav-item" onclick="window.open('index.html')"><i class="fa-solid fa-house"></i> 預覽前台官網</div>
+        
+        <div style="margin-top: auto; font-size: 0.8rem; color: #64748B; text-align: center;">
+            <p>找到了旅行社系統</p>
+            <p>v2.0.1 (視覺強化版)</p>
+        </div>
     </div>
 
     <div class="main-content">
         <div class="header">
-            <h1>旅遊行程發佈中心</h1>
-            <button class="btn btn-primary" onclick="showModal()"><i class="fa-solid fa-plus"></i> 手動建立行程</button>
+            <div>
+                <h1>旅遊行程管理</h1>
+                <p style="color: var(--text-light); margin-top: 5px;">輕鬆管理、上架、編輯您的旅遊產品</p>
+            </div>
+            <button class="btn btn-primary" onclick="showModal()"><i class="fa-solid fa-plus"></i> 新增行程</button>
         </div>
 
-        <div class="card">
-            <h3><i class="fa-solid fa-bolt" style="color:#fbc531"></i> 智慧文案解析</h3>
-            <textarea id="quickPasteText" rows="4" placeholder="請貼上 LINE/FB 文案..."></textarea>
-            <button class="btn btn-info" onclick="handleQuickParse()">
-                <i class="fa-solid fa-wand-magic-sparkles"></i> 智慧填入表單 (視覺化)
+        <div class="card" style="background: linear-gradient(135deg, #F0F9FF, #E0F2FE); border: 1px solid #BAE6FD;">
+            <div class="card-title"><i class="fa-solid fa-wand-magic-sparkles" style="color: #0284C7;"></i> AI 智慧文案解析 (LINE / FB)</div>
+            <p style="font-size: 0.9rem; color: #0369A1; margin-bottom: 15px;">將供應商或企劃提供的文案直接貼上，系統將自動為您填入下方表單。</p>
+            <textarea id="quickPasteText" rows="4" placeholder="請貼上文案... 例如：【星宇航空】東京5日遊... 第1天..."></textarea>
+            <button class="btn btn-magic" onclick="handleQuickParse()">
+                自動解析並建立表單
             </button>
         </div>
 
         <div class="card">
-            <table style="width: 100%; border-collapse: collapse;">
-                <thead>
-                    <tr style="text-align: left; background: #f8f9fa;">
-                        <th style="padding:15px;">行程名稱</th>
-                        <th>航空</th>
-                        <th>售價</th>
-                        <th>管理</th>
-                    </tr>
-                </thead>
-                <tbody id="tourTableBody"></tbody>
-            </table>
+            <div class="card-title"><i class="fa-solid fa-list"></i> 已上架行程列表</div>
+            <div style="overflow-x: auto;">
+                <table>
+                    <thead>
+                        <tr>
+                            <th style="width: 45%;">行程名稱</th>
+                            <th>航空</th>
+                            <th>直客售價</th>
+                            <th style="text-align: right;">操作管理</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tourTableBody">
+                        <tr><td colspan="4" style="text-align:center; padding: 40px; color: var(--text-light);"><i class="fa-solid fa-spinner fa-spin"></i> 載入資料中...</td></tr>
+                    </tbody>
+                </table>
+            </div>
         </div>
     </div>
 
     <!-- 視覺化編輯彈窗 -->
     <div id="tourModal" class="modal">
         <div class="modal-content">
-            <span class="close-btn" onclick="closeModal()">&times;</span>
-            <h2 id="modalTitle">編輯行程詳細資訊</h2>
-            <hr>
+            <div class="modal-header">
+                <h2 id="modalTitle">編輯行程資訊</h2>
+                <i class="fa-solid fa-times close-btn" onclick="closeModal()"></i>
+            </div>
 
-            <form id="tourForm">
-                <input type="hidden" id="tourId">
+            <div class="modal-body">
+                <form id="tourForm">
+                    <input type="hidden" id="tourId">
 
-                <label>行程標題</label>
-                <input type="text" id="title" required>
+                    <!-- 基本資訊區 -->
+                    <div class="form-section">
+                        <div class="section-title">基本資訊</div>
+                        <label>行程標題 (必填)</label>
+                        <input type="text" id="title" placeholder="例如：【冬戀北海道】破冰船、螃蟹吃到飽 5 日" required>
 
-                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px;">
-                    <div><label>最低價格</label><input type="number" id="price" required></div>
-                    <div><label>航空公司</label><input type="text" id="airline"></div>
-                    <div><label>封面圖片網址</label><input type="text" id="image"></div>
-                </div>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px;">
+                            <div><label>最低售價 (必填)</label><input type="number" id="price" placeholder="例如：35900" required></div>
+                            <div><label>搭配航空</label><input type="text" id="airline" placeholder="例如：星宇航空"></div>
+                            <div><label>封面圖片網址</label><input type="text" id="image" placeholder="請貼上圖片連結 (https://...)"></div>
+                        </div>
 
-                <label>標籤 (多個請用逗號隔開)</label>
-                <input type="text" id="tagsInput" placeholder="例如：無購物, 星宇航空, 季節限定">
-
-                <label>行程特色亮點</label>
-                <div id="highlightsList"></div>
-                <button type="button" class="add-btn" onclick="addHighlightRow()"><i class="fa-solid fa-plus"></i>
-                    增加亮點</button>
-
-                <label>每日行程明細 (包含下榻飯店)</label>
-                <div id="itineraryList"></div>
-                <button type="button" class="add-btn" onclick="addItineraryRow()"><i class="fa-solid fa-plus"></i>
-                    增加一天行程</button>
-
-                <div class="section-split">
-                    <div>
-                        <label>✅ 費用包含</label>
-                        <textarea id="included" rows="6" placeholder="列出機票、住宿、門票等..."></textarea>
+                        <label>行程標籤 (讓旅客快速辨識，請用逗號隔開)</label>
+                        <input type="text" id="tagsInput" placeholder="例如：無購物, 星宇航空, 季節限定, 溫泉飯店">
                     </div>
-                    <div>
-                        <label>❌ 注意事項 / 費用不含</label>
-                        <textarea id="notes" rows="6" placeholder="列出簽證、個人消費、小費等..."></textarea>
-                    </div>
-                </div>
 
-                <div
-                    style="display: flex; justify-content: flex-end; gap: 15px; margin-top: 30px; padding-bottom: 20px;">
-                    <button type="button" class="btn" style="background:#eee;" onclick="closeModal()">取消</button>
-                    <button type="submit" class="btn btn-primary" id="saveBtn">儲存並更新官網</button>
-                </div>
-            </form>
+                    <!-- 亮點區 -->
+                    <div class="form-section">
+                        <div class="section-title">行程特色與亮點</div>
+                        <div id="highlightsList"></div>
+                        <button type="button" class="add-btn" onclick="addHighlightRow()"><i class="fa-solid fa-plus"></i> 新增一個亮點卡片</button>
+                    </div>
+
+                    <!-- 每日行程區 -->
+                    <div class="form-section">
+                        <div class="section-title">每日行程規劃</div>
+                        <div id="itineraryList"></div>
+                        <button type="button" class="add-btn" onclick="addItineraryRow()"><i class="fa-solid fa-plus"></i> 新增一天行程</button>
+                    </div>
+
+                    <!-- 注意事項與包含區 -->
+                    <div class="form-section section-split">
+                        <div>
+                            <div class="section-title" style="border-color: var(--success); color: var(--success);">✅ 費用包含</div>
+                            <textarea id="included" rows="6" placeholder="列出機票、住宿、門票等..."></textarea>
+                        </div>
+                        <div>
+                            <div class="section-title" style="border-color: var(--danger); color: var(--danger);">❌ 費用不含 / 注意事項</div>
+                            <textarea id="notes" rows="6" placeholder="列出護照簽證費、個人消費、領隊導遊小費等..."></textarea>
+                        </div>
+                    </div>
+                </form>
+            </div>
+
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline" onclick="closeModal()">取消並關閉</button>
+                <button type="submit" class="btn btn-primary" id="saveBtn" form="tourForm"><i class="fa-solid fa-cloud-arrow-up"></i> 儲存並發佈至官網</button>
+            </div>
         </div>
     </div>
 
+    <!-- Toast 提示組件 -->
+    <div id="toast"><i class="fa-solid fa-circle-check"></i> <span id="toastMsg">操作成功</span></div>
+
     <script>
+        // Supabase 初始化 (請勿更動金鑰)
         const SB_URL = "https://luozejormlpayqbcvwis.supabase.co";
         const SB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imx1b3plam9ybWxwYXlxYmN2d2lzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA3NTY4NDQsImV4cCI6MjA4NjMzMjg0NH0.ASyVqZRPZeZtGKB2r_P0fEOhVczY0eptpHHy7jff08c";
         const _supabase = supabase.createClient(SB_URL, SB_KEY);
 
+        // UI 提示功能
+        function showToast(msg, isError = false) {
+            const toast = document.getElementById('toast');
+            document.getElementById('toastMsg').innerText = msg;
+            toast.className = isError ? 'error show' : 'show';
+            toast.querySelector('i').className = isError ? 'fa-solid fa-circle-exclamation' : 'fa-solid fa-circle-check';
+            setTimeout(() => toast.classList.remove('show'), 3000);
+        }
+
+        // 清理文字中的 Emoji 與空白
         function stripEmojis(str) {
             if (!str) return "";
             return str.replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{27BF}\u{1F000}-\u{1Faff}\u{1F600}-\u{1F64F}\u{1F680}-\u{1F6FF}]/gu, '').trim();
         }
 
-        // --- UI 渲染器 ---
-
-        function addHighlightRow(data = { title: '', desc: '', img: '' }) {
+        // --- 動態表單渲染器 ---
+        function addHighlightRow(data = {}) {
             const container = document.getElementById('highlightsList');
             const div = document.createElement('div');
             div.className = 'dynamic-row';
             div.innerHTML = `
-                <i class="fa-solid fa-circle-xmark remove-btn" onclick="this.parentElement.remove()"></i>
-                <div style="display:flex; gap:10px;">
-                    <input type="text" placeholder="亮點標題" value="${data.title}" class="h-title" style="flex:1">
-                    <input type="text" placeholder="分類 (如:玩樂/美食)" value="${data.desc}" class="h-desc" style="width:150px">
+                <i class="fa-solid fa-trash-can remove-btn" onclick="this.parentElement.remove()" title="刪除此亮點"></i>
+                <div style="display:flex; gap:15px; margin-bottom:10px;">
+                    <div style="flex:2;"><label style="margin-top:0;">亮點標題</label><input type="text" placeholder="例如：函館百萬夜景" value="${data.title || ''}" class="h-title" style="margin:0;"></div>
+                    <div style="flex:1;"><label style="margin-top:0;">分類標籤</label><input type="text" placeholder="例如：絕美風景" value="${data.desc || ''}" class="h-desc" style="margin:0;"></div>
                 </div>
-                <input type="text" placeholder="圖片網址" value="${data.img}" class="h-img">
+                <div><label style="margin-top:0;">圖片網址</label><input type="text" placeholder="https://..." value="${data.img || ''}" class="h-img" style="margin:0;"></div>
             `;
             container.appendChild(div);
         }
 
-        function addItineraryRow(data = { day: 0, title: '', spots: [], breakfast: '', lunch: '', dinner: '', hotel: '' }) {
+        function addItineraryRow(data = {}) {
             const container = document.getElementById('itineraryList');
+            // 計算目前是第幾天
             const dayNum = data.day || (container.children.length + 1);
+            // 防呆處理 spots 陣列
+            const spotsText = Array.isArray(data.spots) ? data.spots.join('\n') : (data.spots || '');
+
             const div = document.createElement('div');
             div.className = 'dynamic-row';
             div.innerHTML = `
-                <i class="fa-solid fa-circle-xmark remove-btn" onclick="this.parentElement.remove()"></i>
-                <div class="day-title-row">
-                    <strong>DAY ${dayNum}</strong>
-                    <input type="text" placeholder="當日大標題" value="${data.title}" class="i-title" style="flex:1; margin:0;">
+                <i class="fa-solid fa-trash-can remove-btn" onclick="this.parentElement.remove()" title="刪除此天行程"></i>
+                <div style="display:flex; align-items:center; gap:15px; margin-bottom:15px;">
+                    <div class="day-badge">DAY ${dayNum}</div>
+                    <input type="text" placeholder="當日行程大標題 (例如：台北飛往東京)" value="${data.title || ''}" class="i-title" style="flex:1; margin:0;">
                 </div>
-                <textarea placeholder="行程景點 (一行一個)" class="i-spots" rows="2">${data.spots ? data.spots.join('\n') : ''}</textarea>
+                <label style="margin-top:0;">行程景點 (請一行輸入一個景點)</label>
+                <textarea placeholder="例如：\n淺草寺\n晴空塔" class="i-spots" rows="3" style="margin-top:5px;">${spotsText}</textarea>
+                
                 <div class="day-form-grid">
-                    <input type="text" placeholder="早餐" value="${data.breakfast}" class="i-breakfast">
-                    <input type="text" placeholder="午餐" value="${data.lunch}" class="i-lunch">
-                    <input type="text" placeholder="晚餐" value="${data.dinner}" class="i-dinner">
+                    <div><label style="margin-top:0;"><i class="fa-solid fa-mug-hot"></i> 早餐</label><input type="text" placeholder="飯店內用 / 溫暖的家" value="${data.breakfast || ''}" class="i-breakfast" style="margin:0;"></div>
+                    <div><label style="margin-top:0;"><i class="fa-solid fa-bowl-food"></i> 午餐</label><input type="text" placeholder="方便遊玩請自理" value="${data.lunch || ''}" class="i-lunch" style="margin:0;"></div>
+                    <div><label style="margin-top:0;"><i class="fa-solid fa-utensils"></i> 晚餐</label><input type="text" placeholder="日式燒肉吃到飽" value="${data.dinner || ''}" class="i-dinner" style="margin:0;"></div>
                 </div>
-                <input type="text" placeholder="🏨 下榻飯店名稱" value="${data.hotel}" class="i-hotel">
+                <div style="margin-top:15px;">
+                    <label style="margin-top:0;"><i class="fa-solid fa-bed"></i> 下榻飯店</label>
+                    <input type="text" placeholder="請填寫飯店名稱或同級" value="${data.hotel || ''}" class="i-hotel" style="margin:0;">
+                </div>
             `;
             container.appendChild(div);
         }
 
-        // --- 智慧解析對接 ---
-
+        // --- 智慧解析對接 (升級版：支援金額、動態航空、自動抓取亮點、自動貼標籤) ---
         function handleQuickParse() {
             const raw = document.getElementById('quickPasteText').value;
-            if (!raw.trim()) return alert("請貼上文案");
+            if (!raw.trim()) {
+                showToast("請先貼上文案再執行解析！", true);
+                return;
+            }
 
-            const lines = raw.split('\n').map(l => l.trim()).filter(l => l);
+            try {
+                const lines = raw.split('\n').map(l => l.trim()).filter(l => l);
+                
+                // 1. 抓取標題 (第一行去 Emoji)
+                const title = stripEmojis(lines[0]).split('－')[0].split('-')[0].trim();
 
-            // 基本識別
-            const title = stripEmojis(lines[0]).split('－')[0].split('-')[0].trim();
-            const AIRLINE_LIST = ["星宇", "長榮", "華航", "酷航", "越捷", "虎航", "易斯達", "德威"];
-            const foundAir = AIRLINE_LIST.find(name => raw.includes(name));
+                // 2. 動態抓取航空 (尋找「XX航空」)
+                let airline = "請手動填寫";
+                const airlineMatch = raw.match(/([一-龥]{2,6})航空/);
+                if (airlineMatch) {
+                    airline = airlineMatch[1] + "航空";
+                }
 
-            // 天數與切割
-            const dayMatch = raw.match(/(\d+)\s*[日天]/);
-            const dayCount = dayMatch ? parseInt(dayMatch[1]) : 5;
-            const dayBlocks = raw.split(/第\s?\d+\s?天/);
+                // 3. 抓取價格 (尋找 團費、售價、特價、只要 旁邊的連續數字)
+                let price = "";
+                const priceMatch = raw.match(/(?:團費|售價|特價|只要)[^\d]*?(\d{4,6})/);
+                if (priceMatch) {
+                    price = priceMatch[1];
+                }
 
-            // 清空並開啟彈窗
-            document.getElementById('highlightsList').innerHTML = '';
-            document.getElementById('itineraryList').innerHTML = '';
-            showModal();
+                // 4. 判斷天數並切割字串
+                const dayMatch = raw.match(/(\d+)\s*[日天]/);
+                const dayCount = dayMatch ? parseInt(dayMatch[1]) : 5;
+                const dayBlocks = raw.split(/第\s?\d+\s?天/);
 
-            document.getElementById('title').value = title;
-            document.getElementById('airline').value = foundAir ? foundAir + "航空" : "精選航空";
+                // --- 準備開啟彈窗填入資料 ---
+                document.getElementById('highlightsList').innerHTML = '';
+                document.getElementById('itineraryList').innerHTML = '';
+                showModal();
+                document.getElementById('modalTitle').innerText = "確認並編輯解析結果";
 
-            // 解析行程
-            for (let i = 1; i < dayBlocks.length; i++) {
-                const block = dayBlocks[i].trim();
-                const blockLines = block.split('\n').map(l => l.trim()).filter(l => l);
+                // 填入基本資訊
+                document.getElementById('title').value = title;
+                document.getElementById('airline').value = airline;
+                document.getElementById('price').value = price;
 
-                let dayTitle = blockLines[0] || "";
-                let breakfast = "", lunch = "", dinner = "", hotel = "", spots = [];
-
-                blockLines.forEach(line => {
-                    if (line.includes("早餐：")) breakfast = line.split('：')[1];
-                    else if (line.includes("午餐：")) lunch = line.split('：')[1];
-                    else if (line.includes("晚餐：")) dinner = line.split('：')[1];
-                    else if (line.includes("住宿：")) hotel = line.split('：')[1];
-                    else if (line.includes("→")) spots.push(...line.split('→').map(s => s.trim()));
-                    else if (line.length > 2 && line.length < 30 && line !== dayTitle) spots.push(line);
+                // 5. 抓取行程亮點 (尋找帶有符號的條列式項目)
+                let isHighlightSection = false;
+                lines.forEach(line => {
+                    // 偵測是否進入亮點區塊
+                    if (line.includes('亮點') || line.includes('特色') || line.includes('精選')) {
+                        isHighlightSection = true;
+                        return;
+                    }
+                    // 遇到每日行程就停止抓取亮點
+                    if (line.match(/第\s?\d+\s?天/)) {
+                        isHighlightSection = false;
+                    }
+                    
+                    // 如果在亮點區，且開頭有特定符號 (🔹, ✨, -, 📍 等)，則抓取為亮點
+                    if (isHighlightSection && line.match(/^[\u{1F300}-\u{1F9FF}🔹🔸📍✨\-\*]/u)) {
+                        let cleanLine = stripEmojis(line).replace(/^[\-\*\s]+/, '').trim();
+                        
+                        // 嘗試用全形或半形「｜」、「：」切割標題與描述
+                        let parts = cleanLine.split(/｜|\||：|:/);
+                        if (parts.length > 1) {
+                            addHighlightRow({ title: parts[0].trim(), desc: parts[1].trim() });
+                        } else {
+                            addHighlightRow({ title: cleanLine, desc: '行程特色' });
+                        }
+                    }
                 });
 
-                addItineraryRow({ day: i, title: dayTitle, spots, breakfast, lunch, dinner, hotel });
-            }
+                // 6. 解析每日行程內容
+                if (dayBlocks.length > 1) {
+                    for (let i = 1; i < dayBlocks.length; i++) {
+                        const block = dayBlocks[i].trim();
+                        const blockLines = block.split('\n').map(l => l.trim()).filter(l => l);
 
-            // 若沒抓到行程則補空位
-            if (dayBlocks.length <= 1) {
-                for (let i = 1; i <= dayCount; i++) addItineraryRow({ day: i });
-            }
+                        let dayTitle = blockLines[0] || "";
+                        let breakfast = "", lunch = "", dinner = "", hotel = "", spots =[];
 
-            // 抓取費用包含區塊 (簡單判斷)
-            if (raw.includes("包含:")) {
-                const includePart = raw.split("包含:")[1].split("不包含")[0];
-                document.getElementById('included').value = includePart.trim();
-            }
+                        blockLines.forEach(line => {
+                            if (line.includes("早餐：") || line.includes("早：")) breakfast = line.split('：')[1] || line.split('：')[0];
+                            else if (line.includes("午餐：") || line.includes("午：")) lunch = line.split('：')[1] || line.split('：')[0];
+                            else if (line.includes("晚餐：") || line.includes("晚：")) dinner = line.split('：')[1] || line.split('：')[0];
+                            else if (line.includes("住宿：") || line.includes("宿：")) hotel = line.split('：')[1] || line.split('：')[0];
+                            else if (line.includes("→") || line.includes("-")) spots.push(...line.split(/[→-]/).map(s => s.trim()));
+                            else if (line.length > 2 && line.length < 30 && line !== dayTitle && !line.includes("餐：")) spots.push(line);
+                        });
 
-            alert("智慧解析完成，請業務確認飯店與費用細節。");
+                        addItineraryRow({ day: i, title: dayTitle, spots, breakfast, lunch, dinner, hotel });
+                    }
+                } else {
+                    // 若沒抓到格式化行程，給予空白天數讓業務自己填
+                    for (let i = 1; i <= dayCount; i++) addItineraryRow({ day: i });
+                }
+
+                // 7. 抓取費用包含區塊 (如果有)
+                if (raw.includes("包含:")) {
+                    const includePart = raw.split("包含:")[1].split("不包含")[0];
+                    document.getElementById('included').value = includePart.trim();
+                }
+
+                // 8. 智慧標籤化 (抓取「無購物」、「免小費」、「直飛」等常見賣點)
+                let tagsArr =[];
+                if (raw.includes("無購物")) tagsArr.push("無購物");
+                if (raw.includes("無自費")) tagsArr.push("無自費");
+                if (raw.includes("免小費")) tagsArr.push("免小費");
+                if (raw.includes("直飛")) tagsArr.push("直飛航班");
+                if (raw.match(/五星|5星/)) tagsArr.push("五星級住宿");
+                document.getElementById('tagsInput').value = tagsArr.join(', ');
+
+                // 9. 把沒有歸類的特殊提示(如日期)放進備註/注意事項
+                let notesArr =[];
+                const dateMatch = raw.match(/(?:限定日期|出發日期)[:：]?\s*(.*)/);
+                if (dateMatch) notesArr.push("📢 限定出發日期：" + dateMatch[1].trim());
+                document.getElementById('notes').value = notesArr.join('\n');
+
+                // 完成清理與提示
+                document.getElementById('quickPasteText').value = ""; // 清空輸入框
+                showToast("🎉 智慧解析成功！已幫您填入票價、亮點與標籤，請檢查細節。");
+
+            } catch (error) {
+                console.error(error);
+                showToast("解析過程發生錯誤，請手動確認欄位。", true);
+            }
         }
 
-        // --- 儲存邏輯 ---
-
+        // --- 儲存至資料庫邏輯 ---
         document.getElementById('tourForm').onsubmit = async (e) => {
             e.preventDefault();
             const saveBtn = document.getElementById('saveBtn');
+            const originalText = saveBtn.innerHTML;
+            saveBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 處理中...';
             saveBtn.disabled = true;
 
             try {
+                // 收集 Highlight 資料
                 const highlights = Array.from(document.querySelectorAll('#highlightsList .dynamic-row')).map(row => ({
                     title: stripEmojis(row.querySelector('.h-title').value),
                     desc: stripEmojis(row.querySelector('.h-desc').value),
                     img: row.querySelector('.h-img').value
-                })).filter(h => h.title);
+                })).filter(h => h.title); // 過濾掉空標題
 
+                // 收集 Itinerary 資料 (重新編號 Day，避免刪除導致跳號)
                 const itinerary = Array.from(document.querySelectorAll('#itineraryList .dynamic-row')).map((row, index) => ({
                     day: index + 1,
                     title: stripEmojis(row.querySelector('.i-title').value),
@@ -447,54 +605,79 @@
                     price: parseInt(document.getElementById('price').value || 0),
                     airline: stripEmojis(document.getElementById('airline').value),
                     image: document.getElementById('image').value,
-                    description: stripEmojis(document.getElementById('notes').value), // 注意事項存入 description
+                    description: stripEmojis(document.getElementById('notes').value), // 前台顯示的注意事項
                     tags: document.getElementById('tagsInput').value.split(/[,，\s]+/).filter(t => t),
                     highlights: highlights,
-                    itinerary: itinerary,
-                    // 若資料庫有加欄位，請對應如下：
-                    // included: document.getElementById('included').value 
+                    itinerary: itinerary
                 };
 
                 const id = document.getElementById('tourId').value;
-                const { error } = id ? await _supabase.from('tours').update(payload).eq('id', id) : await _supabase.from('tours').insert([payload]);
+                const { error } = id 
+                    ? await _supabase.from('tours').update(payload).eq('id', id) 
+                    : await _supabase.from('tours').insert([payload]);
 
                 if (error) throw error;
-                alert("官網已同步更新！");
+                
+                showToast("✅ 行程已成功儲存並同步至前台官網！");
                 closeModal();
                 fetchTours();
-            } catch (err) { alert("儲存失敗：" + err.message); }
-            finally { saveBtn.disabled = false; }
+            } catch (err) { 
+                showToast("儲存失敗：" + err.message, true); 
+            } finally { 
+                saveBtn.innerHTML = originalText;
+                saveBtn.disabled = false; 
+            }
         };
 
-        // --- 基本功能 ---
-
+        // --- 列表與生命週期功能 ---
         async function fetchTours() {
-            const { data } = await _supabase.from('tours').select('*').order('id', { ascending: false });
-            document.getElementById('tourTableBody').innerHTML = (data || []).map(t => `
-                <tr>
-                    <td style="padding:15px;"><b>${t.title}</b></td>
-                    <td>${t.airline || '---'}</td>
-                    <td>$${t.price}</td>
-                    <td>
-                        <button class="btn btn-primary" onclick='editTour(${JSON.stringify(t)})'>編輯</button>
-                        <button class="btn" style="color:red; background:none;" onclick="deleteTour(${t.id})">刪除</button>
-                    </td>
-                </tr>
-            `).join('');
+            try {
+                const { data, error } = await _supabase.from('tours').select('id, title, airline, price').order('id', { ascending: false });
+                if (error) throw error;
+
+                const tbody = document.getElementById('tourTableBody');
+                if (!data || data.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding: 30px; color:#94A3B8;">目前尚無行程，趕快點擊右上角新增吧！</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = data.map(t => `
+                    <tr>
+                        <td><strong>${t.title}</strong></td>
+                        <td><span style="background:#F1F5F9; padding:4px 8px; border-radius:6px; font-size:0.85rem;">${t.airline || '未指定'}</span></td>
+                        <td class="price-tag">$${Number(t.price).toLocaleString()}</td>
+                        <td style="text-align: right;">
+                            <div class="action-btns" style="justify-content: flex-end;">
+                                <button class="btn btn-primary btn-sm" onclick="editTour(${t.id})"><i class="fa-solid fa-pen"></i> 編輯</button>
+                                <button class="btn btn-outline btn-sm" style="color:var(--danger); border-color:#FECACA;" onclick="deleteTour(${t.id})"><i class="fa-solid fa-trash"></i></button>
+                            </div>
+                        </td>
+                    </tr>
+                `).join('');
+            } catch (e) {
+                document.getElementById('tourTableBody').innerHTML = `<tr><td colspan="4" style="text-align:center; color:red;">載入失敗</td></tr>`;
+            }
         }
 
-        function editTour(t) {
+        async function editTour(id) {
+            // 讀取單筆詳細資料
+            const { data, error } = await _supabase.from('tours').select('*').eq('id', id).single();
+            if(error) return showToast("讀取資料失敗", true);
+            
             showModal();
+            document.getElementById('modalTitle').innerText = "編輯行程資訊";
+            const t = data;
+
             document.getElementById('tourId').value = t.id;
-            document.getElementById('title').value = t.title;
-            document.getElementById('price').value = t.price;
+            document.getElementById('title').value = t.title || "";
+            document.getElementById('price').value = t.price || "";
             document.getElementById('airline').value = t.airline || "";
             document.getElementById('image').value = t.image || "";
             document.getElementById('notes').value = t.description || "";
-            document.getElementById('tagsInput').value = (t.tags || []).join(', ');
+            document.getElementById('tagsInput').value = Array.isArray(t.tags) ? t.tags.join(', ') : "";
 
             document.getElementById('highlightsList').innerHTML = '';
-            (t.highlights || []).forEach(h => addHighlightRow(h));
+            (t.highlights ||[]).forEach(h => addHighlightRow(h));
 
             document.getElementById('itineraryList').innerHTML = '';
             (t.itinerary || []).forEach(i => addItineraryRow(i));
