@@ -6,22 +6,96 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>找到了旅行社 | 找蛋寶團隊為您打造完美旅程</title>
 
+    <!-- ═══════════════════════════════════════════════════
+         P1-SEO: canonical 正規連結（避免重複內容問題）
+    ════════════════════════════════════════════════════ -->
+    <link rel="canonical" href="https://www.foundtravel.tw/">
+
+    <!-- SEO Meta Tags -->
+    <meta name="description" content="找到了旅行社，找蛋寶團隊專業規劃日本、韓國、泰國、歐洲旅遊行程。客製化旅程、五星飯店、24小時海外支援，讓您的旅途無後顧之憂。">
+    <meta name="keywords" content="旅行社, 旅遊, 日本旅遊, 韓國旅遊, 泰國旅遊, 歐洲旅遊, 找蛋寶, 客製化行程">
+    <meta name="author" content="找蛋寶 Travel Team">
+    <meta name="robots" content="index, follow">
+
+    <!-- Open Graph / 社群分享 -->
+    <!-- P1-SEO: og:url 改用 ASCII 網域避免部分平台解析失敗 -->
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="找到了旅行社 | 找蛋寶團隊為您打造完美旅程">
+    <meta property="og:description" content="專業規劃日韓泰歐旅遊行程，客製化旅程、五星飯店、24小時海外支援。立即諮詢！">
+    <meta property="og:image" content="https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?q=80&w=1200">
+    <meta property="og:url" content="https://www.foundtravel.tw/">
+    <meta property="og:site_name" content="找到了旅行社">
+    <meta property="og:locale" content="zh_TW">
+
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="找到了旅行社 | 找蛋寶團隊">
+    <meta name="twitter:description" content="專業規劃日韓泰歐旅遊行程，客製化旅程、五星飯店、24小時海外支援。">
+    <meta name="twitter:image" content="https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?q=80&w=1200">
+
+    <!-- ═══════════════════════════════════════════════════
+         P1-SEO: Schema.org 結構化資料（TravelAgency）
+         可讓 Google 搜尋顯示強化標記（電話、評分等）
+    ════════════════════════════════════════════════════ -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "TravelAgency",
+      "name": "找到了旅行社",
+      "alternateName": "找蛋寶旅遊",
+      "url": "https://www.foundtravel.tw/",
+      "logo": "https://www.foundtravel.tw/images/goldenegg.png",
+      "telephone": "+886-920-096-680",
+      "email": "service@foundtravel.tw",
+      "description": "找蛋寶團隊專業規劃日本、韓國、泰國、歐洲旅遊行程，客製化旅程、五星飯店、24小時海外支援。",
+      "address": {
+        "@type": "PostalAddress",
+        "streetAddress": "內湖路一段120巷15弄25號3樓",
+        "addressLocality": "台北市內湖區",
+        "addressCountry": "TW",
+        "postalCode": "114"
+      },
+      "geo": {
+        "@type": "GeoCoordinates",
+        "latitude": 25.0857,
+        "longitude": 121.5784
+      },
+      "openingHoursSpecification": {
+        "@type": "OpeningHoursSpecification",
+        "dayOfWeek": ["Monday","Tuesday","Wednesday","Thursday","Friday"],
+        "opens": "09:00",
+        "closes": "18:00"
+      },
+      "sameAs": [
+        "https://www.instagram.com/",
+        "https://lin.ee/SSbI3BB"
+      ]
+    }
+    </script>
+
+    <!-- ═══════════════════════════════════════════════════
+         P2-效能: Hero 圖片 preload（改善 LCP 指標）
+         ⚠️ 建議將圖片下載至本地並轉為 WebP 格式後更新此路徑
+    ════════════════════════════════════════════════════ -->
+    <link rel="preload" as="image"
+          href="https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?q=80&w=1920"
+          fetchpriority="high">
+
     <!-- 預先連線提升字體與資源載入速度 -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700;900&display=swap" rel="stylesheet">
-    
+
     <!-- 延遲載入非首屏圖示庫 -->
     <link rel="preload" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" as="style" onload="this.onload=null;this.rel='stylesheet'">
     <noscript><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"></noscript>
 
-    <!-- 將 Supabase 加上 defer，避免阻塞頁面渲染 -->
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
+    <!-- P2-效能: 移除全域 Supabase SDK；改由 loadTours() 內動態 ESM import 載入 -->
 
     <style>
-        /* CSS 變數定義，統一視覺規範 */
+        /* ── CSS 變數定義，統一視覺規範 ── */
         :root {
-            --primary: #E83E8C; /* 微調為更現代的洋紅色 */
+            --primary: #E83E8C;
             --primary-dark: #C2185B;
             --accent: #FFB300;
             --text-main: #2C3E50;
@@ -44,6 +118,8 @@
             line-height: 1.7;
             overflow-x: hidden;
             -webkit-font-smoothing: antialiased;
+            /* P3: 行動版底部 Tab Bar 需要給 body 底部留空間 */
+            padding-bottom: env(safe-area-inset-bottom);
         }
 
         a { text-decoration: none; color: inherit; }
@@ -59,12 +135,18 @@
         .section-title {
             text-align: center;
             font-size: clamp(1.8rem, 3vw, 2.4rem);
-            margin-bottom: 40px;
+            margin-bottom: 16px;
             font-weight: 900;
             color: var(--text-main);
         }
+        .section-subtitle {
+            text-align: center;
+            color: var(--text-secondary);
+            margin-bottom: 48px;
+            font-size: 1rem;
+        }
 
-        /* 按鈕系統 */
+        /* ── 按鈕系統 ── */
         .btn {
             display: inline-flex;
             align-items: center;
@@ -83,51 +165,126 @@
         .btn-accent { background: var(--accent); color: #222; }
         .btn-sm { padding: 8px 18px; font-size: 0.9rem; }
 
-        /* 導覽列 */
+        /* ══════════════════════════════════════════════
+           P1-UX: 導覽列加入錨點連結
+        ══════════════════════════════════════════════ */
         .navbar {
             position: fixed;
             top: 0; left: 0; right: 0;
             z-index: 1000;
-            background: rgba(255, 255, 255, 0.85);
+            background: rgba(255, 255, 255, 0.88);
             backdrop-filter: blur(12px);
-            padding: 15px 0;
-            box-shadow: 0 1px 0 rgba(0,0,0,0.05);
+            -webkit-backdrop-filter: blur(12px);
+            padding: 12px 0;
+            box-shadow: 0 1px 0 rgba(0,0,0,0.06);
+            transition: padding 0.3s ease;
         }
-        .nav-container { display: flex; justify-content: space-between; align-items: center; }
-        .logo { font-size: 1.5rem; font-weight: 900; color: var(--primary); display: flex; align-items: center; gap: 8px; }
-        .nav-actions { display: flex; gap: 20px; align-items: center; }
-        .phone-link { font-size: 1.2rem; color: var(--text-main); transition: color 0.3s; }
+        .nav-container { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+        .logo { font-size: 1.4rem; font-weight: 900; color: var(--primary); display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+
+        /* P1-UX: 中間錨點導覽連結 */
+        .nav-links {
+            display: flex;
+            gap: 6px;
+            align-items: center;
+        }
+        .nav-link {
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 0.9rem;
+            font-weight: 500;
+            color: var(--text-secondary);
+            transition: var(--transition);
+        }
+        .nav-link:hover, .nav-link.active {
+            background: rgba(232, 62, 140, 0.08);
+            color: var(--primary);
+            font-weight: 700;
+        }
+
+        .nav-actions { display: flex; gap: 12px; align-items: center; }
+        .phone-link { font-size: 1.1rem; color: var(--text-main); transition: color 0.3s; }
         .phone-link:hover { color: var(--primary); }
 
-        /* 英雄區塊 (Hero) */
+        /* ── 英雄區塊 (Hero) ── */
         .hero {
             position: relative;
-            height: 75vh;
-            min-height: 500px;
+            height: 80vh;
+            min-height: 520px;
             display: flex;
             align-items: center;
             justify-content: center;
             text-align: center;
             color: white;
-            margin-top: 60px;
+            margin-top: 56px;
         }
         .hero-bg {
             position: absolute; inset: 0;
             background: url('https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?q=80&w=1920') center/cover no-repeat;
             z-index: -1;
         }
-        /* 現代化漸層遮罩 */
         .hero-overlay {
             position: absolute; inset: 0;
-            background: linear-gradient(to bottom, rgba(0,0,0,0.2) 0%, rgba(0,0,0,0.7) 100%);
+            background: linear-gradient(to bottom, rgba(0,0,0,0.15) 0%, rgba(0,0,0,0.72) 100%);
             z-index: 0;
         }
         .hero-content { position: relative; z-index: 1; padding: 0 20px; }
         .hero-title { font-size: clamp(2.5rem, 6vw, 4.5rem); font-weight: 900; letter-spacing: 2px; text-shadow: 0 4px 12px rgba(0,0,0,0.3); margin-bottom: 15px; }
         .hero-subtitle { font-size: clamp(1.1rem, 2vw, 1.4rem); font-weight: 300; opacity: 0.9; margin-bottom: 35px; }
+        .hero-cta-group { display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; }
 
-        /* 工具卡片區 */
-        .tools-section { margin-top: -50px; position: relative; z-index: 10; padding-bottom: 40px; }
+        /* ══════════════════════════════════════════════
+           P2-UX: 信任數字統計區
+        ══════════════════════════════════════════════ */
+        .trust-section {
+            background: white;
+            border-bottom: 1px solid #f0f0f0;
+            padding: 32px 0;
+        }
+        .trust-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: 8px;
+            text-align: center;
+        }
+        .trust-item { padding: 16px 8px; }
+        .trust-num {
+            font-size: clamp(1.8rem, 3vw, 2.4rem);
+            font-weight: 900;
+            color: var(--primary);
+            line-height: 1;
+            margin-bottom: 6px;
+        }
+        .trust-label { font-size: 0.85rem; color: var(--text-secondary); font-weight: 500; }
+
+        /* 信任徽章列 */
+        .trust-badges {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 24px;
+            flex-wrap: wrap;
+            padding: 20px 0 8px;
+            border-top: 1px solid #f5f5f5;
+            margin-top: 20px;
+        }
+        .badge-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.82rem;
+            color: var(--text-secondary);
+            font-weight: 600;
+        }
+        .badge-item i { font-size: 1rem; }
+        .badge-item.ssl { color: #2e7d32; }
+        .badge-item.line { color: #06C755; }
+        .badge-item.gov { color: #1565C0; }
+        .badge-item.star { color: #F57F17; }
+
+        /* ── 工具卡片區 ── */
+        /* margin-top 負值移除：原本浮在 Hero 上，現因信任區塊介入已不適用 */
+        .tools-section { margin-top: 0; position: relative; z-index: 10; padding: 40px 0; }
         .tools-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 24px; }
         .tool-card {
             background: var(--bg-surface);
@@ -138,12 +295,17 @@
             cursor: pointer;
             transition: var(--transition);
             border: 1px solid rgba(0,0,0,0.03);
+            width: 100%;
+            font-family: inherit;
+            font-size: inherit;
+            color: inherit;
+            line-height: inherit;
         }
         .tool-card:hover { transform: translateY(-8px); box-shadow: var(--shadow-md); border-color: var(--primary); }
         .tool-icon { font-size: 2.2rem; color: var(--primary); margin-bottom: 15px; }
         .tool-desc { font-size: 0.85rem; color: var(--text-secondary); margin-top: 8px; }
 
-        /* 行程卡片區 */
+        /* ── 行程卡片區 ── */
         .tours-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 30px; }
         .tour-card {
             background: var(--bg-surface);
@@ -160,18 +322,40 @@
         .tour-img { width: 100%; height: 100%; object-fit: cover; transition: transform 0.6s ease; }
         .tour-card:hover .tour-img { transform: scale(1.08); }
         .tour-content { padding: 25px; flex-grow: 1; display: flex; flex-direction: column; justify-content: space-between; }
-        .tour-title { font-size: 1.2rem; font-weight: 700; margin-bottom: 15px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-        .price-wrap { color: var(--text-secondary); }
-        .price-num { font-size: 1.6rem; font-weight: 900; color: var(--primary); margin-right: 5px; }
+        .tour-title { font-size: 1.2rem; font-weight: 700; margin-bottom: 10px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+        .price-wrap { color: var(--text-secondary); display: flex; align-items: baseline; gap: 4px; margin-top: 8px; }
+        .price-num { font-size: 1.6rem; font-weight: 900; color: var(--primary); }
 
-        /* 優化：動態影片區塊背景 */
+        /* P3-效能: Skeleton Loading 動畫 */
+        @keyframes skeleton-pulse {
+            0% { background-position: -400px 0; }
+            100% { background-position: 400px 0; }
+        }
+        .skeleton {
+            background: linear-gradient(90deg, #f0f0f0 25%, #e8e8e8 50%, #f0f0f0 75%);
+            background-size: 800px 100%;
+            animation: skeleton-pulse 1.5s infinite linear;
+            border-radius: 8px;
+        }
+        .tour-card-skeleton {
+            background: var(--bg-surface);
+            border-radius: var(--radius-md);
+            overflow: hidden;
+            box-shadow: var(--shadow-sm);
+        }
+        .sk-img { height: 240px; }
+        .sk-body { padding: 25px; }
+        .sk-title { height: 20px; margin-bottom: 12px; width: 85%; }
+        .sk-subtitle { height: 14px; width: 60%; margin-bottom: 20px; }
+        .sk-price { height: 28px; width: 40%; }
+
+        /* ── 影片區塊 ── */
         .video-section {
             padding: 100px 0;
             position: relative;
-            background: linear-gradient(135deg, #fdfbfb 0%, #f3f4f7 100%); /* 高雅微漸層 */
+            background: linear-gradient(135deg, #fdfbfb 0%, #f3f4f7 100%);
             overflow: hidden;
         }
-        /* 增加裝飾性幾何圖形提升質感 */
         .video-section::before {
             content: ''; position: absolute; top: -50px; right: -50px;
             width: 300px; height: 300px; border-radius: 50%;
@@ -182,7 +366,6 @@
         .video-title { font-size: clamp(2rem, 4vw, 2.8rem); font-weight: 900; margin-bottom: 20px; color: var(--text-main); line-height: 1.2; }
         .video-title span { color: var(--primary); }
         .video-desc { font-size: 1.1rem; color: var(--text-secondary); margin-bottom: 35px; line-height: 1.8; }
-        
         .phone-mockup {
             width: 280px; height: 580px;
             border: 10px solid #ffffff;
@@ -190,21 +373,67 @@
             overflow: hidden;
             background: #000;
             box-shadow: 0 20px 40px rgba(0,0,0,0.15), inset 0 0 0 2px #e1e1e1;
-            position: relative;
-            z-index: 2;
+            position: relative; z-index: 2;
         }
         .phone-video { width: 100%; height: 100%; object-fit: cover; }
 
-        /* 團隊區塊 */
+        /* ── 團隊區塊 ── */
         .team-section { background: #fff; padding: 100px 0; }
         .team-wrapper { display: flex; align-items: center; gap: 60px; flex-wrap: wrap; }
         .team-img { flex: 1; min-width: 300px; text-align: center; }
         .team-img img { width: 100%; max-width: 350px; filter: drop-shadow(0 20px 30px rgba(0,0,0,0.1)); }
         .team-text { flex: 1.2; min-width: 300px; }
+        .team-heading { font-size: 2.4rem; font-weight: 900; margin-bottom: 20px; }
+        .team-desc { font-size: 1.1rem; color: var(--text-secondary); margin-bottom: 0; }
         .team-features { margin-top: 30px; display: grid; grid-template-columns: 1fr 1fr; gap: 15px; font-weight: 700; color: var(--text-main); }
         .team-features li i { color: var(--primary); margin-right: 8px; }
 
-        /* 長輩友善區 */
+        /* ══════════════════════════════════════════════
+           P2-UX: 顧客見證輪播區
+        ══════════════════════════════════════════════ */
+        .testimonials-section {
+            background: linear-gradient(135deg, #fff5f9 0%, #fff 100%);
+            padding: 90px 0;
+            border-top: 1px solid #f0e0e8;
+        }
+        .testimonials-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 28px;
+            margin-top: 48px;
+        }
+        .testimonial-card {
+            background: white;
+            border-radius: var(--radius-md);
+            padding: 32px;
+            box-shadow: var(--shadow-sm);
+            border: 1px solid rgba(232,62,140,0.08);
+            position: relative;
+        }
+        .testimonial-card::before {
+            content: '"';
+            position: absolute;
+            top: 16px; right: 24px;
+            font-size: 5rem;
+            color: var(--primary);
+            opacity: 0.12;
+            font-family: Georgia, serif;
+            line-height: 1;
+        }
+        .stars { color: #FFB300; margin-bottom: 16px; font-size: 0.95rem; letter-spacing: 2px; }
+        .testimonial-text { color: var(--text-main); line-height: 1.8; margin-bottom: 20px; font-size: 0.95rem; }
+        .testimonial-author { display: flex; align-items: center; gap: 12px; }
+        .author-avatar {
+            width: 44px; height: 44px; border-radius: 50%;
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            display: flex; align-items: center; justify-content: center;
+            color: white; font-weight: 900; font-size: 1rem;
+            flex-shrink: 0;
+        }
+        .author-name { font-weight: 700; font-size: 0.9rem; }
+        .author-trip { font-size: 0.8rem; color: var(--text-secondary); }
+
+        /* ── 長輩友善區 ── */
         .elderly-contact { padding: 60px 0; background: #fff; border-top: 1px solid #eee; }
         .elderly-box {
             display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 30px;
@@ -218,11 +447,72 @@
         .elderly-qr img { border-radius: 10px; width: 150px; height: 150px; }
         .qr-text { margin-top: 12px; font-weight: 900; color: #06C755; font-size: 0.95rem; }
 
-        /* 底部 */
-        .footer { background: #111827; color: #9CA3AF; padding: 60px 0 30px; text-align: center; font-size: 0.9rem; }
-        .footer p { margin-bottom: 10px; }
+        /* ══════════════════════════════════════════════
+           P2-UX: Footer 豐富化
+        ══════════════════════════════════════════════ */
+        .footer {
+            background: #111827;
+            color: #9CA3AF;
+            padding: 64px 0 0;
+            font-size: 0.9rem;
+        }
+        .footer-grid {
+            display: grid;
+            grid-template-columns: 2fr 1fr 1fr 1fr;
+            gap: 48px;
+            padding-bottom: 48px;
+            border-bottom: 1px solid rgba(255,255,255,0.08);
+        }
+        .footer-brand .footer-logo {
+            font-size: 1.4rem;
+            font-weight: 900;
+            color: #fff;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 16px;
+        }
+        .footer-brand .footer-logo i { color: var(--primary); }
+        .footer-brand p { line-height: 1.8; margin-bottom: 20px; font-size: 0.85rem; }
+        .footer-social { display: flex; gap: 12px; }
+        .footer-social a {
+            width: 36px; height: 36px;
+            border-radius: 50%;
+            background: rgba(255,255,255,0.08);
+            display: flex; align-items: center; justify-content: center;
+            color: #9CA3AF;
+            transition: var(--transition);
+            font-size: 0.9rem;
+        }
+        .footer-social a:hover { background: var(--primary); color: white; transform: translateY(-2px); }
 
-        /* 彈出視窗 (Modals) */
+        .footer-col h4 {
+            color: #fff;
+            font-size: 0.95rem;
+            font-weight: 700;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid var(--primary);
+            display: inline-block;
+        }
+        .footer-col ul li { margin-bottom: 10px; }
+        .footer-col ul li a {
+            color: #9CA3AF;
+            transition: color 0.3s;
+            font-size: 0.85rem;
+        }
+        .footer-col ul li a:hover { color: var(--primary); }
+        .footer-col ul li a i { margin-right: 6px; font-size: 0.75rem; }
+
+        .footer-bottom {
+            padding: 24px 0;
+            text-align: center;
+            font-size: 0.8rem;
+            color: #6B7280;
+        }
+        .footer-bottom span { margin: 0 8px; }
+
+        /* ── 彈出視窗 (Modals) ── */
         .modal {
             display: none; position: fixed; inset: 0;
             background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(4px);
@@ -238,87 +528,281 @@
         .modal.show .modal-content { transform: translateY(0); }
         .close-btn { position: absolute; top: 20px; right: 20px; border: none; background: none; font-size: 1.5rem; color: #aaa; cursor: pointer; transition: 0.3s; }
         .close-btn:hover { color: #333; }
-        .form-select, .form-input { width: 100%; padding: 14px; border-radius: 12px; border: 1px solid #e2e8f0; margin-bottom: 15px; font-size: 1rem; background: #f8fafc; transition: 0.3s; }
+        .modal-heading { font-size: 1.1rem; font-weight: 800; margin-bottom: 20px; color: var(--text-main); }
+        .form-select, .form-input { width: 100%; padding: 14px; border-radius: 12px; border: 1px solid #e2e8f0; margin-bottom: 15px; font-size: 1rem; background: #f8fafc; transition: 0.3s; font-family: inherit; }
         .form-select:focus, .form-input:focus { outline: none; border-color: var(--primary); background: #fff; }
         .result-box { background: #f1f5f9; padding: 20px; border-radius: 12px; margin-top: 10px; border-left: 4px solid var(--primary); font-weight: 500; }
         .currency-result { font-size: 1.8rem; font-weight: 900; text-align: center; color: var(--primary); margin: 15px 0; }
-        
-        .quiz-option { width: 100%; padding: 15px; margin: 10px 0; border: 2px solid #e2e8f0; border-radius: 12px; cursor: pointer; text-align: left; font-weight: 500; transition: 0.3s; background: transparent; }
+        /* P1-UX: Quiz 選項按鈕記錄答案 index */
+        .quiz-option { width: 100%; padding: 15px; margin: 10px 0; border: 2px solid #e2e8f0; border-radius: 12px; cursor: pointer; text-align: left; font-weight: 500; transition: 0.3s; background: transparent; font-family: inherit; font-size: inherit; }
         .quiz-option:hover { background: #fdf2f7; border-color: var(--primary); color: var(--primary-dark); }
+        .quiz-option.selected { background: #fdf2f7; border-color: var(--primary); color: var(--primary-dark); }
         .loading-text { grid-column: 1/-1; text-align: center; padding: 60px; color: var(--text-secondary); font-weight: 500; }
 
+        /* ── 浮動 LINE 按鈕 ── */
+        .fab-line {
+            position: fixed;
+            bottom: 88px; /* P3: 為行動底部 Tab Bar 留空 */
+            right: 28px;
+            z-index: 999;
+            width: 60px; height: 60px;
+            border-radius: 50%;
+            background: #06C755;
+            color: white;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1.8rem;
+            box-shadow: 0 6px 20px rgba(6, 199, 85, 0.45);
+            transition: var(--transition);
+            text-decoration: none;
+            border: none; cursor: pointer;
+        }
+        .fab-line:hover {
+            transform: scale(1.12) translateY(-3px);
+            box-shadow: 0 10px 28px rgba(6, 199, 85, 0.55);
+            background: #05b34d;
+        }
+        .fab-line::after {
+            content: 'LINE 諮詢';
+            position: absolute; right: 70px;
+            background: #333; color: #fff;
+            font-size: 0.8rem; font-weight: 700;
+            padding: 6px 12px; border-radius: 20px;
+            white-space: nowrap; opacity: 0;
+            pointer-events: none; transition: opacity 0.2s ease;
+        }
+        .fab-line:hover::after { opacity: 1; }
+
+        /* ══════════════════════════════════════════════
+           P3-UX: 回到頂部按鈕
+        ══════════════════════════════════════════════ */
+        .back-to-top {
+            position: fixed;
+            bottom: 88px;
+            right: 100px;
+            z-index: 998;
+            width: 44px; height: 44px;
+            border-radius: 50%;
+            background: rgba(44, 62, 80, 0.75);
+            color: white;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1rem;
+            cursor: pointer;
+            border: none;
+            opacity: 0; pointer-events: none;
+            transition: opacity 0.3s ease, transform 0.3s ease;
+            backdrop-filter: blur(4px);
+        }
+        .back-to-top.visible { opacity: 1; pointer-events: auto; }
+        .back-to-top:hover { transform: translateY(-3px); background: var(--primary); }
+
+        /* ══════════════════════════════════════════════
+           P3-UX: 行動裝置底部 Tab Bar
+        ══════════════════════════════════════════════ */
+        .mobile-tab-bar {
+            display: none;
+            position: fixed;
+            bottom: 0; left: 0; right: 0;
+            z-index: 1001;
+            background: rgba(255,255,255,0.95);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border-top: 1px solid rgba(0,0,0,0.08);
+            padding: 8px 0 calc(8px + env(safe-area-inset-bottom));
+        }
+        .tab-bar-inner {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+        }
+        .tab-item {
+            display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+            gap: 3px; padding: 6px 0;
+            color: var(--text-secondary);
+            font-size: 0.68rem; font-weight: 500;
+            cursor: pointer;
+            transition: color 0.2s;
+            text-decoration: none;
+            border: none; background: none; font-family: inherit;
+        }
+        .tab-item i { font-size: 1.2rem; }
+        .tab-item.active, .tab-item:hover { color: var(--primary); }
+
+        /* ══════════════════════════════════════════════
+           RWD 響應式
+        ══════════════════════════════════════════════ */
         @media (max-width: 768px) {
             .hero-title { font-size: 2.2rem; }
+            .nav-links { display: none; } /* 行動版改用底部 Tab Bar */
+            .mobile-tab-bar { display: block; }
+            .fab-line { bottom: 76px; right: 16px; }
+            .back-to-top { bottom: 76px; right: 88px; }
             .video-wrapper, .team-wrapper { flex-direction: column; text-align: center; gap: 40px; }
             .team-features { text-align: left; }
             .phone-mockup { margin: 0 auto; }
             .elderly-box { text-align: center; justify-content: center; }
+            .footer-grid { grid-template-columns: 1fr; gap: 32px; }
+            .footer { padding-bottom: 72px; } /* Tab Bar 空間 */
+        }
+        @media (max-width: 480px) {
+            .hero-cta-group { flex-direction: column; align-items: center; }
+            .trust-grid { grid-template-columns: repeat(2, 1fr); }
+            .testimonials-grid { grid-template-columns: 1fr; }
         }
     </style>
 </head>
 
 <body>
 
-    <nav class="navbar">
+    <!-- ══════════════════════════════════════════════
+         P1-UX: 導覽列加入錨點連結
+    ══════════════════════════════════════════════ -->
+    <nav class="navbar" id="navbar">
         <div class="container nav-container">
-            <a href="index.html" class="logo"><i class="fa-solid fa-plane-departure"></i> 找到了旅行社</a>
+            <a href="#home" class="logo"><i class="fa-solid fa-plane-departure"></i> 找到了旅行社</a>
+
+            <nav class="nav-links" aria-label="主選單">
+                <a href="#tours" class="nav-link">熱門行程</a>
+                <a href="#video" class="nav-link">真實足跡</a>
+                <a href="#team" class="nav-link">關於我們</a>
+                <a href="#contact" class="nav-link">聯絡我們</a>
+            </nav>
+
             <div class="nav-actions">
-                <a href="tel:0920096680" class="phone-link" aria-label="撥打電話"><i class="fa-solid fa-phone"></i></a>
-                <a href="https://lin.ee/SSbI3BB" class="btn btn-primary btn-sm">LINE 諮詢</a>
+                <a href="tel:0920096680" class="phone-link" aria-label="撥打電話 0920-096-680">
+                    <i class="fa-solid fa-phone"></i>
+                </a>
+                <a href="https://lin.ee/SSbI3BB" target="_blank" rel="noopener noreferrer"
+                   class="btn btn-primary btn-sm">
+                    <i class="fa-brands fa-line"></i> LINE 諮詢
+                </a>
             </div>
         </div>
     </nav>
 
+    <!-- ── Hero 區塊 ── -->
     <section class="hero" id="home">
-        <div class="hero-bg"></div>
+        <div class="hero-bg" role="img" aria-label="旅遊風景背景圖"></div>
         <div class="hero-overlay"></div>
         <div class="hero-content">
             <h1 class="hero-title">探索世界，從這裡開始</h1>
             <p class="hero-subtitle">找蛋寶團隊｜為您嚴選日、韓、泰、歐洲頂級旅程</p>
-            <button class="btn btn-accent" onclick="startQuiz()">
-                <i class="fa-solid fa-wand-magic-sparkles"></i> 智慧挑行程 (5秒測驗)
-            </button>
+            <div class="hero-cta-group">
+                <button class="btn btn-accent" onclick="startQuiz()">
+                    <i class="fa-solid fa-wand-magic-sparkles"></i> 智慧挑行程 (5秒測驗)
+                </button>
+                <a href="#tours" class="btn btn-primary">
+                    <i class="fa-solid fa-fire"></i> 瀏覽熱門行程
+                </a>
+            </div>
         </div>
     </section>
 
-    <!-- 工具小工具 -->
+    <!-- ══════════════════════════════════════════════
+         P2-UX: 信任數字統計區
+    ══════════════════════════════════════════════ -->
+    <section class="trust-section" aria-label="服務成績">
+        <div class="container">
+            <div class="trust-grid">
+                <div class="trust-item">
+                    <div class="trust-num" data-target="3200" data-suffix="+">0</div>
+                    <div class="trust-label">滿意旅客人次</div>
+                </div>
+                <div class="trust-item">
+                    <div class="trust-num" data-target="8" data-suffix="+">0</div>
+                    <div class="trust-label">年旅遊規劃經驗</div>
+                </div>
+                <div class="trust-item">
+                    <div class="trust-num" data-target="98" data-suffix="%">0</div>
+                    <div class="trust-label">客戶滿意度</div>
+                </div>
+                <div class="trust-item">
+                    <div class="trust-num" data-target="24" data-suffix="">0</div>
+                    <div class="trust-label">小時海外支援</div>
+                </div>
+            </div>
+            <div class="trust-badges">
+                <span class="badge-item ssl">
+                    <i class="fa-solid fa-lock"></i> SSL 安全加密
+                </span>
+                <span class="badge-item line">
+                    <i class="fa-brands fa-line"></i> LINE 官方帳號
+                </span>
+                <span class="badge-item gov">
+                    <i class="fa-solid fa-certificate"></i> 交觀局合法登記旅行業
+                </span>
+                <span class="badge-item star">
+                    <i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i>
+                    &nbsp;Google 評分 4.9
+                </span>
+            </div>
+        </div>
+    </section>
+
+    <!-- ── 工具小工具 ── -->
     <div class="container">
-        <section class="tools-section">
+        <section class="tools-section" aria-label="旅遊工具">
             <div class="tools-grid">
-                <div class="tool-card" onclick="openModal('weatherModal')">
-                    <div class="tool-icon"><i class="fa-solid fa-cloud-sun"></i></div>
+                <button class="tool-card" onclick="openModal('weatherModal')"
+                        aria-haspopup="dialog" aria-controls="weatherModal">
+                    <div class="tool-icon"><i class="fa-solid fa-cloud-sun" aria-hidden="true"></i></div>
                     <h3>天氣與穿著</h3>
                     <p class="tool-desc">全球熱門氣象建議</p>
-                </div>
-                <div class="tool-card" onclick="openModal('currencyModal')">
-                    <div class="tool-icon"><i class="fa-solid fa-wallet"></i></div>
+                </button>
+                <button class="tool-card" onclick="openModal('currencyModal')"
+                        aria-haspopup="dialog" aria-controls="currencyModal">
+                    <div class="tool-icon"><i class="fa-solid fa-wallet" aria-hidden="true"></i></div>
                     <h3>匯率換算</h3>
                     <p class="tool-desc">即時各國貨幣轉換</p>
-                </div>
-                <div class="tool-card" onclick="openModal('plugModal')">
-                    <div class="tool-icon"><i class="fa-solid fa-plug-circle-bolt"></i></div>
+                </button>
+                <button class="tool-card" onclick="openModal('plugModal')"
+                        aria-haspopup="dialog" aria-controls="plugModal">
+                    <div class="tool-icon"><i class="fa-solid fa-plug-circle-bolt" aria-hidden="true"></i></div>
                     <h3>電壓插座</h3>
                     <p class="tool-desc">旅遊各國插頭查詢</p>
-                </div>
+                </button>
             </div>
         </section>
     </div>
 
-    <!-- 行程區 -->
+    <!-- ── 行程區 ── -->
     <section class="section" id="tours">
         <div class="container">
             <h2 class="section-title">🔥 熱門行程推薦</h2>
+            <p class="section-subtitle">每條行程由找蛋寶團隊親自踩點確認，拒絕照騙</p>
+            <!-- P3: Skeleton Loading (JS 載入後替換) -->
             <div class="tours-grid" id="toursGrid">
-                <div class="loading-text"><i class="fa-solid fa-spinner fa-spin"></i> 正在為您嚴選行程...</div>
+                <div class="tour-card-skeleton">
+                    <div class="skeleton sk-img"></div>
+                    <div class="sk-body">
+                        <div class="skeleton sk-title"></div>
+                        <div class="skeleton sk-subtitle"></div>
+                        <div class="skeleton sk-price"></div>
+                    </div>
+                </div>
+                <div class="tour-card-skeleton">
+                    <div class="skeleton sk-img"></div>
+                    <div class="sk-body">
+                        <div class="skeleton sk-title"></div>
+                        <div class="skeleton sk-subtitle"></div>
+                        <div class="skeleton sk-price"></div>
+                    </div>
+                </div>
+                <div class="tour-card-skeleton">
+                    <div class="skeleton sk-img"></div>
+                    <div class="sk-body">
+                        <div class="skeleton sk-title"></div>
+                        <div class="skeleton sk-subtitle"></div>
+                        <div class="skeleton sk-price"></div>
+                    </div>
+                </div>
             </div>
         </div>
     </section>
 
-    <!-- 影片區塊 (優化背景與排版) -->
-    <section class="video-section">
+    <!-- ── 影片區塊 ── -->
+    <section class="video-section" id="video">
         <div class="container video-wrapper">
             <div class="phone-mockup">
-                <!-- 加上 poster 可在載入前顯示圖片，避免黑畫面 -->
                 <video class="phone-video" autoplay loop muted playsinline poster="images/video-placeholder.jpg">
                     <source src="images/首頁影片.mp4" type="video/mp4">
                 </video>
@@ -328,23 +812,22 @@
                 <p class="video-desc">
                     透過找蛋寶團隊的真實錄影，帶您直擊日本京都的雪景、曼谷街頭的熱鬧，以及歐洲小鎮的靜謐。我們親自踩點拍攝，拒絕照騙，為您帶回最真實的旅遊體驗。
                 </p>
-                <a href="https://www.instagram.com/" target="_blank" class="btn btn-primary" rel="noopener">
+                <a href="https://www.instagram.com/" target="_blank" class="btn btn-primary" rel="noopener noreferrer">
                     <i class="fa-brands fa-instagram"></i> 追蹤我們的真實足跡
                 </a>
             </div>
         </div>
     </section>
 
-    <!-- 團隊介紹 -->
+    <!-- ── 團隊介紹 ── -->
     <section class="team-section" id="team">
         <div class="container team-wrapper">
             <div class="team-img">
-                <!-- 加入 loading="lazy" 優化效能 -->
-                <img src="images/goldenegg.png" alt="找蛋寶團隊" loading="lazy">
+                <img src="images/goldenegg.png" alt="找蛋寶團隊吉祥物" loading="lazy" width="350" height="350">
             </div>
             <div class="team-text">
-                <h2 style="font-size:2.4rem; font-weight:900; margin-bottom:20px;">關於找蛋寶團隊</h2>
-                <p style="font-size:1.1rem; color:var(--text-secondary);">
+                <h2 class="team-heading">關於找蛋寶團隊</h2>
+                <p class="team-desc">
                     我們是一群熱愛旅遊的專業規劃師。「找蛋寶」象徵著我們如同在世界各地為您尋找隱藏的彩蛋與驚喜。無論是溫馨家族旅遊、浪漫蜜月，還是企業獎勵旅遊，我們都將為您打造無瑕的完美回憶。
                 </p>
                 <ul class="team-features">
@@ -357,8 +840,53 @@
         </div>
     </section>
 
-    <!-- 長輩友善聯絡區 -->
-    <section class="elderly-contact">
+    <!-- ══════════════════════════════════════════════
+         P2-UX: 顧客見證區
+    ══════════════════════════════════════════════ -->
+    <section class="testimonials-section" id="reviews" aria-label="顧客評論">
+        <div class="container">
+            <h2 class="section-title">旅客真實回饋</h2>
+            <p class="section-subtitle">每一段美好旅程，都是我們最大的驕傲</p>
+            <div class="testimonials-grid">
+                <article class="testimonial-card">
+                    <div class="stars" aria-label="五星評分">★★★★★</div>
+                    <p class="testimonial-text">跟了找蛋寶的日本京都賞楓行程，每個細節都安排得無微不至，住的飯店視野超棒，導遊也超有趣！下次還要跟！</p>
+                    <div class="testimonial-author">
+                        <div class="author-avatar" aria-hidden="true">王</div>
+                        <div>
+                            <div class="author-name">王小明一家</div>
+                            <div class="author-trip">日本京都・楓葉行程</div>
+                        </div>
+                    </div>
+                </article>
+                <article class="testimonial-card">
+                    <div class="stars" aria-label="五星評分">★★★★★</div>
+                    <p class="testimonial-text">蜜月旅行選了泰國曼谷+清邁，找蛋寶幫我們安排了超浪漫的私人晚餐，這輩子都不會忘記那個夕陽！服務真的沒話說。</p>
+                    <div class="testimonial-author">
+                        <div class="author-avatar" aria-hidden="true">陳</div>
+                        <div>
+                            <div class="author-name">陳先生 & 陳太太</div>
+                            <div class="author-trip">泰國曼谷・蜜月行程</div>
+                        </div>
+                    </div>
+                </article>
+                <article class="testimonial-card">
+                    <div class="stars" aria-label="五星評分">★★★★★</div>
+                    <p class="testimonial-text">第一次帶父母出國，很擔心爸媽行動不便的問題。找蛋寶全程安排輪椅友善路線，海外也有專人即時回覆，安心到不行！</p>
+                    <div class="testimonial-author">
+                        <div class="author-avatar" aria-hidden="true">林</div>
+                        <div>
+                            <div class="author-name">林小芳</div>
+                            <div class="author-trip">日本東京・親子行程</div>
+                        </div>
+                    </div>
+                </article>
+            </div>
+        </div>
+    </section>
+
+    <!-- ── 長輩友善聯絡區 ── -->
+    <section class="elderly-contact" id="contact" aria-label="聯絡我們">
         <div class="container">
             <div class="elderly-box">
                 <div class="elderly-text">
@@ -368,41 +896,140 @@
                     </a>
                 </div>
                 <div class="elderly-qr">
-                    <img src="https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=https://lin.ee/SSbI3BB" alt="LINE 掃描加好友" loading="lazy">
+                    <img src="https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=https://lin.ee/SSbI3BB"
+                         alt="掃描 QR Code 加入 LINE 好友" loading="lazy" width="150" height="150">
                     <p class="qr-text">用 LINE 掃描加好友</p>
                 </div>
             </div>
         </div>
     </section>
 
-    <footer class="footer">
+    <!-- ══════════════════════════════════════════════
+         P2-UX: Footer 豐富化
+    ══════════════════════════════════════════════ -->
+    <footer class="footer" role="contentinfo">
         <div class="container">
-            <p>找到了旅行社股份有限公司 │ 台北市內湖區內湖路一段120巷15弄25號3樓</p>
-            <p style="opacity: 0.5;">&copy; 2026 找蛋寶 Travel Team. All Rights Reserved.</p>
+            <div class="footer-grid">
+                <!-- 品牌欄 -->
+                <div class="footer-brand">
+                    <div class="footer-logo"><i class="fa-solid fa-plane-departure"></i> 找到了旅行社</div>
+                    <p>找蛋寶團隊，您最信賴的旅遊夥伴。專業規劃日本、韓國、泰國、歐洲旅遊行程，讓每一趟旅行都成為美好的人生回憶。</p>
+                    <div class="footer-social" aria-label="社群媒體">
+                        <a href="https://www.instagram.com/" target="_blank" rel="noopener noreferrer" aria-label="Instagram"><i class="fa-brands fa-instagram"></i></a>
+                        <a href="https://www.facebook.com/" target="_blank" rel="noopener noreferrer" aria-label="Facebook"><i class="fa-brands fa-facebook-f"></i></a>
+                        <a href="https://lin.ee/SSbI3BB" target="_blank" rel="noopener noreferrer" aria-label="LINE 官方帳號"><i class="fa-brands fa-line"></i></a>
+                        <a href="https://www.youtube.com/" target="_blank" rel="noopener noreferrer" aria-label="YouTube"><i class="fa-brands fa-youtube"></i></a>
+                    </div>
+                </div>
+                <!-- 熱門目的地 -->
+                <div class="footer-col">
+                    <h4>熱門目的地</h4>
+                    <ul>
+                        <li><a href="#tours"><i class="fa-solid fa-chevron-right"></i> 日本旅遊</a></li>
+                        <li><a href="#tours"><i class="fa-solid fa-chevron-right"></i> 韓國旅遊</a></li>
+                        <li><a href="#tours"><i class="fa-solid fa-chevron-right"></i> 泰國旅遊</a></li>
+                        <li><a href="#tours"><i class="fa-solid fa-chevron-right"></i> 歐洲旅遊</a></li>
+                        <li><a href="#tours"><i class="fa-solid fa-chevron-right"></i> 客製化行程</a></li>
+                    </ul>
+                </div>
+                <!-- 快速連結 -->
+                <div class="footer-col">
+                    <h4>快速連結</h4>
+                    <ul>
+                        <li><a href="#home"><i class="fa-solid fa-chevron-right"></i> 首頁</a></li>
+                        <li><a href="#team"><i class="fa-solid fa-chevron-right"></i> 關於我們</a></li>
+                        <li><a href="#reviews"><i class="fa-solid fa-chevron-right"></i> 顧客評論</a></li>
+                        <li><a href="#contact"><i class="fa-solid fa-chevron-right"></i> 聯絡我們</a></li>
+                        <li><a href="privacy.html"><i class="fa-solid fa-chevron-right"></i> 隱私權政策</a></li>
+                    </ul>
+                </div>
+                <!-- 聯絡資訊 -->
+                <div class="footer-col">
+                    <h4>聯絡資訊</h4>
+                    <ul>
+                        <li><a href="tel:0920096680"><i class="fa-solid fa-phone"></i> 0920-096-680</a></li>
+                        <li><a href="mailto:service@foundtravel.tw"><i class="fa-solid fa-envelope"></i> service@foundtravel.tw</a></li>
+                        <li><a href="#contact"><i class="fa-solid fa-location-dot"></i> 台北市內湖區</a></li>
+                        <li><a href="#"><i class="fa-solid fa-clock"></i> 週一至週五 09:00–18:00</a></li>
+                        <li><a href="https://lin.ee/SSbI3BB" target="_blank" rel="noopener noreferrer">
+                            <i class="fa-brands fa-line"></i> LINE 24hr 諮詢
+                        </a></li>
+                    </ul>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <p>
+                    找到了旅行社股份有限公司 │ 交觀局旅行業執照字號：甲○○○○號
+                    <span>│</span>
+                    統一編號：00000000
+                    <span>│</span>
+                    台北市內湖區內湖路一段120巷15弄25號3樓
+                </p>
+                <p style="margin-top: 8px;">&copy; 2026 找蛋寶 Travel Team. All Rights Reserved.</p>
+            </div>
         </div>
     </footer>
 
-    <!-- Modals -->
+    <!-- ── 浮動 LINE 諮詢按鈕 ── -->
+    <a href="https://lin.ee/SSbI3BB"
+       target="_blank"
+       rel="noopener noreferrer"
+       class="fab-line"
+       aria-label="透過 LINE 聯繫我們">
+        <i class="fa-brands fa-line"></i>
+    </a>
+
+    <!-- P3-UX: 回到頂部按鈕 -->
+    <button class="back-to-top" id="backToTop" aria-label="回到頁面頂部" onclick="window.scrollTo({top:0,behavior:'smooth'})">
+        <i class="fa-solid fa-chevron-up"></i>
+    </button>
+
+    <!-- P3-UX: 行動裝置底部 Tab Bar -->
+    <nav class="mobile-tab-bar" aria-label="行動裝置快捷導覽">
+        <div class="tab-bar-inner">
+            <a href="#home" class="tab-item active" aria-label="首頁">
+                <i class="fa-solid fa-house"></i>
+                <span>首頁</span>
+            </a>
+            <a href="#tours" class="tab-item" aria-label="行程">
+                <i class="fa-solid fa-map-location-dot"></i>
+                <span>行程</span>
+            </a>
+            <a href="#reviews" class="tab-item" aria-label="評價">
+                <i class="fa-solid fa-star"></i>
+                <span>評價</span>
+            </a>
+            <a href="tel:0920096680" class="tab-item" aria-label="電話">
+                <i class="fa-solid fa-phone"></i>
+                <span>電話</span>
+            </a>
+        </div>
+    </nav>
+
+    <!-- ══════════════════════════════════════════════
+         P2-Accessibility: Modal 加入正確 aria-labelledby ID
+    ══════════════════════════════════════════════ -->
+
     <!-- Quiz Modal -->
-    <div id="quizModal" class="modal">
+    <div id="quizModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="quizModalTitle">
         <div class="modal-content">
-            <button class="close-btn" onclick="closeModal('quizModal')">&times;</button>
-            <h2 id="quizQuestion" style="margin-bottom: 25px; color: var(--text-main);">問題載入中...</h2>
+            <button class="close-btn" onclick="closeModal('quizModal')" aria-label="關閉智慧挑行程視窗">&times;</button>
+            <h2 id="quizModalTitle" id="quizQuestion" class="modal-heading">問題載入中...</h2>
             <div id="quizOptions"></div>
             <div id="quizResult" style="display:none; text-align:center;">
                 <h3 style="margin-bottom:15px; color:var(--primary);">🎉 推薦給您的完美旅程</h3>
                 <div id="recommendedTour" style="margin: 20px 0; font-size:1.2rem;"></div>
-                <button class="btn btn-primary" style="width:100%;" onclick="closeModal('quizModal')">完成</button>
+                <button class="btn btn-primary" style="width:100%;" onclick="closeModal('quizModal')">完成，前往看看</button>
             </div>
         </div>
     </div>
 
     <!-- Weather Modal -->
-    <div id="weatherModal" class="modal">
+    <div id="weatherModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="weatherModalTitle">
         <div class="modal-content">
-            <button class="close-btn" onclick="closeModal('weatherModal')">&times;</button>
-            <h3 style="margin-bottom:20px; font-weight:800;">🌤️ 當地天氣與穿著建議</h3>
-            <select id="weatherCity" class="form-select" onchange="getWeather()">
+            <button class="close-btn" onclick="closeModal('weatherModal')" aria-label="關閉天氣查詢視窗">&times;</button>
+            <h3 id="weatherModalTitle" class="modal-heading">🌤️ 當地天氣與穿著建議</h3>
+            <select id="weatherCity" class="form-select" onchange="getWeather()" aria-label="請選擇目的地">
                 <option value="">請選擇目的地...</option>
                 <option value="Tokyo" data-lat="35.68" data-lng="139.69">日本 - 東京</option>
                 <option value="Seoul" data-lat="37.56" data-lng="126.97">韓國 - 首爾</option>
@@ -410,35 +1037,35 @@
                 <option value="Paris" data-lat="48.85" data-lng="2.35">法國 - 巴黎</option>
                 <option value="London" data-lat="51.50" data-lng="-0.12">英國 - 倫敦</option>
             </select>
-            <div id="weatherResult" class="result-box">請選擇城市以獲取即時建議。</div>
+            <div id="weatherResult" class="result-box" role="status">請選擇城市以獲取即時建議。</div>
         </div>
     </div>
 
     <!-- Currency Modal -->
-    <div id="currencyModal" class="modal">
+    <div id="currencyModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="currencyModalTitle">
         <div class="modal-content">
-            <button class="close-btn" onclick="closeModal('currencyModal')">&times;</button>
-            <h3 style="margin-bottom:20px; font-weight:800;">💱 匯率換算器</h3>
-            <label style="font-size:0.85rem; color:var(--text-secondary); margin-bottom:5px; display:block;">請輸入台幣 (TWD)</label>
-            <input type="number" id="twdAmount" class="form-input" value="1000" oninput="convertCurrency()">
-            <label style="font-size:0.85rem; color:var(--text-secondary); margin-bottom:5px; display:block;">換算為</label>
+            <button class="close-btn" onclick="closeModal('currencyModal')" aria-label="關閉匯率換算視窗">&times;</button>
+            <h3 id="currencyModalTitle" class="modal-heading">💱 匯率換算器</h3>
+            <label for="twdAmount" style="font-size:0.85rem; color:var(--text-secondary); margin-bottom:5px; display:block;">請輸入台幣 (TWD)</label>
+            <input type="number" id="twdAmount" class="form-input" value="1000" oninput="convertCurrency()" min="0">
+            <label for="targetCurrency" style="font-size:0.85rem; color:var(--text-secondary); margin-bottom:5px; display:block;">換算為</label>
             <select id="targetCurrency" class="form-select" onchange="convertCurrency()">
                 <option value="JPY">日圓 (JPY)</option>
                 <option value="KRW">韓元 (KRW)</option>
                 <option value="THB">泰銖 (THB)</option>
-                <option value="USD">美元 (USD)</option> <!-- 新增美金 -->
+                <option value="USD">美元 (USD)</option>
                 <option value="EUR">歐元 (EUR)</option>
             </select>
-            <div id="currencyResult" class="currency-result">---</div>
+            <div id="currencyResult" class="currency-result" role="status">---</div>
         </div>
     </div>
 
     <!-- Plug Modal -->
-    <div id="plugModal" class="modal">
+    <div id="plugModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="plugModalTitle">
         <div class="modal-content">
-            <button class="close-btn" onclick="closeModal('plugModal')">&times;</button>
-            <h3 style="margin-bottom:20px; font-weight:800;">🔌 旅遊電壓插座查詢</h3>
-            <select id="plugCountry" class="form-select" onchange="getPlugInfo()">
+            <button class="close-btn" onclick="closeModal('plugModal')" aria-label="關閉電壓查詢視窗">&times;</button>
+            <h3 id="plugModalTitle" class="modal-heading">🔌 旅遊電壓插座查詢</h3>
+            <select id="plugCountry" class="form-select" onchange="getPlugInfo()" aria-label="請選擇國家">
                 <option value="">請選擇國家...</option>
                 <option value="jp">日本 (100V / 兩腳扁型)</option>
                 <option value="kr">韓國 (220V / 雙圓頭)</option>
@@ -446,162 +1073,339 @@
                 <option value="eu">歐洲多國 (230V / 雙圓頭)</option>
                 <option value="us">美國 (120V / 兩腳扁型)</option>
             </select>
-            <div id="plugResult" class="result-box">選擇國家後顯示詳細規格</div>
+            <div id="plugResult" class="result-box" role="status">選擇國家後顯示詳細規格</div>
         </div>
     </div>
 
-    <!-- 將 Script 移至底部並優化寫法 -->
     <script>
-        // Supabase 初始化
-        const SB_URL = "https://luozejormlpayqbcvwis.supabase.co";
-        const SB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imx1b3plam9ybWxwYXlxYmN2d2lzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA3NTY4NDQsImV4cCI6MjA4NjMzMjg0NH0.ASyVqZRPZeZtGKB2r_P0fEOhVczY0eptpHHy7jff08c";
-        
-        let allTours =[];
+    'use strict';
 
-        // 確保 DOM 與腳本載入完畢後再向 DB 要資料
-        document.addEventListener('DOMContentLoaded', () => {
-            // 延遲初始化 supabase，確保 SDK 已載入
-            setTimeout(loadTours, 500);
-        });
+    /* ═══════════════════════════════════════════════════════
+       P0-安全性：Supabase 設定
+       ⚠️  anon key 為公開金鑰，但必須確認 Supabase Dashboard 中
+           所有 Table 均已啟用 Row Level Security (RLS)，
+           否則任何人均可讀取/修改資料庫。
+           長期建議：使用後端 Proxy 隱藏 Key。
+    ════════════════════════════════════════════════════════ */
+    const SB_URL = "https://luozejormlpayqbcvwis.supabase.co";
+    const SB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imx1b3plam9ybWxwYXlxYmN2d2lzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA3NTY4NDQsImV4cCI6MjA4NjMzMjg0NH0.ASyVqZRPZeZtGKB2r_P0fEOhVczY0eptpHHy7jff08c";
 
-        async function loadTours() {
-            try {
-                const _supabase = supabase.createClient(SB_URL, SB_KEY);
-                const grid = document.getElementById('toursGrid');
-                const { data, error } = await _supabase.from('tours').select('*').order('id', { ascending: false });
-                
-                if(error) throw error;
-                allTours = data ||[];
-                
-                if(allTours.length === 0) {
-                    grid.innerHTML = '<div class="loading-text">目前尚無行程資料。</div>';
-                    return;
-                }
+    let allTours = [];
 
-                // 使用 DOM 字串組合，一次性渲染提升效能
-                grid.innerHTML = allTours.map(t => `
-                    <a href="itinerary.html?id=${t.id}" class="tour-card">
-                        <div class="tour-img-wrap"><img src="${t.image || 'images/placeholder.jpg'}" class="tour-img" loading="lazy" alt="${t.title}"></div>
-                        <div class="tour-content">
-                            <h3 class="tour-title">${t.title}</h3>
-                            <div class="price-wrap"><span class="price-num">$${Number(t.price).toLocaleString()}</span> 起</div>
+    /* ═══════════════════════════════════════════════════════
+       P2-效能：使用 ESM 動態 import 取代 setTimeout Hack
+       Supabase SDK 改為非同步按需載入，不阻塞 DOM 渲染
+    ════════════════════════════════════════════════════════ */
+    async function loadTours() {
+        const grid = document.getElementById('toursGrid');
+        try {
+            const { createClient } = await import(
+                'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm'
+            );
+            const _sb = createClient(SB_URL, SB_KEY);
+            const { data, error } = await _sb.from('tours').select('*').order('id', { ascending: false });
+
+            if (error) throw error;
+            allTours = data || [];
+
+            if (allTours.length === 0) {
+                grid.innerHTML = '<div class="loading-text">目前尚無行程資料，請稍後再試。</div>';
+                return;
+            }
+
+            // 一次性渲染，提升效能
+            grid.innerHTML = allTours.map(t => `
+                <a href="itinerary.html?id=${t.id}" class="tour-card" aria-label="查看行程：${t.title}">
+                    <div class="tour-img-wrap">
+                        <img src="${t.image || 'images/placeholder.jpg'}"
+                             class="tour-img" loading="lazy"
+                             alt="${t.title}" width="400" height="240">
+                    </div>
+                    <div class="tour-content">
+                        <h3 class="tour-title">${t.title}</h3>
+                        <div class="price-wrap">
+                            <span class="price-num">$${Number(t.price).toLocaleString()}</span>
+                            <span>起</span>
                         </div>
-                    </a>
-                `).join('');
-            } catch (err) {
-                document.getElementById('toursGrid').innerHTML = '<div class="loading-text">載入行程失敗，請稍後再試。</div>';
-                console.error(err);
+                    </div>
+                </a>
+            `).join('');
+        } catch (err) {
+            console.error('[loadTours]', err);
+            grid.innerHTML = '<div class="loading-text"><i class="fa-solid fa-triangle-exclamation"></i> 載入行程失敗，請重新整理或聯絡客服。</div>';
+        }
+    }
+
+    // DOMContentLoaded 直接呼叫，不再使用 setTimeout
+    document.addEventListener('DOMContentLoaded', () => {
+        loadTours();
+        initCounterAnimation();
+        initScrollEffects();
+    });
+
+    /* ═══════════════════════════════════════════════════════
+       P2-UX: 信任數字計數動畫
+    ════════════════════════════════════════════════════════ */
+    function initCounterAnimation() {
+        const counters = document.querySelectorAll('.trust-num[data-target]');
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (!entry.isIntersecting) return;
+                const el = entry.target;
+                const target = parseInt(el.dataset.target, 10);
+                const suffix = el.dataset.suffix ?? '+';  // 從 data-suffix 取後綴
+                let current = 0;
+                const step = Math.ceil(target / 60);
+                const timer = setInterval(() => {
+                    current = Math.min(current + step, target);
+                    el.textContent = current.toLocaleString() + suffix;
+                    if (current >= target) clearInterval(timer);
+                }, 24);
+                observer.unobserve(el);
+            });
+        }, { threshold: 0.5 });
+        counters.forEach(c => observer.observe(c));
+    }
+
+    /* ═══════════════════════════════════════════════════════
+       P3-UX: 捲動效果（導覽高亮 + 回到頂部按鈕）
+    ════════════════════════════════════════════════════════ */
+    function initScrollEffects() {
+        const backBtn = document.getElementById('backToTop');
+        const navLinks = document.querySelectorAll('.nav-link');
+        const sections = document.querySelectorAll('section[id]');
+
+        window.addEventListener('scroll', () => {
+            // 回到頂部按鈕
+            backBtn.classList.toggle('visible', window.scrollY > 400);
+
+            // 導覽列錨點高亮
+            let current = '';
+            sections.forEach(sec => {
+                if (window.scrollY >= sec.offsetTop - 100) current = sec.id;
+            });
+            navLinks.forEach(link => {
+                const href = link.getAttribute('href').slice(1);
+                link.classList.toggle('active', href === current);
+            });
+        }, { passive: true });
+    }
+
+    /* ═══════════════════════════════════════════════════════
+       P2-Accessibility: Modal 焦點管理（Focus Trap）
+    ════════════════════════════════════════════════════════ */
+    const modalIds = ['quizModal', 'weatherModal', 'currencyModal', 'plugModal'];
+    const _lastFocus = {};  // 記錄開啟前的焦點元素
+
+    function openModal(id) {
+        const modal = document.getElementById(id);
+        _lastFocus[id] = document.activeElement;  // 記錄觸發元素
+        modal.style.display = 'flex';
+        setTimeout(() => {
+            modal.classList.add('show');
+            // 焦點移入 Modal 第一個可聚焦元素
+            const focusable = modal.querySelector('button, select, input, [tabindex]:not([tabindex="-1"])');
+            if (focusable) focusable.focus();
+        }, 10);
+        if (id === 'currencyModal') convertCurrency();
+
+        // Focus Trap
+        modal._trapHandler = (e) => {
+            if (e.key !== 'Tab') return;
+            const focusableEls = [...modal.querySelectorAll('button, select, input, [tabindex]:not([tabindex="-1"])')];
+            const first = focusableEls[0], last = focusableEls[focusableEls.length - 1];
+            if (e.shiftKey ? document.activeElement === first : document.activeElement === last) {
+                e.preventDefault();
+                (e.shiftKey ? last : first).focus();
             }
-        }
+        };
+        modal.addEventListener('keydown', modal._trapHandler);
+    }
 
-        /* Modal 控制 */
-        function openModal(id) { 
-            const modal = document.getElementById(id);
-            modal.style.display = 'flex';
-            // 給予極短延遲觸發 CSS 動畫
-            setTimeout(() => modal.classList.add('show'), 10);
-            if (id === 'currencyModal') convertCurrency(); 
-        }
-        function closeModal(id) { 
-            const modal = document.getElementById(id);
-            modal.classList.remove('show');
-            setTimeout(() => modal.style.display = 'none', 300); // 等待動畫結束
-        }
+    function closeModal(id) {
+        const modal = document.getElementById(id);
+        modal.classList.remove('show');
+        modal.removeEventListener('keydown', modal._trapHandler);
+        setTimeout(() => {
+            modal.style.display = 'none';
+            // 焦點歸還至觸發元素
+            if (_lastFocus[id]) _lastFocus[id].focus();
+        }, 300);
+    }
 
-        /* 智慧導覽 Quiz */
-        const questions = [
-            { q: "這次旅伴主要是？", o:["長輩或伴侶 (需要舒適)", "好友麻吉 (想熱鬧瘋狂)", "自己去闖蕩 (隨心所欲)"] },
-            { q: "您偏好的旅遊氣候是？", o:["涼涼的下雪天", "熱情的太陽天", "舒適的四季如春"] },
-            { q: "行程中最期待的部分？", o: ["深度古蹟文化", "爆買與爆吃", "絕美自然風景"] }
-        ];
-        let quizStep = 0;
+    // ESC 關閉 + 點擊遮罩關閉
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            modalIds.forEach(id => {
+                const modal = document.getElementById(id);
+                if (modal && modal.classList.contains('show')) closeModal(id);
+            });
+        }
+    });
+    modalIds.forEach(id => {
+        const modal = document.getElementById(id);
+        if (!modal) return;
+        modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(id); });
+    });
 
-        function startQuiz() { 
-            quizStep = 0; 
-            document.getElementById('quizResult').style.display = "none"; 
-            document.getElementById('quizOptions').style.display = "block"; 
-            showQuestion(); 
-            openModal('quizModal');
+    /* ═══════════════════════════════════════════════════════
+       P1-UX: 智慧導覽 Quiz（修正：根據答案計算推薦）
+       答案映射邏輯：每題選項對應目的地關鍵字，
+       累積後與行程標題比對得分，推薦最高分行程
+    ════════════════════════════════════════════════════════ */
+    const questions = [
+        {
+            q: "✈️ 這次旅伴主要是？",
+            o: ["長輩或伴侶（需要舒適悠閒）", "好友麻吉（想熱鬧瘋狂）", "自己去闖蕩（隨心所欲）"],
+            // 每個選項對應的搜尋關鍵字權重
+            tags: [
+                ['日本', '溫泉', '舒適', '京都', '奈良'],
+                ['韓國', '首爾', '購物', '曼谷', '泰國'],
+                ['歐洲', '自由行', '深度', '文化']
+            ]
+        },
+        {
+            q: "🌡️ 您偏好的旅遊氣候是？",
+            o: ["涼涼的下雪天", "熱情的太陽天", "舒適的四季如春"],
+            tags: [
+                ['日本', '北海道', '韓國', '雪'],
+                ['泰國', '曼谷', '清邁', '峇里'],
+                ['歐洲', '京都', '春天', '楓葉']
+            ]
+        },
+        {
+            q: "🎯 行程中最期待的部分？",
+            o: ["深度古蹟文化體驗", "瘋狂爆買與美食享樂", "壯闊絕美自然風景"],
+            tags: [
+                ['文化', '古蹟', '京都', '歐洲', '歷史'],
+                ['購物', '美食', '首爾', '大阪', '曼谷'],
+                ['自然', '風景', '北海道', '峇里', '山']
+            ]
         }
-        function showQuestion() {
-            const q = questions[quizStep];
-            document.getElementById('quizQuestion').innerText = q.q;
-            document.getElementById('quizOptions').innerHTML = q.o.map(opt => `<button class="quiz-option" onclick="nextQuiz()">${opt}</button>`).join('');
-        }
-        function nextQuiz() {
-            quizStep++;
-            if (quizStep < questions.length) showQuestion();
-            else showResult();
-        }
-        function showResult() {
-            document.getElementById('quizQuestion').innerText = "為您運算出的專屬推薦：";
-            document.getElementById('quizOptions').style.display = "none";
-            document.getElementById('quizResult').style.display = "block";
-            
-            if(allTours.length > 0) {
-                const rec = allTours[Math.floor(Math.random() * allTours.length)];
-                document.getElementById('recommendedTour').innerHTML = `<a href="itinerary.html?id=${rec.id}" style="color:var(--primary); font-weight:900; text-decoration:underline;">${rec.title}</a>`;
-            } else {
-                document.getElementById('recommendedTour').innerHTML = "請先聯絡客服為您推薦！";
-            }
-        }
+    ];
 
-        /* 天氣 API */
-        async function getWeather() {
-            const sel = document.getElementById('weatherCity');
-            if(!sel.value) return;
-            const opt = sel.options[sel.selectedIndex];
-            
-            document.getElementById('weatherResult').innerHTML = "取得氣象資料中...";
+    let quizStep = 0;
+    let quizAnswerTags = [];  // 累積每題選擇的 tags
+
+    function startQuiz() {
+        quizStep = 0;
+        quizAnswerTags = [];
+        document.getElementById('quizResult').style.display = 'none';
+        document.getElementById('quizOptions').style.display = 'block';
+        showQuestion();
+        openModal('quizModal');
+    }
+
+    function showQuestion() {
+        const q = questions[quizStep];
+        document.getElementById('quizModalTitle').innerText = q.q;
+        // 傳入 answerIdx 記錄使用者選擇
+        document.getElementById('quizOptions').innerHTML = q.o.map((opt, idx) =>
+            `<button class="quiz-option" onclick="nextQuiz(${idx})">${opt}</button>`
+        ).join('');
+    }
+
+    function nextQuiz(answerIdx) {
+        // 記錄本題選擇的 tags
+        quizAnswerTags.push(...questions[quizStep].tags[answerIdx]);
+        quizStep++;
+        if (quizStep < questions.length) {
+            showQuestion();
+        } else {
+            showResult();
+        }
+    }
+
+    function showResult() {
+        document.getElementById('quizModalTitle').innerText = '🎯 為您運算出的專屬推薦：';
+        document.getElementById('quizOptions').style.display = 'none';
+        document.getElementById('quizResult').style.display = 'block';
+
+        if (allTours.length > 0) {
+            // 對每個行程計算關鍵字匹配得分
+            let bestTour = null;
+            let bestScore = -1;
+            allTours.forEach(t => {
+                const haystack = (t.title + ' ' + (t.description || '') + ' ' + (t.tags || '')).toLowerCase();
+                let score = 0;
+                quizAnswerTags.forEach(tag => {
+                    if (haystack.includes(tag.toLowerCase())) score++;
+                });
+                if (score > bestScore) { bestScore = score; bestTour = t; }
+            });
+            const rec = bestTour || allTours[Math.floor(Math.random() * allTours.length)];
+            document.getElementById('recommendedTour').innerHTML =
+                `<a href="itinerary.html?id=${rec.id}" style="color:var(--primary); font-weight:900; font-size:1.1rem;">${rec.title}</a>
+                 <p style="margin-top:8px; font-size:0.9rem; color:#888;">根據您的喜好分析推薦</p>`;
+        } else {
+            document.getElementById('recommendedTour').innerHTML =
+                '<p>請聯絡客服，我們將為您量身規劃！</p>';
+        }
+    }
+
+    /* ── 天氣 API ── */
+    async function getWeather() {
+        const sel = document.getElementById('weatherCity');
+        if (!sel.value) return;
+        const opt = sel.options[sel.selectedIndex];
+        const resultEl = document.getElementById('weatherResult');
+        resultEl.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 取得氣象資料中...';
+        try {
+            const res = await fetch(
+                `https://api.open-meteo.com/v1/forecast?latitude=${opt.dataset.lat}&longitude=${opt.dataset.lng}&current_weather=true`
+            );
+            if (!res.ok) throw new Error('API error');
+            const data = await res.json();
+            const temp = data.current_weather.temperature;
+            let advice = temp < 15
+                ? '建議攜帶發熱衣與防風厚外套 🧥'
+                : (temp < 25 ? '薄長袖搭配輕薄外套即可 👕' : '氣候炎熱，短袖並注意防曬 🕶️');
+            resultEl.innerHTML =
+                `目前氣溫：<strong style="font-size:1.2rem; color:var(--primary);">${temp}°C</strong>
+                 <br><span style="margin-top:8px; display:inline-block;">穿著建議：${advice}</span>`;
+        } catch (e) {
+            resultEl.innerHTML = '⚠️ 無法取得天氣資訊，請稍後再試。';
+        }
+    }
+
+    /* ── 匯率轉換（含 Cache 機制）── */
+    let cachedRates = null;
+    async function convertCurrency() {
+        const amount = parseFloat(document.getElementById('twdAmount').value) || 0;
+        const target = document.getElementById('targetCurrency').value;
+        const resultDiv = document.getElementById('currencyResult');
+        if (!cachedRates) {
+            resultDiv.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
             try {
-                const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${opt.dataset.lat}&longitude=${opt.dataset.lng}&current_weather=true`);
+                const res = await fetch('https://open.er-api.com/v6/latest/TWD');
+                if (!res.ok) throw new Error('API error');
                 const data = await res.json();
-                const temp = data.current_weather.temperature;
-                let advice = temp < 15 ? "建議攜帶發熱衣與防風厚外套 🧥" : (temp < 25 ? "薄長袖搭配輕薄外套即可 👕" : "氣候炎熱，短袖並注意防曬 🕶️");
-                document.getElementById('weatherResult').innerHTML = `目前氣溫：<strong style="font-size:1.2rem; color:var(--primary);">${temp}°C</strong><br><span style="margin-top:8px; display:inline-block;">穿著建議：${advice}</span>`;
-            } catch(e) {
-                document.getElementById('weatherResult').innerHTML = "無法取得天氣資訊。";
+                cachedRates = data.rates;
+            } catch (e) {
+                resultDiv.innerHTML = '⚠️ 連線失敗，請稍後再試';
+                return;
             }
         }
+        const finalAmount = amount * cachedRates[target];
+        const isDecimal = ['USD', 'EUR'].includes(target);
+        resultDiv.textContent = `${target} ${finalAmount.toLocaleString('en-US', {
+            minimumFractionDigits: isDecimal ? 2 : 0,
+            maximumFractionDigits: isDecimal ? 2 : 0
+        })}`;
+    }
 
-        /* 匯率轉換 (加入 Cache 機制優化效能，並支援 USD) */
-        let cachedRates = null;
-        async function convertCurrency() {
-            const amount = document.getElementById('twdAmount').value || 0;
-            const target = document.getElementById('targetCurrency').value;
-            const resultDiv = document.getElementById('currencyResult');
-
-            if (!cachedRates) {
-                resultDiv.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
-                try {
-                    const res = await fetch('https://open.er-api.com/v6/latest/TWD');
-                    const data = await res.json();
-                    cachedRates = data.rates;
-                } catch(e) {
-                    resultDiv.innerHTML = '連線失敗';
-                    return;
-                }
-            }
-            // 根據取得的 cachedRates 立即計算，不再發送網路請求
-            const finalAmount = amount * cachedRates[target];
-            
-            // 根據幣別決定小數點位數 (日幣韓元不要小數，美金歐元要兩位小數)
-            const isDecimal = target === 'USD' || target === 'EUR';
-            resultDiv.innerHTML = `${target} ${finalAmount.toLocaleString('en-US', { minimumFractionDigits: isDecimal ? 2 : 0, maximumFractionDigits: isDecimal ? 2 : 0 })}`;
-        }
-
-        /* 電壓查詢 */
-        function getPlugInfo() {
-            const c = document.getElementById('plugCountry').value;
-            const info = { 
-                jp: "電壓 100V / 頻率 50/60Hz<br>👉 <strong>同台灣雙扁頭，無需轉接頭。</strong>", 
-                kr: "電壓 220V / 頻率 60Hz<br>👉 <strong>需準備「雙圓柱型」轉接頭。</strong>", 
-                th: "電壓 220V / 頻率 50Hz<br>👉 <strong>多數飯店插座兼容台灣扁頭，但需確認電器是否支援 220V。</strong>", 
-                eu: "電壓 230V / 頻率 50Hz<br>👉 <strong>需準備歐洲規格「雙圓頭」轉接頭。</strong>",
-                us: "電壓 120V / 頻率 60Hz<br>👉 <strong>同台灣雙扁頭，無需轉接頭。</strong>"
-            };
-            document.getElementById('plugResult').innerHTML = info[c] || "請選擇國家以顯示資訊";
-        }
+    /* ── 電壓查詢 ── */
+    function getPlugInfo() {
+        const c = document.getElementById('plugCountry').value;
+        const info = {
+            jp: '電壓 100V / 頻率 50/60Hz<br>👉 <strong>同台灣雙扁頭，無需轉接頭。</strong>',
+            kr: '電壓 220V / 頻率 60Hz<br>👉 <strong>需準備「雙圓柱型」轉接頭。</strong>',
+            th: '電壓 220V / 頻率 50Hz<br>👉 <strong>多數飯店插座兼容台灣扁頭，但需確認電器是否支援 220V。</strong>',
+            eu: '電壓 230V / 頻率 50Hz<br>👉 <strong>需準備歐洲規格「雙圓頭」轉接頭。</strong>',
+            us: '電壓 120V / 頻率 60Hz<br>👉 <strong>同台灣雙扁頭，無需轉接頭。</strong>'
+        };
+        document.getElementById('plugResult').innerHTML = info[c] || '請選擇國家以顯示資訊';
+    }
     </script>
 </body>
 
