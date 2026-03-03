@@ -192,9 +192,7 @@
         }
         .btn-primary { background: linear-gradient(135deg, var(--primary), var(--primary-dark)); color: white; box-shadow: 0 4px 12px rgba(232,62,140,0.2); }
         .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(232,62,140,0.3); }
-        .btn-magic { background: linear-gradient(135deg, #6366F1, #8B5CF6); color: white; box-shadow: 0 4px 12px rgba(99,102,241,0.2); }
-        .btn-magic:hover { transform: translateY(-2px); }
-        .btn-outline { background: transparent; border: 1px solid var(--border-color); color: var(--text-main); }
+.btn-outline { background: transparent; border: 1px solid var(--border-color); color: var(--text-main); }
         .btn-outline:hover { background: #F1F5F9; }
         .btn-danger { background: var(--danger); color: white; }
         .btn-danger:hover { background: #DC2626; }
@@ -347,21 +345,6 @@
             </div>
             <button class="btn btn-primary" onclick="showModal()">
                 <i class="fa-solid fa-plus"></i> 新增行程
-            </button>
-        </div>
-
-        <!-- AI 智慧解析 -->
-        <div class="card" style="background: linear-gradient(135deg, #F0F9FF, #E0F2FE); border: 1px solid #BAE6FD;">
-            <div class="card-title">
-                <i class="fa-solid fa-wand-magic-sparkles" style="color:#0284C7;"></i> AI 智慧文案解析
-            </div>
-            <p style="font-size:0.88rem; color:#0369A1; margin-bottom:14px;">
-                將供應商或企劃提供的文案直接貼上，系統將自動填入下方表單。
-            </p>
-            <textarea id="quickPasteText" rows="4"
-                      placeholder="請貼上文案... 例如：【星宇航空】東京5日遊... 第1天..."></textarea>
-            <button class="btn btn-magic" onclick="handleQuickParse()">
-                <i class="fa-solid fa-wand-magic-sparkles"></i> 自動解析並建立表單
             </button>
         </div>
 
@@ -681,96 +664,7 @@
         container.appendChild(div);
     }
 
-    /* ── AI 智慧解析 ── */
-    function handleQuickParse() {
-        const raw = document.getElementById('quickPasteText').value;
-        if (!raw.trim()) { showToast('請先貼上文案再執行解析！', 'error'); return; }
-
-        try {
-            const lines = raw.split('\n').map(l => l.trim()).filter(l => l);
-            const title = stripEmojis(lines[0]).split(/[－\-]/)[0].trim();
-
-            let airline = '請手動填寫';
-            const airlineMatch = raw.match(/([一-龥]{2,6})航空/);
-            if (airlineMatch) airline = airlineMatch[1] + '航空';
-
-            let price = '';
-            const priceMatch = raw.match(/(?:團費|售價|特價|只要)[^\d]*?(\d{4,6})/);
-            if (priceMatch) price = priceMatch[1];
-
-            const dayMatch = raw.match(/(\d+)\s*[日天]/);
-            const dayCount = dayMatch ? parseInt(dayMatch[1]) : 5;
-            const dayBlocks = raw.split(/第\s?\d+\s?天/);
-
-            resetModalForm();
-            showModal();
-            document.getElementById('modalTitle').innerText = '確認並編輯解析結果';
-
-            document.getElementById('f-title').value = title;
-            document.getElementById('f-airline').value = airline;
-            document.getElementById('f-price').value = price;
-
-            // 抓亮點
-            let inHighlight = false;
-            lines.forEach(line => {
-                if (line.includes('亮點') || line.includes('特色') || line.includes('精選')) { inHighlight = true; return; }
-                if (line.match(/第\s?\d+\s?天/)) inHighlight = false;
-                if (inHighlight && line.match(/^[\u{1F300}-\u{1F9FF}🔹🔸📍✨\-\*]/u)) {
-                    const cleanLine = stripEmojis(line).replace(/^[\-\*\s]+/, '').trim();
-                    const parts = cleanLine.split(/｜|\||：|:/);
-                    addHighlightRow(parts.length > 1
-                        ? { title: parts[0].trim(), desc: parts[1].trim() }
-                        : { title: cleanLine, desc: '行程特色' });
-                }
-            });
-
-            // 解析每日行程
-            if (dayBlocks.length > 1) {
-                for (let i = 1; i < dayBlocks.length; i++) {
-                    const blockLines = dayBlocks[i].split('\n').map(l => l.trim()).filter(l => l);
-                    let dayTitle = blockLines[0] || '';
-                    let breakfast = '', lunch = '', dinner = '', hotel = '', spots = [];
-                    blockLines.forEach(line => {
-                        if (line.includes('早餐：') || line.includes('早：')) breakfast = line.split('：')[1] || '';
-                        else if (line.includes('午餐：') || line.includes('午：')) lunch = line.split('：')[1] || '';
-                        else if (line.includes('晚餐：') || line.includes('晚：')) dinner = line.split('：')[1] || '';
-                        else if (line.includes('住宿：') || line.includes('宿：')) hotel = line.split('：')[1] || '';
-                        else if (line.includes('→')) spots.push(...line.split('→').map(s => s.trim()).filter(s => s));
-                        else if (line.length > 2 && line.length < 30 && line !== dayTitle) spots.push(line);
-                    });
-                    addItineraryRow({ day: i, title: dayTitle, spots, breakfast, lunch, dinner, hotel });
-                }
-            } else {
-                for (let i = 1; i <= dayCount; i++) addItineraryRow({ day: i });
-            }
-
-            // 費用包含
-            if (raw.includes('包含:')) {
-                const part = raw.split('包含:')[1].split('不包含')[0];
-                document.getElementById('f-included').value = part.trim();
-            }
-
-            // 智慧標籤
-            const tags = [];
-            if (raw.includes('無購物')) tags.push('無購物');
-            if (raw.includes('無自費')) tags.push('無自費');
-            if (raw.includes('免小費')) tags.push('免小費');
-            if (raw.includes('直飛')) tags.push('直飛航班');
-            if (raw.match(/五星|5星/)) tags.push('五星級住宿');
-            document.getElementById('f-tags').value = tags.join(', ');
-
-            document.getElementById('quickPasteText').value = '';
-            showToast('🎉 智慧解析成功！請檢查細節後儲存。');
-
-        } catch (err) {
-            console.error('[handleQuickParse]', err);
-            showToast('解析發生錯誤，請手動確認欄位。', 'error');
-        }
-    }
-
-    /* ── 儲存行程 ──
-       關鍵修正：included 欄位現在正確寫入 Supabase
-    ── */
+    /* ── 儲存行程 ── */
     async function saveTour() {
         const title = document.getElementById('f-title').value.trim();
         const price = document.getElementById('f-price').value;
