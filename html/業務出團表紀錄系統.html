@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>業務出團管理系統 v8.0 (Dashboard & Analysis)</title>
+    <title>業務出團管理系統 v9.0 (Dashboard & Analysis)</title>
     <!-- 引入 Supabase JS -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -11,7 +11,7 @@
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
         body { background-color: #f4f6f9; padding: 20px; font-family: "Microsoft JhengHei", sans-serif; }
-        
+
         /* 登入與基礎樣式 */
         #login-container { height: 80vh; display: flex; align-items: center; justify-content: center; }
         .login-card { width: 100%; max-width: 400px; padding: 30px; background: white; border-radius: 10px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); }
@@ -19,38 +19,38 @@
 
         /* 表格樣式優化 */
         .table-container { overflow-x: auto; background: white; border-radius: 0 0 8px 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.08); padding: 15px; border-top: none; }
-        .table thead th { 
-            background-color: #f8f9fa !important; color: #495057; font-weight: bold; 
-            border-bottom: 2px solid #dee2e6; white-space: nowrap; vertical-align: middle; text-align: center; 
+        .table thead th {
+            background-color: #f8f9fa !important; color: #495057; font-weight: bold;
+            border-bottom: 2px solid #dee2e6; white-space: nowrap; vertical-align: middle; text-align: center;
             cursor: pointer; user-select: none;
         }
         .table thead th:hover { background-color: #e9ecef !important; }
-        
+
         .th-highlight { background-color: #f3e5f5 !important; color: #6a1b9a; }
-        .th-alert { background-color: #fff3e0 !important; color: #e65100; } 
+        .th-alert { background-color: #fff3e0 !important; color: #e65100; }
         td { white-space: nowrap; vertical-align: middle; text-align: center; font-size: 0.92rem; padding: 10px 5px !important; }
         .text-left { text-align: left !important; }
         .status-v { color: #198754; font-weight: bold; background-color: #e8f5e9; padding: 3px 10px; border-radius: 4px; }
-        
-        /* 統計面板恢復 */
+
+        /* 統計面板 */
         .summary-panel { background: #fff; padding: 20px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); display: flex; justify-content: space-around; align-items: center; border-left: 5px solid #0d6efd; flex-wrap: wrap; }
         .summary-item { margin: 10px; text-align: center; min-width: 120px; }
         .summary-item h5 { margin: 0 0 5px 0; font-size: 0.85rem; color: #6c757d; text-transform: uppercase; letter-spacing: 1px; }
         .summary-item .value { font-size: 1.6rem; font-weight: 800; color: #212529; }
-        
-        /* 表單與控制項優化 */
+
+        /* 表單與控制項 */
         .nav-tabs .nav-link { color: #6c757d; background-color: #f8f9fa; margin-right: 5px; border-radius: 8px 8px 0 0; border: 1px solid #dee2e6; border-bottom: none; }
         .nav-tabs .nav-link.active { color: #0d6efd; background-color: white; border-top: 3px solid #0d6efd; font-weight: bold; }
         .form-card { border: none; box-shadow: 0 4px 12px rgba(0,0,0,0.05); margin-bottom: 25px; border-radius: 10px; overflow: hidden; }
         .form-card .card-header { background-color: #fff; border-bottom: 1px solid #eee; color: #0d6efd; font-weight: bold; padding: 15px 20px; }
-        
-        /* 手機版卡片視圖優化 */
+
+        /* 手機版卡片視圖 */
         .mobile-card-container { display: none; }
         .mobile-card { background: white; border-radius: 12px; padding: 18px; margin-bottom: 15px; box-shadow: 0 3px 10px rgba(0,0,0,0.06); border-left: 5px solid #6c757d; }
         .mobile-card.urgent { border-left-color: #dc3545; background-color: #fff8f8; }
         .m-title { font-size: 1.1rem; font-weight: bold; color: #333; margin-bottom: 10px; }
         .m-badge-row { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 10px; }
-        
+
         @media (max-width: 992px) {
             .table-container { display: none; }
             .mobile-card-container { display: block; }
@@ -61,9 +61,20 @@
         .sort-active { color: #0d6efd; }
         .btn-notification { position: relative; margin-right: 12px; }
         .notification-badge { position: absolute; top: -5px; right: -5px; font-size: 0.7rem; padding: 3px 6px; border-radius: 50%; background-color: #dc3545; color: white; display: none; box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
+
+        /* Toast 通知 */
+        #toast-container { position: fixed; bottom: 25px; right: 25px; z-index: 9999; display: flex; flex-direction: column; gap: 10px; }
+        .toast-msg { min-width: 240px; padding: 14px 20px; border-radius: 8px; color: #fff; font-weight: bold; font-size: 0.9rem; box-shadow: 0 4px 15px rgba(0,0,0,0.2); animation: slideIn 0.3s ease; }
+        .toast-msg.success { background-color: #198754; }
+        .toast-msg.error   { background-color: #dc3545; }
+        .toast-msg.info    { background-color: #0d6efd; }
+        @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
     </style>
 </head>
 <body>
+
+<!-- Toast 容器 -->
+<div id="toast-container"></div>
 
 <!-- 登入畫面 -->
 <div id="login-container">
@@ -116,7 +127,7 @@
             <div class="card h-100">
                 <div class="card-header d-flex justify-content-between align-items-center bg-white py-3">
                     <h5 class="m-0 text-primary fw-bold"><i class="fas fa-chart-line me-2"></i>業績趨勢分析</h5>
-                    <select id="chart-year-selector" class="form-select form-select-sm" style="width: auto;" onchange="renderAll()"></select>
+                    <select id="chart-year-selector" class="form-select form-select-sm" style="width: auto;" onchange="renderPerformanceDashboard()"></select>
                 </div>
                 <div class="card-body">
                     <canvas id="performanceChart"></canvas>
@@ -129,9 +140,7 @@
                     <h5 class="m-0 text-primary fw-bold"><i class="fas fa-crown me-2"></i>客戶價值排行榜 (TOP 5)</h5>
                 </div>
                 <div class="card-body p-0">
-                    <div id="customerAnalysis" class="p-3">
-                        <!-- Customer lists will be injected here -->
-                    </div>
+                    <div id="customerAnalysis" class="p-3"></div>
                 </div>
             </div>
         </div>
@@ -156,7 +165,7 @@
                         <div class="col-6 col-md-2"><label class="form-label fw-bold">電話號碼</label><input type="text" class="form-control" id="f_phone"></div>
                         <div class="col-4 col-md-1"><label class="form-label fw-bold">人數</label><input type="number" class="form-control" id="f_pax" required min="1"></div>
                         <div class="col-8 col-md-1"><label class="form-label fw-bold">訂編</label><input type="text" class="form-control" id="f_bookingId"></div>
-                        
+
                         <div class="col-6 col-md-2"><label class="form-label text-primary fw-bold">團費</label><input type="number" class="form-control border-primary-subtle" id="f_tourFee"></div>
                         <div class="col-6 col-md-2"><label class="form-label fw-bold">預估業績</label><input type="number" class="form-control" id="f_estRev"></div>
                         <div class="col-6 col-md-2"><label class="form-label fw-bold">實際業績</label><input type="number" class="form-control" id="f_actRev"></div>
@@ -165,11 +174,11 @@
                         <div class="col-6 col-md-2"><label class="form-label fw-bold">合約狀態</label>
                             <select class="form-select" id="f_contract"><option value="">未簽約</option><option value="線上">線上</option><option value="紙本">紙本</option><option value="PDF">PDF</option></select>
                         </div>
-                        
+
                         <div class="col-4 col-md-1"><label class="form-label small fw-bold">合約上傳</label><select class="form-select form-select-sm" id="f_contractUploaded"><option value="">-</option><option value="V">V</option></select></div>
                         <div class="col-4 col-md-1"><label class="form-label small fw-bold">寄紙本</label><select class="form-select form-select-sm" id="f_paperSent"><option value="">-</option><option value="V">V</option></select></div>
                         <div class="col-4 col-md-2"><label class="form-label small fw-bold text-danger">行前通知</label><select class="form-select form-select-sm border-danger-subtle" id="f_preTripNotify"><option value="">-</option><option value="V">V</option></select></div>
-                        
+
                         <div class="col-4 col-md-1"><label class="form-label fw-bold">訂金</label><select class="form-select form-select-sm" id="f_deposit"><option value="">-</option><option value="V">V</option></select></div>
                         <div class="col-4 col-md-1"><label class="form-label fw-bold">尾款</label><select class="form-select form-select-sm" id="f_balance"><option value="">-</option><option value="V">V</option></select></div>
                         <div class="col-4 col-md-1"><label class="form-label fw-bold">繳帳單</label><select class="form-select form-select-sm" id="f_billSent"><option value="">-</option><option value="V">V</option></select></div>
@@ -213,11 +222,15 @@
                     <th onclick="sortData('estRev')">預估業績 <i class="fas fa-sort sort-icon" id="sort-estRev"></i></th>
                     <th onclick="sortData('actRev')">實際業績 <i class="fas fa-sort sort-icon" id="sort-actRev"></i></th>
                     <th>開票日</th>
+                    <th>合約</th>
+                    <th>合約上傳</th>
+                    <th>寄紙本</th>
                     <th>訂金</th>
                     <th>尾款</th>
                     <th class="th-alert">行前通知</th>
                     <th class="th-highlight">繳帳單</th>
                     <th>名單</th>
+                    <th>分房</th>
                     <th>網卡</th>
                     <th>備註</th>
                 </tr>
@@ -251,22 +264,61 @@
 <script>
     // ★★★ 設定區 ★★★
     const SUPABASE_URL = 'https://legwqtrutzpbwqumvvkb.supabase.co';
-    const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxlZ3dxdHJ1dHpwYndxdW12dmtiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ4NDI4NTgsImV4cCI6MjA4MDQxODg1OH0.YIQPKNZizMcD1vZhAzalW1G2fRgLT6mx08qeyzEuaSg'; 
+    const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxlZ3dxdHJ1dHpwYndxdW12dmtiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ4NDI4NTgsImV4cCI6MjA4MDQxODg1OH0.YIQPKNZizMcD1vZhAzalW1G2fRgLT6mx08qeyzEuaSg';
     const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
     const TABLE_NAME = 'sales_records';
 
-    let currentData = []; 
-    let currentTab = 'ALL'; 
-    let sortColumn = 'date';
-    let sortAsc = true;
+    let allData     = [];   // ← 全量資料快取（未篩選）
+    let currentData = [];   // ← 篩選後資料（供渲染用）
+    let currentTab  = 'ALL';
+    let sortColumn  = 'date';
+    let sortAsc     = true;
     let searchQuery = '';
-    let isEditing = false; 
+    let _debounceTimer = null;       // ← 不汙染 window
     let performanceChartInstance = null;
 
-    // 初始化
+    // ─── 工具函式 ─────────────────────────────────────────────
+
+    /** XSS 防護：將任意字串轉義為安全 HTML */
+    function escapeHtml(str) {
+        if (str === null || str === undefined) return '';
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    /** 金額格式化 */
+    function money(v) { return v ? parseInt(v).toLocaleString() : '0'; }
+
+    /** V 狀態樣式 */
+    function statusV(v) { return v === 'V' ? 'status-v' : ''; }
+
+    /** Toast 通知 */
+    function showToast(msg, type = 'success', duration = 3000) {
+        const container = document.getElementById('toast-container');
+        const el = document.createElement('div');
+        el.className = `toast-msg ${type}`;
+        el.textContent = msg;
+        container.appendChild(el);
+        setTimeout(() => { el.style.opacity = '0'; el.style.transition = 'opacity 0.4s'; setTimeout(() => el.remove(), 400); }, duration);
+    }
+
+    /** Sync 狀態列 */
+    function updateSync(loading, msg = '已同步') {
+        const el = document.getElementById('syncStatus');
+        el.innerHTML = loading
+            ? `<i class="fas fa-spinner fa-spin"></i> ${msg}`
+            : `<i class="fas fa-check-circle text-success"></i> ${msg}`;
+    }
+
+    // ─── 初始化 ────────────────────────────────────────────────
+
     window.onload = async function() {
         const { data: { session } } = await sb.auth.getSession();
-        if (session) { showApp(session.user.email); initApp(); } 
+        if (session) { showApp(session.user.email); initApp(); }
         else { showLogin(); }
         sb.auth.onAuthStateChange((event, session) => {
             if (event === 'SIGNED_IN') { showApp(session.user.email); initApp(); }
@@ -274,145 +326,234 @@
         });
     };
 
-    function showLogin() { document.getElementById('login-container').style.display = 'flex'; document.getElementById('app-container').style.display = 'none'; }
-    function showApp(email) { document.getElementById('login-container').style.display = 'none'; document.getElementById('app-container').style.display = 'block'; document.getElementById('user-email').textContent = email; }
+    function showLogin() {
+        document.getElementById('login-container').style.display = 'flex';
+        document.getElementById('app-container').style.display = 'none';
+    }
+    function showApp(email) {
+        document.getElementById('login-container').style.display = 'none';
+        document.getElementById('app-container').style.display = 'block';
+        document.getElementById('user-email').textContent = email;
+    }
 
     async function handleLogin() {
         const btn = document.getElementById('login-btn');
-        btn.disabled = true; btn.textContent = "驗證中...";
+        btn.disabled = true; btn.textContent = '驗證中...';
         const email = document.getElementById('login-email').value;
         const password = document.getElementById('login-password').value;
         const { error } = await sb.auth.signInWithPassword({ email, password });
-        if (error) { document.getElementById('login-error').textContent = "登入失敗：" + error.message; btn.disabled = false; btn.textContent = "登入"; }
+        if (error) {
+            document.getElementById('login-error').textContent = '登入失敗：' + error.message;
+            btn.disabled = false; btn.textContent = '登入';
+        }
     }
 
-    async function handleLogout() { if(confirm("確定登出？")) await sb.auth.signOut(); }
+    async function handleLogout() {
+        if (confirm('確定登出？')) await sb.auth.signOut();
+    }
 
     function initApp() {
-        renderTabs(); 
         loadData();
-        fetchNotifications(); 
-        setupRealtime(); 
+        fetchNotifications();
+        setupRealtime();
     }
 
-    // 資料讀取與核心加總修正
-    async function loadData(showStatus = false) {
-        if(showStatus) updateSync(true, "讀取中...");
-        
-        let query = sb.from(TABLE_NAME).select('*');
-        if (searchQuery) query = query.or(`tour.ilike.%${searchQuery}%,name.ilike.%${searchQuery}%,phone.ilike.%${searchQuery}%`);
-        if (currentTab !== 'ALL') query = query.ilike('date', `${currentTab}%`);
-        query = query.order(sortColumn, { ascending: sortAsc });
+    // ─── 資料層（重構） ─────────────────────────────────────────
 
-        const { data, error } = await query;
-        if (!error) {
-            currentData = data;
-            renderAll();
-            calculateSummary();
+    /**
+     * loadData：從 DB 載入全量資料存入 allData，
+     * 再呼叫 applyFilters() 產生 currentData 並渲染。
+     * 排序、搜尋、切 Tab 皆改為純前端操作（不再重打 DB）。
+     */
+    async function loadData(showStatus = false) {
+        if (showStatus) updateSync(true, '讀取中...');
+
+        const { data, error } = await sb
+            .from(TABLE_NAME)
+            .select('*')
+            .order('date', { ascending: true });   // 基礎排序，前端再細排
+
+        if (error) {
+            updateSync(false, '載入失敗');
+            showToast('❌ 資料載入失敗：' + error.message, 'error');
+            return;
         }
+
+        allData = data || [];
+        renderTabs();           // Tab / 年份選單從 allData 推算，不打 DB
+        applyFilters();         // 前端篩選 + 排序 → currentData → 渲染
         updateSync(false);
     }
 
+    /**
+     * applyFilters：純前端，從 allData 篩選出 currentData
+     * 觸發時機：切 Tab、搜尋、排序
+     */
+    function applyFilters() {
+        const q = searchQuery.toLowerCase();
+
+        let filtered = allData.filter(r => {
+            // Tab 篩選
+            if (currentTab !== 'ALL' && !(r.date || '').startsWith(currentTab)) return false;
+            // 搜尋篩選
+            if (q) {
+                const inTour  = (r.tour  || '').toLowerCase().includes(q);
+                const inName  = (r.name  || '').toLowerCase().includes(q);
+                const inPhone = (r.phone || '').toLowerCase().includes(q);
+                if (!inTour && !inName && !inPhone) return false;
+            }
+            return true;
+        });
+
+        // 前端排序
+        filtered.sort((a, b) => {
+            let va = a[sortColumn], vb = b[sortColumn];
+            if (['estRev', 'actRev', 'pax', 'tourFee'].includes(sortColumn)) {
+                va = Number(va) || 0; vb = Number(vb) || 0;
+            } else {
+                va = String(va || ''); vb = String(vb || '');
+            }
+            if (va < vb) return sortAsc ? -1 : 1;
+            if (va > vb) return sortAsc ?  1 : -1;
+            return 0;
+        });
+
+        currentData = filtered;
+        renderAll();
+        calculateSummary();
+    }
+
+    // ─── Tab 與年份選單（從 allData 推算，不打 DB） ─────────────
+
+    function renderTabs() {
+        const dates  = allData.map(r => r.date).filter(x => x);
+        const months = [...new Set(dates.map(d => d.substring(0, 7)))].sort().reverse();
+        const years  = [...new Set(dates.map(d => d.substring(0, 4)))].sort().reverse();
+
+        // 月份 Tabs
+        const monthContainer = document.getElementById('monthTabs');
+        let html = `<li class="nav-item"><button class="nav-link ${currentTab==='ALL'?'active':''}" onclick="switchTab('ALL')">全部數據</button></li>`;
+        months.forEach(m => {
+            html += `<li class="nav-item"><button class="nav-link ${currentTab===m?'active':''}" onclick="switchTab('${m}')">${m}</button></li>`;
+        });
+        monthContainer.innerHTML = html;
+
+        // 年份選單（Dashboard 用）— 固定從 allData 取，不受 Tab 影響
+        const yearSelector = document.getElementById('chart-year-selector');
+        const prevYear = yearSelector.value;
+        const currentYear = new Date().getFullYear().toString();
+        yearSelector.innerHTML = years.map(y => `<option value="${y}">${y}年</option>`).join('');
+        if (prevYear && years.includes(prevYear)) yearSelector.value = prevYear;
+        else if (years.includes(currentYear)) yearSelector.value = currentYear;
+    }
+
+    function switchTab(tab) {
+        currentTab = tab;
+        renderTabs();
+        applyFilters();
+    }
+
+    // ─── 統計加總 ───────────────────────────────────────────────
+
     function calculateSummary() {
-        const summary = currentData.reduce((acc, r) => {
-            acc.pax += Number(r.pax) || 0;
+        const s = currentData.reduce((acc, r) => {
+            acc.pax    += Number(r.pax)    || 0;
             acc.estRev += Number(r.estRev) || 0;
             acc.actRev += Number(r.actRev) || 0;
             return acc;
         }, { pax: 0, estRev: 0, actRev: 0 });
 
-        document.getElementById('sumPax').textContent = summary.pax;
-        document.getElementById('sumEst').textContent = summary.estRev.toLocaleString();
-        document.getElementById('sumAct').textContent = summary.actRev.toLocaleString();
+        document.getElementById('sumPax').textContent = s.pax;
+        document.getElementById('sumEst').textContent = s.estRev.toLocaleString();
+        document.getElementById('sumAct').textContent = s.actRev.toLocaleString();
     }
 
-    // 渲染 UI
-    function renderAll() {
-        const tbody = document.getElementById('tableBody');
-        const mCards = document.getElementById('mobileCards');
-        const today = new Date(); today.setHours(0,0,0,0);
+    // ─── 渲染 UI ────────────────────────────────────────────────
 
-        // 先渲染 Dashboard
+    function renderAll() {
+        const tbody  = document.getElementById('tableBody');
+        const mCards = document.getElementById('mobileCards');
+        const today  = new Date(); today.setHours(0, 0, 0, 0);
+
         renderPerformanceDashboard();
         renderCustomerAnalysis();
 
         if (currentData.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="17" class="text-center p-5 text-muted">此月份無資料或查無結果</td></tr>';
+            tbody.innerHTML  = '<tr><td colspan="21" class="text-center p-5 text-muted">此月份無資料或查無結果</td></tr>';
             mCards.innerHTML = '<div class="text-center p-5 text-muted">此月份無資料或查無結果</div>';
             return;
         }
 
-        const tableRows = [];
+        const tableRows   = [];
         const mobileCards = [];
 
         currentData.forEach(row => {
-            const safe = (v) => v || '';
-            const money = (v) => v ? parseInt(v).toLocaleString() : '0';
-            const statusV = (v) => v === 'V' ? 'status-v' : '';
+            const e = escapeHtml;   // 別名，方便使用
 
-            let urgent = false;
-            if (row.date) {
-                const diff = (new Date(row.date) - today) / 86400000;
-                if (diff >= 0 && diff <= 3) urgent = true;
-            }
-
-            // PC 表格列
+            const diff = row.date ? (new Date(row.date) - today) / 86400000 : Infinity;
+            const urgent = diff >= 0 && diff <= 3;
             const urgentClass = urgent ? 'highlight-row' : '';
+
+            // ── PC 表格列 ──
             tableRows.push(`
                 <tr class="${urgentClass}">
                 <td>
-                    <button class="btn btn-sm btn-outline-primary" onclick="editRecord('${row.id}')"><i class="fas fa-edit"></i></button>
-                    <button class="btn btn-sm btn-outline-danger" onclick="deleteRecord('${row.id}', '${row.name}')"><i class="fas fa-trash"></i></button>
+                    <button class="btn btn-sm btn-outline-primary" onclick="editRecord('${e(row.id)}')"><i class="fas fa-edit"></i></button>
+                    <button class="btn btn-sm btn-outline-danger"  onclick="deleteRecord('${e(row.id)}', '${e(row.name)}')"><i class="fas fa-trash"></i></button>
                 </td>
-                <td>${safe(row.date)}</td>
-                <td class="text-left fw-bold text-truncate" style="max-width:180px;">${safe(row.tour)}</td>
-                <td>${safe(row.name)}</td>
-                <td class="fw-bold text-primary">${safe(row.pax)}</td>
-                <td>${safe(row.bookingId)}</td>
+                <td>${e(row.date)}</td>
+                <td class="text-left fw-bold text-truncate" style="max-width:180px;" title="${e(row.tour)}">${e(row.tour)}</td>
+                <td>${e(row.name)}</td>
+                <td class="fw-bold text-primary">${e(row.pax)}</td>
+                <td>${e(row.bookingId)}</td>
                 <td>${money(row.tourFee)}</td>
                 <td>${money(row.estRev)}</td>
                 <td class="fw-bold text-success">${money(row.actRev)}</td>
-                <td class="text-danger small fw-bold">${safe(row.ticketingDate)}</td>
-                <td><span class="${statusV(row.deposit)}">${safe(row.deposit)}</span></td>
-                <td><span class="${statusV(row.balance)}">${safe(row.balance)}</span></td>
-                <td><span class="${statusV(row.preTripNotify)}">${safe(row.preTripNotify)}</span></td>
-                <td><span class="${statusV(row.billSent)}">${safe(row.billSent)}</span></td>
-                <td><span class="${statusV(row.list)}">${safe(row.list)}</span></td>
-                <td><span class="${statusV(row.simCard)}">${safe(row.simCard)}</span></td>
-                <td class="text-muted text-truncate" style="max-width:120px;">${safe(row.note)}</td>
+                <td class="text-danger small fw-bold">${e(row.ticketingDate)}</td>
+                <td>${e(row.contract)}</td>
+                <td><span class="${statusV(row.contractUploaded)}">${e(row.contractUploaded)}</span></td>
+                <td><span class="${statusV(row.paperSent)}">${e(row.paperSent)}</span></td>
+                <td><span class="${statusV(row.deposit)}">${e(row.deposit)}</span></td>
+                <td><span class="${statusV(row.balance)}">${e(row.balance)}</span></td>
+                <td><span class="${statusV(row.preTripNotify)}">${e(row.preTripNotify)}</span></td>
+                <td><span class="${statusV(row.billSent)}">${e(row.billSent)}</span></td>
+                <td><span class="${statusV(row.list)}">${e(row.list)}</span></td>
+                <td><span class="${statusV(row.room)}">${e(row.room)}</span></td>
+                <td><span class="${statusV(row.simCard)}">${e(row.simCard)}</span></td>
+                <td class="text-muted text-truncate" style="max-width:120px;" title="${e(row.note)}">${e(row.note)}</td>
             </tr>`);
 
-            // 手機版卡片
-            const mobileUrgentClass = urgent ? 'urgent' : '';
+            // ── 手機版卡片 ──
             mobileCards.push(`
-            <div class="mobile-card ${mobileUrgentClass}">
+            <div class="mobile-card ${urgent ? 'urgent' : ''}">
                 <div class="d-flex justify-content-between align-items-start">
-                    <div class="m-title">${safe(row.tour)}</div>
-                    <span class="badge bg-primary">${safe(row.date)}</span>
+                    <div class="m-title">${e(row.tour)}</div>
+                    <span class="badge bg-primary">${e(row.date)}</span>
                 </div>
                 <div class="row g-2 small">
-                    <div class="col-6">代表：<b>${safe(row.name)}</b></div>
-                    <div class="col-6 text-end">人數：<b>${safe(row.pax)}</b></div>
-                    <div class="col-6">訂編：<b>${safe(row.bookingId)}</b></div>
-                    <div class="col-6 text-end text-danger">開票：${safe(row.ticketingDate)}</div>
+                    <div class="col-6">代表：<b>${e(row.name)}</b></div>
+                    <div class="col-6 text-end">人數：<b>${e(row.pax)}</b></div>
+                    <div class="col-6">訂編：<b>${e(row.bookingId)}</b></div>
+                    <div class="col-6 text-end text-danger">開票：${e(row.ticketingDate)}</div>
                 </div>
                 <div class="m-badge-row">
-                    ${row.deposit==='V'?'<span class="badge bg-success-subtle text-success border border-success">訂金V</span>':''}
-                    ${row.balance==='V'?'<span class="badge bg-success-subtle text-success border border-success">尾款V</span>':''}
-                    ${row.list==='V'?'<span class="badge bg-info-subtle text-info border border-info">名單V</span>':''}
-                    ${row.preTripNotify==='V'?'<span class="badge bg-danger-subtle text-danger border border-danger">行前V</span>':''}
+                    ${row.deposit==='V'      ? '<span class="badge bg-success-subtle text-success border border-success">訂金V</span>' : ''}
+                    ${row.balance==='V'      ? '<span class="badge bg-success-subtle text-success border border-success">尾款V</span>' : ''}
+                    ${row.list==='V'         ? '<span class="badge bg-info-subtle text-info border border-info">名單V</span>' : ''}
+                    ${row.preTripNotify==='V'? '<span class="badge bg-danger-subtle text-danger border border-danger">行前V</span>' : ''}
                 </div>
                 <div class="text-end mt-3">
-                    <button class="btn btn-sm btn-primary" onclick="editRecord('${row.id}')"><i class="fas fa-edit"></i> 編輯</button>
+                    <button class="btn btn-sm btn-primary" onclick="editRecord('${e(row.id)}')"><i class="fas fa-edit"></i> 編輯</button>
                 </div>
             </div>`);
         });
 
-        tbody.innerHTML = tableRows.join('');
+        tbody.innerHTML  = tableRows.join('');
         mCards.innerHTML = mobileCards.join('');
     }
 
-    // CRUD 邏輯
+    // ─── CRUD ───────────────────────────────────────────────────
+
     async function saveRecord() {
         const btn = document.getElementById('submitBtn');
         btn.disabled = true;
@@ -421,97 +562,96 @@
             date: getV('f_date'), tour: getV('f_tour'), name: getV('f_name'), phone: getV('f_phone'),
             pax: Number(getV('f_pax')) || 0, bookingId: getV('f_bookingId'),
             tourFee: Number(getV('f_tourFee')) || 0, estRev: Number(getV('f_estRev')) || 0,
-            actRev: Number(getV('f_actRev')) || 0, ticketingDate: getV('f_ticketingDate'),
+            actRev: Number(getV('f_actRev')) || 0, ticketingDate: getV('f_ticketingDate') || null,
             contract: getV('f_contract'), contractUploaded: getV('f_contractUploaded'),
             paperSent: getV('f_paperSent'), preTripNotify: getV('f_preTripNotify'),
             deposit: getV('f_deposit'), balance: getV('f_balance'), billSent: getV('f_billSent'),
             list: getV('f_list'), room: getV('f_room'), simCard: getV('f_simCard'), note: getV('f_note')
         };
-        
+
         const editId = getV('editId');
-        const { error } = editId ? await sb.from(TABLE_NAME).update(record).eq('id', editId) : await sb.from(TABLE_NAME).insert([record]);
-        
-        if(!error) { 
-            resetForm(); loadData(); fetchNotifications(); 
-            if(!editId) window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+        const { error } = editId
+            ? await sb.from(TABLE_NAME).update(record).eq('id', editId)
+            : await sb.from(TABLE_NAME).insert([record]);
+
+        if (!error) {
+            showToast(editId ? '✅ 紀錄已更新！' : '✅ 新增成功！');
+            resetForm();
+            await loadData();
+            fetchNotifications();
+            if (!editId) window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
         } else {
-            alert("儲存失敗：" + error.message);
+            showToast('❌ 儲存失敗：' + error.message, 'error');
         }
         btn.disabled = false;
     }
 
     function editRecord(id) {
-        isEditing = true;
-        const row = currentData.find(r => r.id == id);
-        if(!row) return;
+        const row = currentData.find(r => String(r.id) === String(id));
+        if (!row) return;
         document.getElementById('editId').value = row.id;
         Object.keys(row).forEach(k => {
-            const el = document.getElementById('f_'+k);
-            if(el) el.value = row[k] || (el.tagName === 'SELECT' ? '' : '');
+            const el = document.getElementById('f_' + k);
+            if (el) el.value = row[k] != null ? row[k] : '';
         });
-        document.getElementById('submitBtn').textContent = "更新紀錄";
+        document.getElementById('submitBtn').textContent = '更新紀錄';
         document.getElementById('submitBtn').classList.replace('btn-primary', 'btn-warning');
         document.querySelector('#formBody').classList.add('show');
         window.scrollTo({ top: 0, behavior: 'smooth' });
     }
 
     async function deleteRecord(id, name) {
-        if(confirm(`確定刪除「${name}」的紀錄？`)) {
-            await sb.from(TABLE_NAME).delete().eq('id', id);
-            loadData();
+        if (!confirm(`確定刪除「${name}」的紀錄？`)) return;
+        const { error } = await sb.from(TABLE_NAME).delete().eq('id', id);
+        if (!error) {
+            showToast(`🗑️ 已刪除「${name}」的紀錄`, 'info');
+            await loadData();
+            fetchNotifications();
+        } else {
+            showToast('❌ 刪除失敗：' + error.message, 'error');
         }
     }
 
-    // 待辦通知邏輯 (出發前3天 & 開票前7天名單)
+    // ─── 待辦通知 ───────────────────────────────────────────────
+
     async function fetchNotifications() {
         const today = new Date();
-        const threeDaysLater = new Date(today);
-        threeDaysLater.setDate(today.getDate() + 3);
-        const sevenDaysLater = new Date(today);
-        sevenDaysLater.setDate(today.getDate() + 7);
+        const todayStr        = today.toISOString().split('T')[0];
+        const threeDaysLater  = new Date(today); threeDaysLater.setDate(today.getDate() + 3);
+        const sevenDaysLater  = new Date(today); sevenDaysLater.setDate(today.getDate() + 7);
+        const threeDaysStr    = threeDaysLater.toISOString().split('T')[0];
+        const sevenDaysStr    = sevenDaysLater.toISOString().split('T')[0];
 
-        const todayStr = today.toISOString().split('T')[0];
-        const threeDaysLaterStr = threeDaysLater.toISOString().split('T')[0];
-        const sevenDaysLaterStr = sevenDaysLater.toISOString().split('T')[0];
-
-        // 使用 .or() 篩選出發預警或開票預警的記錄，大幅減少客戶端處理的數據量
         const { data, error } = await sb.from(TABLE_NAME)
             .select('name, tour, date, ticketingDate, deposit, balance, preTripNotify, list')
             .or(
-                `and(date.gte.${todayStr},date.lte.${threeDaysLaterStr},or(deposit.neq.V,balance.neq.V,preTripNotify.neq.V))`,
-                `and(ticketingDate.gte.${todayStr},ticketingDate.lte.${sevenDaysLaterStr},list.neq.V)`
+                `and(date.gte.${todayStr},date.lte.${threeDaysStr},or(deposit.neq.V,balance.neq.V,preTripNotify.neq.V))`,
+                `and(ticketingDate.gte.${todayStr},ticketingDate.lte.${sevenDaysStr},list.neq.V)`
             );
 
-        if (error) {
-            console.error("讀取待辦事項失敗:", error);
-            return;
-        }
+        if (error) { console.error('讀取待辦事項失敗:', error); return; }
 
         const list = document.getElementById('notifList');
         list.innerHTML = '';
         let count = 0;
         const todayDateOnly = new Date(todayStr);
 
-        data.forEach(row => {
-            let issues = [];
-            const depDate = row.date ? new Date(row.date) : null;
+        (data || []).forEach(row => {
+            const issues = [];
+            const depDate  = row.date          ? new Date(row.date)          : null;
             const tickDate = row.ticketingDate ? new Date(row.ticketingDate) : null;
 
-            // 檢查出發預警
             if (depDate) {
                 const diff = (depDate - todayDateOnly) / 86400000;
                 if (diff >= 0 && diff <= 3) {
-                    if (row.deposit !== 'V') issues.push("未收訂金");
-                    if (row.balance !== 'V') issues.push("未收尾款");
-                    if (row.preTripNotify !== 'V') issues.push("未發行前");
+                    if (row.deposit       !== 'V') issues.push('未收訂金');
+                    if (row.balance       !== 'V') issues.push('未收尾款');
+                    if (row.preTripNotify !== 'V') issues.push('未發行前');
                 }
             }
-            // 檢查開票預警
             if (tickDate) {
                 const tDiff = (tickDate - todayDateOnly) / 86400000;
-                if (tDiff >= 0 && tDiff <= 7 && row.list !== 'V' && !issues.includes("需入名單(開票預警)")) {
-                    issues.push("需入名單(開票預警)");
-                }
+                if (tDiff >= 0 && tDiff <= 7 && row.list !== 'V') issues.push('需入名單(開票預警)');
             }
 
             if (issues.length > 0) {
@@ -520,211 +660,155 @@
                 li.className = 'list-group-item p-3';
                 li.innerHTML = `
                     <div class="d-flex justify-content-between align-items-center">
-                        <div><b>${row.name}</b> <small class="text-muted">${row.tour}</small></div>
+                        <div><b>${escapeHtml(row.name)}</b> <small class="text-muted">${escapeHtml(row.tour)}</small></div>
                         <span class="badge bg-danger rounded-pill">${issues.length}</span>
                     </div>
-                    <div class="small text-danger mt-1 fw-bold">${issues.join('、')}</div>
-                `;
+                    <div class="small text-danger mt-1 fw-bold">${escapeHtml(issues.join('、'))}</div>`;
                 list.appendChild(li);
             }
         });
 
-        document.getElementById('notifBadge').textContent = count;
+        document.getElementById('notifBadge').textContent  = count;
         document.getElementById('notifBadge').style.display = count > 0 ? 'block' : 'none';
-        document.getElementById('noNotifMsg').style.display = count === 0 ? 'block' : 'none';
+        document.getElementById('noNotifMsg').style.display  = count === 0 ? 'block' : 'none';
     }
 
-    // Dashboard 渲染
+    // ─── Dashboard ──────────────────────────────────────────────
+
     function renderPerformanceDashboard() {
-        if (performanceChartInstance) {
-            performanceChartInstance.destroy();
-        }
+        if (performanceChartInstance) performanceChartInstance.destroy();
 
         const yearSelector = document.getElementById('chart-year-selector');
         const selectedYear = yearSelector.value;
         if (!selectedYear) return;
 
-        const yearlyData = currentData.filter(r => r.date && r.date.startsWith(selectedYear));
-
+        // 固定從 allData 計算，不受 Tab 篩選影響
         const monthlyData = Array(12).fill(0).map(() => ({ est: 0, act: 0 }));
-
-        yearlyData.forEach(row => {
-            const month = new Date(row.date).getMonth();
-            monthlyData[month].est += Number(row.estRev) || 0;
-            monthlyData[month].act += Number(row.actRev) || 0;
-        });
+        allData
+            .filter(r => r.date && r.date.startsWith(selectedYear))
+            .forEach(row => {
+                const month = new Date(row.date).getMonth();
+                monthlyData[month].est += Number(row.estRev) || 0;
+                monthlyData[month].act += Number(row.actRev) || 0;
+            });
 
         const ctx = document.getElementById('performanceChart').getContext('2d');
         performanceChartInstance = new Chart(ctx, {
             type: 'bar',
             data: {
-                labels: ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'],
+                labels: ['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'],
                 datasets: [
-                    {
-                        label: '預估業績',
-                        data: monthlyData.map(d => d.est),
-                        backgroundColor: 'rgba(88, 163, 235, 0.6)',
-                        borderColor: 'rgba(88, 163, 235, 1)',
-                        borderWidth: 1
-                    },
-                    {
-                        label: '實際業績',
-                        data: monthlyData.map(d => d.act),
-                        backgroundColor: 'rgba(25, 135, 84, 0.6)',
-                        borderColor: 'rgba(25, 135, 84, 1)',
-                        borderWidth: 1
-                    }
+                    { label: '預估業績', data: monthlyData.map(d => d.est), backgroundColor: 'rgba(88,163,235,0.6)', borderColor: 'rgba(88,163,235,1)', borderWidth: 1 },
+                    { label: '實際業績', data: monthlyData.map(d => d.act), backgroundColor: 'rgba(25,135,84,0.6)',  borderColor: 'rgba(25,135,84,1)',  borderWidth: 1 }
                 ]
             },
             options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                scales: {
-                    y: {
-                        beginAtZero: true,
-                        ticks: {
-                            callback: function(value) { return value.toLocaleString() + ' 元'; }
-                        }
-                    }
-                },
-                plugins: {
-                    tooltip: {
-                        callbacks: {
-                            label: function(context) {
-                                let label = context.dataset.label || '';
-                                if (label) { label += ': '; }
-                                if (context.parsed.y !== null) { label += context.parsed.y.toLocaleString() + ' 元';}
-                                return label;
-                            }
-                        }
-                    }
-                }
+                responsive: true, maintainAspectRatio: false,
+                scales: { y: { beginAtZero: true, ticks: { callback: v => v.toLocaleString() + ' 元' } } },
+                plugins: { tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y.toLocaleString()} 元` } } }
             }
         });
     }
 
     function renderCustomerAnalysis() {
         const customerData = {};
-        const dataToAnalyze = (currentTab === 'ALL') ? currentData : currentData.filter(r => r.date && r.date.startsWith(currentTab));
-
-        dataToAnalyze.forEach(row => {
-            if(!row.name) return;
+        // 客戶分析固定使用 currentData（遵循 Tab 篩選）
+        currentData.forEach(row => {
+            if (!row.name) return;
             const name = row.name.trim();
-            if (!customerData[name]) {
-                customerData[name] = { count: 0, revenue: 0 };
-            }
+            if (!customerData[name]) customerData[name] = { count: 0, revenue: 0 };
             customerData[name].count++;
             customerData[name].revenue += Number(row.actRev) || 0;
         });
 
-        const sortedByRevenue = Object.entries(customerData).sort(([, a], [, b]) => b.revenue - a.revenue).slice(0, 5);
-        const sortedByCount = Object.entries(customerData).sort(([, a], [, b]) => b.count - a.count).slice(0, 5);
+        const byRevenue = Object.entries(customerData).sort(([,a],[,b]) => b.revenue - a.revenue).slice(0, 5);
+        const byCount   = Object.entries(customerData).sort(([,a],[,b]) => b.count   - a.count  ).slice(0, 5);
 
-        const generateListHTML = (data, valueKey, unit) => {
-            let html = '<ul class="list-group list-group-flush">';
-            if (data.length === 0) {
-                return '<div class="text-center text-muted p-4">無客戶資料</div>';
-            }
-            data.forEach(([name, values], index) => {
-                const value = (valueKey === 'revenue') ? values[valueKey].toLocaleString() : values[valueKey];
-                const icon = index === 0 ? '<i class="fas fa-trophy text-warning me-2"></i>' : `<span class="fw-bold me-2" style="width:1.2em; display: inline-block; text-align: center;">${index + 1}</span>`;
-                html += `<li class="list-group-item d-flex justify-content-between align-items-center small p-2">${icon}<span class="text-truncate" title="${name}">${name}</span><span class="badge bg-light text-primary rounded-pill">${value} ${unit}</span></li>`;
-            });
-            html += '</ul>';
-            return html;
+        const genList = (data, key, unit) => {
+            if (!data.length) return '<div class="text-center text-muted p-4">無客戶資料</div>';
+            return '<ul class="list-group list-group-flush">' +
+                data.map(([name, v], i) => {
+                    const val   = key === 'revenue' ? v[key].toLocaleString() : v[key];
+                    const icon  = i === 0 ? '<i class="fas fa-trophy text-warning me-2"></i>' : `<span class="fw-bold me-2" style="width:1.2em;display:inline-block;text-align:center;">${i+1}</span>`;
+                    return `<li class="list-group-item d-flex justify-content-between align-items-center small p-2">${icon}<span class="text-truncate" title="${escapeHtml(name)}">${escapeHtml(name)}</span><span class="badge bg-light text-primary rounded-pill">${val} ${unit}</span></li>`;
+                }).join('') + '</ul>';
         };
 
-        const analysisContainer = document.getElementById('customerAnalysis');
-        analysisContainer.innerHTML = `
+        document.getElementById('customerAnalysis').innerHTML = `
             <div class="row m-0">
                 <div class="col-md-6 p-1">
                     <h6 class="small text-center fw-bold"><i class="fas fa-dollar-sign text-success me-1"></i>貢獻金額排行</h6>
-                    ${generateListHTML(sortedByRevenue, 'revenue', '元')}
+                    ${genList(byRevenue, 'revenue', '元')}
                 </div>
                 <div class="col-md-6 p-1 mt-3 mt-md-0">
                     <h6 class="small text-center fw-bold"><i class="fas fa-users text-info me-1"></i>成交次數排行</h6>
-                    ${generateListHTML(sortedByCount, 'count', '次')}
+                    ${genList(byCount, 'count', '次')}
                 </div>
             </div>`;
     }
 
-    // 其他功能
-    function resetForm() { 
-        document.getElementById('recordForm').reset(); 
-        document.getElementById('editId').value = ''; 
-        document.getElementById('submitBtn').textContent = "儲存紀錄";
+    // ─── 其他功能 ────────────────────────────────────────────────
+
+    function resetForm() {
+        document.getElementById('recordForm').reset();
+        document.getElementById('editId').value = '';
+        document.getElementById('submitBtn').textContent = '儲存紀錄';
         document.getElementById('submitBtn').classList.replace('btn-warning', 'btn-primary');
-        isEditing = false;
-    }
-    
-    function debounceSearch() { 
-        clearTimeout(window.t); 
-        window.t = setTimeout(() => { searchQuery = document.getElementById('searchInput').value; loadData(); }, 500); 
+        // ← isEditing 已移除，改用 editId 判斷是否在編輯中
     }
 
-    function sortData(col) { 
-        if(sortColumn === col) sortAsc = !sortAsc; else { sortColumn = col; sortAsc = true; } 
+    function debounceSearch() {
+        clearTimeout(_debounceTimer);
+        _debounceTimer = setTimeout(() => {
+            searchQuery = document.getElementById('searchInput').value.trim();
+            applyFilters();   // ← 純前端，不打 DB
+        }, 300);
+    }
+
+    function sortData(col) {
+        if (sortColumn === col) sortAsc = !sortAsc;
+        else { sortColumn = col; sortAsc = true; }
         document.querySelectorAll('.sort-icon').forEach(el => el.className = 'fas fa-sort sort-icon');
         const icon = document.getElementById('sort-' + col);
-        if(icon) icon.className = sortAsc ? 'fas fa-sort-up sort-icon sort-active' : 'fas fa-sort-down sort-icon sort-active';
-        loadData(); 
+        if (icon) icon.className = sortAsc ? 'fas fa-sort-up sort-icon sort-active' : 'fas fa-sort-down sort-icon sort-active';
+        applyFilters();   // ← 純前端排序，不打 DB
     }
 
-    function updateSync(s, msg = "已同步") { 
-        const el = document.getElementById('syncStatus');
-        el.innerHTML = s ? `<i class="fas fa-spinner fa-spin"></i> ${msg}` : `<i class="fas fa-check-circle"></i> ${msg}`; 
-    }
-
-    function openNotificationModal() { new bootstrap.Modal(document.getElementById('notificationModal')).show(); }
-
-    async function renderTabs() {
-        const { data } = await sb.from(TABLE_NAME).select('date');
-        const dates = data.map(r => r.date).filter(x => x);
-        const months = [...new Set(dates.map(d => d.substring(0, 7)))].sort().reverse();
-        const years = [...new Set(dates.map(d => d.substring(0, 4)))].sort().reverse();
-
-        const monthContainer = document.getElementById('monthTabs');
-        let monthTabsHtml = `<li class="nav-item"><button class="nav-link ${currentTab==='ALL'?'active':''}" onclick="currentTab='ALL';renderTabs();loadData();">全部數據</button></li>`;
-        months.forEach(m => {
-            monthTabsHtml += `<li class="nav-item"><button class="nav-link ${currentTab===m?'active':''}" onclick="currentTab='${m}';renderTabs();loadData();">${m}</button></li>`;
-        });
-        monthContainer.innerHTML = monthTabsHtml;
-        
-        const yearSelector = document.getElementById('chart-year-selector');
-        const currentSelectedYear = yearSelector.value;
-        const currentYear = new Date().getFullYear().toString();
-        
-        let yearOptionsHtml = '';
-        years.forEach(y => {
-            yearOptionsHtml += `<option value="${y}">${y}年</option>`;
-        });
-        yearSelector.innerHTML = yearOptionsHtml;
-
-        if (currentSelectedYear && years.includes(currentSelectedYear)) {
-            yearSelector.value = currentSelectedYear;
-        } else if (years.includes(currentYear)) {
-            yearSelector.value = currentYear;
-        }
+    function openNotificationModal() {
+        new bootstrap.Modal(document.getElementById('notificationModal')).show();
     }
 
     function setupRealtime() {
-        sb.channel('public:sales_records').on('postgres_changes', { event: '*', schema: 'public', table: TABLE_NAME }, () => {
-            if(!isEditing) { 
-                Promise.all([loadData(), renderTabs()]).then(() => {
-                    fetchNotifications();
-                });
-            }
-        }).subscribe();
+        sb.channel('public:sales_records')
+          .on('postgres_changes', { event: '*', schema: 'public', table: TABLE_NAME }, () => {
+              // 只有表單未在「編輯模式」時才自動刷新
+              const editId = document.getElementById('editId').value;
+              if (!editId) {
+                  loadData().then(() => fetchNotifications());
+              }
+          })
+          .subscribe();
     }
 
+    /**
+     * exportToCSV：完整欄位 + RFC 4180 標準逸出
+     */
     function exportToCSV() {
-        let csv = "\uFEFF出發日期,行程,客人代表,人數,訂編,團費,實際業績,備註\n";
-        currentData.forEach(r => {
-            csv += `${r.date},${r.tour.replace(/,/g,' ')},${r.name},${r.pax},${r.bookingId},${r.tourFee},${r.actRev},${(r.note||'').replace(/,/g,' ')}\n`;
-        });
+        const esc = v => `"${String(v == null ? '' : v).replace(/"/g, '""')}"`;
+
+        const headers = ['出發日期','行程','客人代表','電話','人數','訂編','團費','預估業績','實際業績','開票日','合約狀態','合約上傳','寄紙本','行前通知','訂金','尾款','繳帳單','名單','分房','網卡','備註'];
+        const rows = currentData.map(r => [
+            esc(r.date), esc(r.tour), esc(r.name), esc(r.phone), esc(r.pax),
+            esc(r.bookingId), esc(r.tourFee), esc(r.estRev), esc(r.actRev),
+            esc(r.ticketingDate), esc(r.contract), esc(r.contractUploaded),
+            esc(r.paperSent), esc(r.preTripNotify), esc(r.deposit), esc(r.balance),
+            esc(r.billSent), esc(r.list), esc(r.room), esc(r.simCard), esc(r.note)
+        ].join(','));
+
+        const csv  = '\uFEFF' + [headers.map(esc).join(','), ...rows].join('\r\n');
         const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-        const link = document.createElement("a");
-        link.href = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href  = URL.createObjectURL(blob);
         link.download = `業務出團表_${new Date().toISOString().slice(0,10)}.csv`;
         link.click();
     }
