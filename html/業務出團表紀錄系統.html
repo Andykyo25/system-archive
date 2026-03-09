@@ -153,7 +153,7 @@
         <div class="col-12 col-md-4">
             <div class="input-group">
                 <span class="input-group-text bg-white border-end-0"><i class="fas fa-search text-muted"></i></span>
-                <input type="text" class="form-control border-start-0" id="searchInput" placeholder="搜尋行程、客人、電話..." onkeyup="debounceSearch()">
+                <input type="text" class="form-control border-start-0" id="searchInput" placeholder="搜尋行程、客人..." onkeyup="debounceSearch()">
             </div>
         </div>
         <div class="col-12 col-md-8 text-end d-flex align-items-center justify-content-md-end justify-content-between">
@@ -214,7 +214,6 @@
                         <div class="col-12 col-md-2"><label class="form-label fw-bold">出發日期</label><input type="date" class="form-control" id="f_date" required></div>
                         <div class="col-12 col-md-4"><label class="form-label fw-bold">行程名稱</label><input type="text" class="form-control" id="f_tour" placeholder="例如：日本五日遊" required></div>
                         <div class="col-6 col-md-2"><label class="form-label fw-bold">客人代表</label><input type="text" class="form-control" id="f_name" required></div>
-                        <div class="col-6 col-md-2"><label class="form-label fw-bold">電話號碼</label><input type="text" class="form-control" id="f_phone"></div>
                         <div class="col-4 col-md-1"><label class="form-label fw-bold">人數</label><input type="number" class="form-control" id="f_pax" required min="1"></div>
                         <div class="col-8 col-md-1"><label class="form-label fw-bold">訂編</label><input type="text" class="form-control" id="f_bookingId"></div>
 
@@ -351,7 +350,7 @@ const TOGGLEABLE_COLS = [
 
 // 草稿需要儲存的表單欄位 IDs
 const FORM_FIELD_IDS = [
-    'f_date','f_tour','f_name','f_phone','f_pax','f_bookingId',
+    'f_date','f_tour','f_name','f_pax','f_bookingId',
     'f_tourFee','f_estRev','f_actRev','f_ticketingDate',
     'f_contract','f_contractUploaded','f_paperSent','f_preTripNotify',
     'f_deposit','f_balance','f_billSent','f_list','f_room','f_simCard','f_note'
@@ -477,7 +476,7 @@ function applyFilters() {
         // Tab 篩選
         if (currentTab !== 'ALL' && !(r.date||'').startsWith(currentTab)) return false;
         // 文字搜尋
-        if (q && ![(r.tour||''),(r.name||''),(r.phone||'')].some(s=>s.toLowerCase().includes(q))) return false;
+        if (q && ![(r.tour||''),(r.name||'')].some(s=>s.toLowerCase().includes(q))) return false;
         // 狀態快速篩選
         if (statusFilter) {
             const diff = r.date ? (new Date(r.date)-today)/86400000 : Infinity;
@@ -648,7 +647,7 @@ async function saveRecord() {
     const getV = id => document.getElementById(id).value;
 
     const record = {
-        date: getV('f_date'), tour: getV('f_tour'), name: getV('f_name'), phone: getV('f_phone'),
+        date: getV('f_date'), tour: getV('f_tour'), name: getV('f_name'),
         pax: Number(getV('f_pax'))||0, bookingId: getV('f_bookingId'),
         tourFee: Number(getV('f_tourFee'))||0, estRev: Number(getV('f_estRev'))||0,
         actRev: Number(getV('f_actRev'))||0, ticketingDate: getV('f_ticketingDate')||null,
@@ -906,9 +905,9 @@ function setupRealtime() {
 
 function exportToCSV() {
     const esc = v => `"${String(v==null?'':v).replace(/"/g,'""')}"`;
-    const headers = ['出發日期','行程','客人代表','電話','人數','訂編','團費','預估業績','實際業績','開票日','合約狀態','合約上傳','寄紙本','行前通知','訂金','尾款','繳帳單','名單','分房','網卡','備註'];
+    const headers = ['出發日期','行程','客人代表','人數','訂編','團費','預估業績','實際業績','開票日','合約狀態','合約上傳','寄紙本','行前通知','訂金','尾款','繳帳單','名單','分房','網卡','備註'];
     const rows = currentData.map(r=>[
-        esc(r.date),esc(r.tour),esc(r.name),esc(r.phone),esc(r.pax),
+        esc(r.date),esc(r.tour),esc(r.name),esc(r.pax),
         esc(r.bookingId),esc(r.tourFee),esc(r.estRev),esc(r.actRev),
         esc(r.ticketingDate),esc(r.contract),esc(r.contractUploaded),
         esc(r.paperSent),esc(r.preTripNotify),esc(r.deposit),esc(r.balance),
