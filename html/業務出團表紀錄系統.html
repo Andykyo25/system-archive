@@ -376,7 +376,8 @@ function escapeHtml(str) {
     return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 function money(v)   { return v ? parseInt(v).toLocaleString() : '0'; }
-function statusV(v) { return v === 'V' ? 'status-v' : ''; }
+function statusV(v) { return v === true ? 'status-v' : ''; }
+function boolStr(v) { return v === true ? 'V' : ''; }  // boolean → CSV 顯示用
 
 function showToast(msg, type = 'success', duration = 3000) {
     const el = document.createElement('div');
@@ -480,10 +481,10 @@ function applyFilters() {
         // 狀態快速篩選
         if (statusFilter) {
             const diff = r.date ? (new Date(r.date)-today)/86400000 : Infinity;
-            if (statusFilter==='no_deposit'  && r.deposit      === 'V') return false;
-            if (statusFilter==='no_balance'  && r.balance       === 'V') return false;
-            if (statusFilter==='no_pretrip'  && r.preTripNotify === 'V') return false;
-            if (statusFilter==='no_list'     && r.list          === 'V') return false;
+            if (statusFilter==='no_deposit'  && r.deposit      === true) return false;
+            if (statusFilter==='no_balance'  && r.balance       === true) return false;
+            if (statusFilter==='no_pretrip'  && r.preTripNotify === true) return false;
+            if (statusFilter==='no_list'     && r.list          === true) return false;
             if (statusFilter==='urgent'      && !(diff>=0 && diff<=3))   return false;
         }
         return true;
@@ -596,15 +597,15 @@ function renderAll() {
             <td class="fw-bold text-success">${money(row.actRev)}</td>
             <td class="text-danger small fw-bold">${e(row.ticketingDate)}</td>
             <td class="col-contract">${e(row.contract)}</td>
-            <td class="col-contractUploaded"><span class="${statusV(row.contractUploaded)}">${e(row.contractUploaded)}</span></td>
-            <td class="col-paperSent"><span class="${statusV(row.paperSent)}">${e(row.paperSent)}</span></td>
-            <td><span class="${statusV(row.deposit)}">${e(row.deposit)}</span></td>
-            <td><span class="${statusV(row.balance)}">${e(row.balance)}</span></td>
-            <td><span class="${statusV(row.preTripNotify)}">${e(row.preTripNotify)}</span></td>
-            <td class="col-billSent"><span class="${statusV(row.billSent)}">${e(row.billSent)}</span></td>
-            <td><span class="${statusV(row.list)}">${e(row.list)}</span></td>
-            <td class="col-room"><span class="${statusV(row.room)}">${e(row.room)}</span></td>
-            <td class="col-simCard"><span class="${statusV(row.simCard)}">${e(row.simCard)}</span></td>
+            <td class="col-contractUploaded"><span class="${statusV(row.contractUploaded)}">${boolStr(row.contractUploaded)}</span></td>
+            <td class="col-paperSent"><span class="${statusV(row.paperSent)}">${boolStr(row.paperSent)}</span></td>
+            <td><span class="${statusV(row.deposit)}">${boolStr(row.deposit)}</span></td>
+            <td><span class="${statusV(row.balance)}">${boolStr(row.balance)}</span></td>
+            <td><span class="${statusV(row.preTripNotify)}">${boolStr(row.preTripNotify)}</span></td>
+            <td class="col-billSent"><span class="${statusV(row.billSent)}">${boolStr(row.billSent)}</span></td>
+            <td><span class="${statusV(row.list)}">${boolStr(row.list)}</span></td>
+            <td class="col-room"><span class="${statusV(row.room)}">${boolStr(row.room)}</span></td>
+            <td class="col-simCard"><span class="${statusV(row.simCard)}">${boolStr(row.simCard)}</span></td>
             <td class="col-note text-muted text-truncate" style="max-width:120px;" title="${e(row.note)}">${e(row.note)}</td>
         </tr>`);
 
@@ -621,10 +622,10 @@ function renderAll() {
                 <div class="col-6 text-end text-danger">開票：${e(row.ticketingDate)}</div>
             </div>
             <div class="m-badge-row">
-                ${row.deposit==='V'      ?'<span class="badge bg-success-subtle text-success border border-success">訂金V</span>':''}
-                ${row.balance==='V'      ?'<span class="badge bg-success-subtle text-success border border-success">尾款V</span>':''}
-                ${row.list==='V'         ?'<span class="badge bg-info-subtle text-info border border-info">名單V</span>':''}
-                ${row.preTripNotify==='V'?'<span class="badge bg-danger-subtle text-danger border border-danger">行前V</span>':''}
+                ${row.deposit      ===true?'<span class="badge bg-success-subtle text-success border border-success">訂金V</span>':''}
+                ${row.balance      ===true?'<span class="badge bg-success-subtle text-success border border-success">尾款V</span>':''}
+                ${row.list         ===true?'<span class="badge bg-info-subtle text-info border border-info">名單V</span>':''}
+                ${row.preTripNotify===true?'<span class="badge bg-danger-subtle text-danger border border-danger">行前V</span>':''}
             </div>
             <div class="text-end mt-2 d-flex justify-content-end gap-1">
                 <button class="btn btn-sm btn-outline-danger"  onclick="deleteRecord('${e(row.id)}','${e(row.name)}')"><i class="fas fa-trash"></i></button>
@@ -651,10 +652,17 @@ async function saveRecord() {
         pax: Number(getV('f_pax'))||0, bookingId: getV('f_bookingId'),
         tourFee: Number(getV('f_tourFee'))||0, estRev: Number(getV('f_estRev'))||0,
         actRev: Number(getV('f_actRev'))||0, ticketingDate: getV('f_ticketingDate')||null,
-        contract: getV('f_contract'), contractUploaded: getV('f_contractUploaded'),
-        paperSent: getV('f_paperSent'), preTripNotify: getV('f_preTripNotify'),
-        deposit: getV('f_deposit'), balance: getV('f_balance'), billSent: getV('f_billSent'),
-        list: getV('f_list'), room: getV('f_room'), simCard: getV('f_simCard'), note: getV('f_note')
+        contract: getV('f_contract'),
+        contractUploaded: getV('f_contractUploaded') === 'V',
+        paperSent:        getV('f_paperSent')        === 'V',
+        preTripNotify:    getV('f_preTripNotify')    === 'V',
+        deposit:          getV('f_deposit')          === 'V',
+        balance:          getV('f_balance')          === 'V',
+        billSent:         getV('f_billSent')         === 'V',
+        list:             getV('f_list')             === 'V',
+        room:             getV('f_room')             === 'V',
+        simCard:          getV('f_simCard')          === 'V',
+        note: getV('f_note')
     };
 
     // ── 開票日驗證：不能晚於出發日 ──
@@ -689,7 +697,11 @@ function editRecord(id) {
     FORM_FIELD_IDS.forEach(fid => {
         const key = fid.replace('f_','');
         const el  = document.getElementById(fid);
-        if (el) el.value = row[key] != null ? row[key] : '';
+        if (!el) return;
+        const val = row[key];
+        // Boolean 欄位從 DB 回來是 true/false，轉回 select 的 'V'/'' 值
+        if (typeof val === 'boolean') { el.value = val ? 'V' : ''; }
+        else { el.value = val != null ? val : ''; }
     });
     document.getElementById('submitBtn').textContent = '更新紀錄';
     document.getElementById('submitBtn').classList.replace('btn-primary','btn-warning');
@@ -767,8 +779,8 @@ async function fetchNotifications() {
     const { data, error } = await sb.from(TABLE_NAME)
         .select('name,tour,date,ticketingDate,deposit,balance,preTripNotify,list')
         .or(
-            `and(date.gte.${todayStr},date.lte.${d3Str},or(deposit.neq.V,balance.neq.V,preTripNotify.neq.V))`,
-            `and(ticketingDate.gte.${todayStr},ticketingDate.lte.${d7Str},list.neq.V)`
+            `and(date.gte.${todayStr},date.lte.${d3Str},or(deposit.is.false,balance.is.false,preTripNotify.is.false))`,
+            `and(ticketingDate.gte.${todayStr},ticketingDate.lte.${d7Str},list.is.false)`
         );
     if (error) { console.error('待辦讀取失敗:', error); return; }
 
@@ -784,14 +796,14 @@ async function fetchNotifications() {
         if (depDate) {
             const diff = (depDate-todayDate)/86400000;
             if (diff>=0&&diff<=3) {
-                if (row.deposit!=='V')       issues.push('未收訂金');
-                if (row.balance!=='V')       issues.push('未收尾款');
-                if (row.preTripNotify!=='V') issues.push('未發行前通知');
+                if (!row.deposit)       issues.push('未收訂金');
+                if (!row.balance)       issues.push('未收尾款');
+                if (!row.preTripNotify) issues.push('未發行前通知');
             }
         }
         if (tickDate) {
             const tDiff = (tickDate-todayDate)/86400000;
-            if (tDiff>=0&&tDiff<=7&&row.list!=='V') issues.push('需入名單（開票預警）');
+            if (tDiff>=0&&tDiff<=7&&!row.list) issues.push('需入名單（開票預警）');
         }
         if (!issues.length) return;
         count++;
@@ -909,9 +921,10 @@ function exportToCSV() {
     const rows = currentData.map(r=>[
         esc(r.date),esc(r.tour),esc(r.name),esc(r.pax),
         esc(r.bookingId),esc(r.tourFee),esc(r.estRev),esc(r.actRev),
-        esc(r.ticketingDate),esc(r.contract),esc(r.contractUploaded),
-        esc(r.paperSent),esc(r.preTripNotify),esc(r.deposit),esc(r.balance),
-        esc(r.billSent),esc(r.list),esc(r.room),esc(r.simCard),esc(r.note)
+        esc(r.ticketingDate),esc(r.contract),
+        boolStr(r.contractUploaded),boolStr(r.paperSent),boolStr(r.preTripNotify),
+        boolStr(r.deposit),boolStr(r.balance),boolStr(r.billSent),
+        boolStr(r.list),boolStr(r.room),boolStr(r.simCard),esc(r.note)
     ].join(','));
     const csv  = '\uFEFF'+[headers.map(esc).join(','),...rows].join('\r\n');
     const link = document.createElement('a');
