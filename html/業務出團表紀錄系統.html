@@ -772,15 +772,13 @@ async function fetchNotifications() {
     const today = new Date();
     const todayStr = today.toISOString().split('T')[0];
     const d3 = new Date(today); d3.setDate(today.getDate()+3);
-    const d7 = new Date(today); d7.setDate(today.getDate()+7);
     const d3Str = d3.toISOString().split('T')[0];
-    const d7Str = d7.toISOString().split('T')[0];
 
     const { data, error } = await sb.from(TABLE_NAME)
         .select('name,tour,date,ticketingDate,deposit,balance,preTripNotify,list,contractUploaded')
         .or(
             `and(date.gte.${todayStr},date.lte.${d3Str},or(deposit.is.false,balance.is.false,preTripNotify.is.false,contractUploaded.is.false))`,
-            `and(ticketingDate.gte.${todayStr},ticketingDate.lte.${d7Str},list.is.false)`
+            `and(ticketingDate.gte.${todayStr},ticketingDate.lte.${d3Str},list.is.false,date.gte.${todayStr})`
         );
     if (error) { console.error('待辦讀取失敗:', error); return; }
 
@@ -804,7 +802,7 @@ async function fetchNotifications() {
         }
         if (tickDate) {
             const tDiff = (tickDate-todayDate)/86400000;
-            if (tDiff>=0&&tDiff<=7&&!row.list) issues.push('需入名單（開票預警）');
+            if (tDiff>=0&&tDiff<=3&&!row.list&&(!depDate||depDate>=todayDate)) issues.push('需入名單（開票預警）');
         }
         if (!issues.length) return;
         count++;
