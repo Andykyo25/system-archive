@@ -777,9 +777,9 @@ async function fetchNotifications() {
     const d7Str = d7.toISOString().split('T')[0];
 
     const { data, error } = await sb.from(TABLE_NAME)
-        .select('name,tour,date,ticketingDate,deposit,balance,preTripNotify,list')
+        .select('name,tour,date,ticketingDate,deposit,balance,preTripNotify,list,contractUploaded')
         .or(
-            `and(date.gte.${todayStr},date.lte.${d3Str},or(deposit.is.false,balance.is.false,preTripNotify.is.false))`,
+            `and(date.gte.${todayStr},date.lte.${d3Str},or(deposit.is.false,balance.is.false,preTripNotify.is.false,contractUploaded.is.false))`,
             `and(ticketingDate.gte.${todayStr},ticketingDate.lte.${d7Str},list.is.false)`
         );
     if (error) { console.error('待辦讀取失敗:', error); return; }
@@ -796,9 +796,10 @@ async function fetchNotifications() {
         if (depDate) {
             const diff = (depDate-todayDate)/86400000;
             if (diff>=0&&diff<=3) {
-                if (!row.deposit)       issues.push('未收訂金');
-                if (!row.balance)       issues.push('未收尾款');
-                if (!row.preTripNotify) issues.push('未發行前通知');
+                if (!row.deposit)                    issues.push('未收訂金');
+                if (!row.balance)                    issues.push('未收尾款');
+                if (!row.preTripNotify)              issues.push('未發行前通知');
+                if (!row.contractUploaded)           issues.push('合約尚未上傳');
             }
         }
         if (tickDate) {
