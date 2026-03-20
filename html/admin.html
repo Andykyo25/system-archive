@@ -297,19 +297,23 @@
 <body>
 
     <!-- ══════════════════════════════════════════════
-         存取控制遮罩（簡易密碼保護）
-         ⚠️ 正式環境建議改用伺服器端 Session / JWT Auth
+         存取控制遮罩（Supabase Auth 帳號密碼驗證）
+         P0 修補：移除硬編碼 ACCESS_PASS，改用 Supabase Auth
     ══════════════════════════════════════════════ -->
     <div id="accessGate">
         <div class="gate-box">
             <i class="fa-solid fa-shield-halved"></i>
             <h2>後台管理系統</h2>
             <p>找到了旅行社 · 業務專屬</p>
+            <input type="email" class="gate-input" id="gateEmail"
+                   placeholder="管理員 Email"
+                   style="letter-spacing:normal; margin-bottom:12px;"
+                   onkeydown="if(event.key==='Enter')document.getElementById('gateInput').focus()">
             <input type="password" class="gate-input" id="gateInput"
-                   placeholder="請輸入通行密碼"
+                   placeholder="密碼"
                    onkeydown="if(event.key==='Enter')verifyAccess()">
-            <div class="gate-error" id="gateError">密碼錯誤，請再試一次</div>
-            <button class="btn btn-primary" style="width:100%; justify-content:center;"
+            <div class="gate-error" id="gateError">帳號或密碼錯誤，請再試一次</div>
+            <button class="btn btn-primary" id="gateBtn" style="width:100%; justify-content:center;"
                     onclick="verifyAccess()">
                 <i class="fa-solid fa-unlock"></i> 進入系統
             </button>
@@ -330,9 +334,12 @@
         <button class="nav-item" onclick="window.open('itinerary.html')">
             <i class="fa-solid fa-file-lines"></i> 預覽行程頁
         </button>
-        <div class="sidebar-version">
+        <button class="nav-item" onclick="logout()" style="color:#f87171; margin-top:auto;">
+            <i class="fa-solid fa-arrow-right-from-bracket"></i> 登出系統
+        </button>
+        <div class="sidebar-version" style="margin-top:12px;">
             <p>找到了旅行社系統</p>
-            <p>v2.1.0 (優化版)</p>
+            <p>v2.2.0</p>
         </div>
     </div>
 
@@ -510,48 +517,74 @@
     'use strict';
 
     /* ══════════════════════════════════════════════
-       存取控制（簡易密碼保護）
-       ⚠️ 正式上線建議改用 Supabase Auth 或後端 Session
+       P0 修補：移除硬編碼 ACCESS_PASS，改用 Supabase Auth
+       前置作業：至 Supabase Dashboard → Authentication → Users
+                 新增管理員帳號（Email + Password）。
     ══════════════════════════════════════════════ */
-    const ACCESS_PASS = '123';  // 請修改為自定義密碼
 
-    function verifyAccess() {
-        const input = document.getElementById('gateInput').value;
-        const errEl = document.getElementById('gateError');
-        if (input === ACCESS_PASS) {
-            document.getElementById('accessGate').style.display = 'none';
-            init();
-        } else {
-            errEl.style.display = 'block';
-            document.getElementById('gateInput').value = '';
-            document.getElementById('gateInput').focus();
-            setTimeout(() => { errEl.style.display = 'none'; }, 3000);
-        }
-    }
-
-    // 允許 Enter 鍵登入
-    document.getElementById('gateInput').addEventListener('keydown', e => {
-        if (e.key === 'Enter') verifyAccess();
-    });
-
-    /* ── Supabase 初始化 ──
-       P0-安全: anon key 為公開金鑰，務必確認 Supabase Dashboard 中
-       tours 表 RLS 已啟用，Insert/Update/Delete 需 service_role。
-    ── */
     const SB_URL = "https://luozejormlpayqbcvwis.supabase.co";
     const SB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imx1b3plam9ybWxwYXlxYmN2d2lzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA3NTY4NDQsImV4cCI6MjA4NjMzMjg0NH0.ASyVqZRPZeZtGKB2r_P0fEOhVczY0eptpHHy7jff08c";
     let _sb = null;
     let _allTours = [];  // 快取列表用於搜尋
 
-    function init() {
-        // SDK defer 載入後才執行
-        const tryInit = setInterval(() => {
-            if (typeof supabase !== 'undefined') {
-                clearInterval(tryInit);
-                _sb = supabase.createClient(SB_URL, SB_KEY);
-                fetchTours();
-            }
-        }, 100);
+    /* ── 頁面載入後初始化 SDK，並自動恢復已登入 Session ── */
+    window.addEventListener('load', async () => {
+        _sb = supabase.createClient(SB_URL, SB_KEY);
+        const { data: { session } } = await _sb.auth.getSession();
+        if (session) {
+            document.getElementById('accessGate').style.display = 'none';
+            fetchTours();
+        }
+    });
+
+    /* ── Supabase Auth 登入（取代原本的硬編碼密碼比對） ── */
+    async function verifyAccess() {
+        const emailEl = document.getElementById('gateEmail');
+        const pwEl    = document.getElementById('gateInput');
+        const errEl   = document.getElementById('gateError');
+        const btn     = document.getElementById('gateBtn');
+
+        const email    = emailEl.value.trim();
+        const password = pwEl.value;
+
+        if (!email || !password) {
+            errEl.textContent = '請輸入 Email 與密碼';
+            errEl.style.display = 'block';
+            setTimeout(() => { errEl.style.display = 'none'; }, 3000);
+            return;
+        }
+
+        if (!_sb) {
+            errEl.textContent = '系統尚未準備好，請稍後再試';
+            errEl.style.display = 'block';
+            setTimeout(() => { errEl.style.display = 'none'; }, 3000);
+            return;
+        }
+
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 驗證中...';
+
+        const { error } = await _sb.auth.signInWithPassword({ email, password });
+
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fa-solid fa-unlock"></i> 進入系統';
+
+        if (error) {
+            errEl.textContent = '帳號或密碼錯誤，請再試一次';
+            errEl.style.display = 'block';
+            pwEl.value = '';
+            pwEl.focus();
+            setTimeout(() => { errEl.style.display = 'none'; }, 3000);
+        } else {
+            document.getElementById('accessGate').style.display = 'none';
+            fetchTours();
+        }
+    }
+
+    /* ── 登出 ── */
+    async function logout() {
+        await _sb.auth.signOut();
+        location.reload();
     }
 
     /* ── Toast 提示 ── */
