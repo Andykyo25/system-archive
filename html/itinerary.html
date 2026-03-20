@@ -67,44 +67,55 @@
             padding: 0 20px;
         }
 
-        /* ── Navbar ── */
+        /* ── 浮動膠囊 Navbar ── */
         .navbar {
             position: fixed;
-            top: 0; width: 100%;
+            top: 16px; left: 0; right: 0;
             z-index: 1000;
+            display: flex; justify-content: center;
+            pointer-events: none;
+        }
+        .nav-inner {
+            pointer-events: auto;
+            display: flex; justify-content: space-between; align-items: center;
+            width: 100%; max-width: 960px;
+            margin: 0 20px;
+            padding: 10px 12px 10px 20px;
             background: rgba(255,255,255,0.92);
-            backdrop-filter: blur(10px);
-            -webkit-backdrop-filter: blur(10px);
-            border-bottom: 1px solid #eee;
-            padding: 12px 0;
+            backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+            border-radius: 50px;
+            border: 1px solid rgba(0,0,0,0.07);
+            box-shadow: 0 4px 24px rgba(0,0,0,0.09);
         }
-        .nav-content { display: flex; justify-content: space-between; align-items: center; }
+        .nav-content { display: contents; }
         .logo {
-            font-size: 1.3rem; font-weight: 900;
-            color: var(--primary);
+            font-size: 1.1rem; font-weight: 900;
+            color: #111;
             display: flex; align-items: center; gap: 8px;
+            letter-spacing: -0.01em;
         }
-        .nav-actions { display: flex; gap: 12px; align-items: center; }
+        .logo i { color: var(--primary); }
+        .nav-actions { display: flex; gap: 8px; align-items: center; }
         .nav-phone {
-            color: var(--text-main); font-weight: 700;
+            color: #555; font-weight: 600;
             display: flex; align-items: center; gap: 6px;
-            font-size: 0.9rem;
+            font-size: 0.875rem;
         }
-        .nav-phone:hover { color: var(--primary); }
+        .nav-phone:hover { color: #111; }
         .nav-line-btn {
-            background: #06C755; color: white;
-            padding: 6px 16px; border-radius: 20px;
+            background: #111; color: white;
+            padding: 7px 16px; border-radius: 50px;
             font-size: 0.85rem; font-weight: 700;
             display: flex; align-items: center; gap: 6px;
             transition: var(--transition);
         }
-        .nav-line-btn:hover { background: #05b34d; transform: translateY(-1px); }
+        .nav-line-btn:hover { background: #333; transform: translateY(-1px); }
 
         /* ── Hero ── */
         .hero {
             position: relative;
-            height: 55vh; min-height: 420px;
-            margin-top: 57px;
+            height: 60vh; min-height: 440px;
+            margin-top: 0;
             background-size: cover;
             background-position: center;
             display: flex; align-items: flex-end;
@@ -371,18 +382,20 @@
 
 <body>
 
-    <nav class="navbar">
-        <div class="container nav-content">
-            <a href="index.html" class="logo">
-                <i class="fa-solid fa-earth-asia"></i> 找到了旅行社
-            </a>
-            <div class="nav-actions">
-                <a href="tel:0920096680" class="nav-phone" aria-label="撥打客服電話">
-                    <i class="fa-solid fa-phone"></i> 0920-096-680
+    <nav class="navbar" aria-label="主導覽">
+        <div class="nav-inner">
+            <div class="nav-content">
+                <a href="index.html" class="logo">
+                    <i class="fa-solid fa-plane-departure"></i> 找到了旅行社
                 </a>
-                <a href="https://lin.ee/SSbI3BB" target="_blank" rel="noopener noreferrer" class="nav-line-btn">
-                    <i class="fa-brands fa-line"></i> LINE諮詢
-                </a>
+                <div class="nav-actions">
+                    <a href="tel:0920096680" class="nav-phone" aria-label="撥打客服電話">
+                        <i class="fa-solid fa-phone"></i> 0920-096-680
+                    </a>
+                    <a href="https://lin.ee/SSbI3BB" target="_blank" rel="noopener noreferrer" class="nav-line-btn">
+                        <i class="fa-brands fa-line"></i> LINE諮詢
+                    </a>
+                </div>
             </div>
         </div>
     </nav>
