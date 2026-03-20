@@ -622,16 +622,20 @@
             }
 
             /* ── 4. 費用包含 / 注意事項
-                    description 欄以 §INC§ / §NOTES§ 分隔符存放兩段文字
-                    （admin.html 合併寫入，此處解析還原）
+                    P2 改善：優先讀取新獨立欄位 included / notes；
+                    向下相容：若新欄位皆為 null，退回解析舊 §INC§/§NOTES§ 格式，
+                    確保 Migration 前後的既有行程資料均能正常顯示。
             ── */
-            if (tour.description) {
+            if (tour.included != null || tour.notes != null) {
+                if (tour.included) safeText('includedContent', tour.included);
+                if (tour.notes)    safeText('notesContent',    tour.notes);
+            } else if (tour.description) {
+                // 向下相容：解析舊 §INC§/§NOTES§ 格式
                 const _d = tour.description;
                 const _incM   = _d.match(/§INC§\n([\s\S]*?)(?:\n\n§NOTES§|$)/);
                 const _notesM = _d.match(/§NOTES§\n([\s\S]*?)$/);
                 if (_incM)   safeText('includedContent', _incM[1].trim());
                 if (_notesM) safeText('notesContent',    _notesM[1].trim());
-                // 舊格式（無分隔符）：整段顯示在注意事項
                 if (!_incM && !_notesM) safeText('notesContent', _d);
             }
 
