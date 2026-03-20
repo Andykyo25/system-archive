@@ -572,6 +572,20 @@
         return str.replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{27BF}\u{1F000}-\u{1FAFF}]/gu, '').trim();
     }
 
+    /* ── XSS 防護：HTML 跳脫函式
+         renderTourTable / addHighlightRow / addItineraryRow 等使用 innerHTML 注入
+         DB 資料時，皆須先經此函式處理，防止 Stored XSS 攻擊。
+    ── */
+    function escHtml(str) {
+        if (str == null) return '';
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
     /* ── 圖片即時預覽 ── */
     function previewImage(url) {
         const img = document.getElementById('imgPreview');
@@ -589,6 +603,8 @@
         const container = document.getElementById('highlightsList');
         const div = document.createElement('div');
         div.className = 'dynamic-row';
+        /* ── XSS 防護：value / src 屬性皆透過 escHtml() 跳脫，
+              防止資料庫惡意值透過 " 字元逸出 HTML 屬性並注入事件處理器。 ── */
         div.innerHTML = `
             <button type="button" class="remove-btn" onclick="this.parentElement.remove()" title="刪除此亮點" aria-label="刪除亮點">
                 <i class="fa-solid fa-trash-can"></i>
@@ -596,18 +612,18 @@
             <div style="display:flex; gap:14px; margin-bottom:10px;">
                 <div style="flex:2;">
                     <label style="margin-top:0;">亮點標題</label>
-                    <input type="text" placeholder="例如：函館百萬夜景" value="${data.title || ''}" class="h-title" style="margin:0;">
+                    <input type="text" placeholder="例如：函館百萬夜景" value="${escHtml(data.title || '')}" class="h-title" style="margin:0;">
                 </div>
                 <div style="flex:1;">
                     <label style="margin-top:0;">描述/標籤</label>
-                    <input type="text" placeholder="例如：絕美風景" value="${data.desc || ''}" class="h-desc" style="margin:0;">
+                    <input type="text" placeholder="例如：絕美風景" value="${escHtml(data.desc || '')}" class="h-desc" style="margin:0;">
                 </div>
             </div>
             <label style="margin-top:0;">圖片網址</label>
-            <input type="text" placeholder="https://..." value="${data.img || ''}" class="h-img" style="margin:0;"
+            <input type="text" placeholder="https://..." value="${escHtml(data.img || '')}" class="h-img" style="margin:0;"
                    oninput="previewHlImg(this)">
             <img style="width:100%;max-height:100px;object-fit:cover;border-radius:6px;margin-top:6px;display:${data.img ? 'block' : 'none'}"
-                 src="${data.img || ''}" alt="亮點圖預覽" class="h-preview"
+                 src="${escHtml(data.img || '')}" alt="亮點圖預覽" class="h-preview"
                  onerror="this.style.display='none'">
         `;
         container.appendChild(div);
@@ -630,35 +646,39 @@
         const spotsText = Array.isArray(data.spots) ? data.spots.join('\n') : (data.spots || '');
         const div = document.createElement('div');
         div.className = 'dynamic-row';
+        /* ── XSS 防護：value / title / aria-label 屬性及文字節點皆透過 escHtml() 跳脫，
+              防止資料庫惡意值透過 " 字元逸出 HTML 屬性並注入事件處理器。
+              textarea 內容使用 escHtml 處理，確保特殊字元正確顯示。 ── */
+        const safeDayNum = escHtml(String(dayNum));
         div.innerHTML = `
-            <button type="button" class="remove-btn" onclick="this.parentElement.remove()" title="刪除此天" aria-label="刪除第 ${dayNum} 天">
+            <button type="button" class="remove-btn" onclick="this.parentElement.remove()" title="刪除第 ${safeDayNum} 天" aria-label="刪除第 ${safeDayNum} 天">
                 <i class="fa-solid fa-trash-can"></i>
             </button>
             <div style="display:flex; align-items:center; gap:14px; margin-bottom:14px;">
-                <span class="day-badge">DAY ${dayNum}</span>
+                <span class="day-badge">DAY ${safeDayNum}</span>
                 <input type="text" placeholder="當日行程大標題（例如：台北飛往東京）"
-                       value="${data.title || ''}" class="i-title" style="flex:1; margin:0;">
+                       value="${escHtml(data.title || '')}" class="i-title" style="flex:1; margin:0;">
             </div>
             <label style="margin-top:0;">行程景點（一行一個景點）</label>
             <textarea class="i-spots" rows="3" style="margin-top:4px;"
-                      placeholder="例如：\n淺草寺\n晴空塔">${spotsText}</textarea>
+                      placeholder="例如：\n淺草寺\n晴空塔">${escHtml(spotsText)}</textarea>
             <div class="day-form-grid">
                 <div>
                     <label style="margin-top:0;"><i class="fa-solid fa-mug-hot" aria-hidden="true"></i> 早餐</label>
-                    <input type="text" placeholder="飯店內用" value="${data.breakfast || ''}" class="i-breakfast" style="margin:0;">
+                    <input type="text" placeholder="飯店內用" value="${escHtml(data.breakfast || '')}" class="i-breakfast" style="margin:0;">
                 </div>
                 <div>
                     <label style="margin-top:0;"><i class="fa-solid fa-bowl-food" aria-hidden="true"></i> 午餐</label>
-                    <input type="text" placeholder="方便遊玩請自理" value="${data.lunch || ''}" class="i-lunch" style="margin:0;">
+                    <input type="text" placeholder="方便遊玩請自理" value="${escHtml(data.lunch || '')}" class="i-lunch" style="margin:0;">
                 </div>
                 <div>
                     <label style="margin-top:0;"><i class="fa-solid fa-utensils" aria-hidden="true"></i> 晚餐</label>
-                    <input type="text" placeholder="日式燒肉吃到飽" value="${data.dinner || ''}" class="i-dinner" style="margin:0;">
+                    <input type="text" placeholder="日式燒肉吃到飽" value="${escHtml(data.dinner || '')}" class="i-dinner" style="margin:0;">
                 </div>
             </div>
             <div style="margin-top:12px;">
                 <label style="margin-top:0;"><i class="fa-solid fa-bed" aria-hidden="true"></i> 下榻飯店</label>
-                <input type="text" placeholder="請填寫飯店名稱或同級" value="${data.hotel || ''}" class="i-hotel" style="margin:0;">
+                <input type="text" placeholder="請填寫飯店名稱或同級" value="${escHtml(data.hotel || '')}" class="i-hotel" style="margin:0;">
             </div>
         `;
         container.appendChild(div);
@@ -767,10 +787,15 @@
             </td></tr>`;
             return;
         }
+        /* ── XSS 防護說明 ──
+           1. t.title / t.airline 皆透過 escHtml() 處理後才插入 innerHTML。
+           2. 刪除按鈕改用 data-* 屬性傳遞行程名稱，
+              避免原本 onclick="...'${title}'" 因 " 或 > 等字元導致屬性逸出 XSS。
+        ── */
         tbody.innerHTML = tours.map(t => `
             <tr>
-                <td><strong>${t.title}</strong></td>
-                <td><span class="airline-badge">${t.airline || '未指定'}</span></td>
+                <td><strong>${escHtml(t.title)}</strong></td>
+                <td><span class="airline-badge">${escHtml(t.airline || '未指定')}</span></td>
                 <td class="price-tag">$${Number(t.price).toLocaleString()}</td>
                 <td>
                     <div class="action-btns">
@@ -778,7 +803,9 @@
                             <i class="fa-solid fa-pen"></i> 編輯
                         </button>
                         <button class="btn btn-outline btn-sm" style="color:var(--danger); border-color:#FECACA;"
-                                onclick="confirmDelete(${t.id}, '${t.title.replace(/'/g, "\\'")}')">
+                                data-delete-id="${t.id}"
+                                data-delete-name="${escHtml(t.title)}"
+                                onclick="confirmDelete(this.dataset.deleteId, this.dataset.deleteName)">
                             <i class="fa-solid fa-trash"></i>
                         </button>
                     </div>

@@ -519,6 +519,20 @@
         if (el) el.innerHTML = html;
     }
 
+    /* ── XSS 防護：HTML 跳脫函式
+         將資料庫取得的任何字串插入 innerHTML 前，必須先通過此函式處理。
+         可防止攻擊者透過 DB 資料注入 <script>、事件屬性等惡意 HTML。
+    ── */
+    function escHtml(str) {
+        if (str == null) return '';
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
     /* ── 顯示錯誤畫面 ── */
     function showError(msg = '找不到指定行程') {
         document.getElementById('skeletonWrapper').innerHTML = `
@@ -590,19 +604,20 @@
             safeText('tourTitle', titleText);
             safeText('bookingPrice', `$${Number(tour.price).toLocaleString()}`);
 
-            // Hero 背景圖
+            // Hero 背景圖（移除 CSS 特殊字元防止 CSS Injection）
             if (tour.image) {
-                document.getElementById('heroBg').style.backgroundImage = `url('${tour.image}')`;
+                const safeCssUrl = tour.image.replace(/['"\\)]/g, '');
+                document.getElementById('heroBg').style.backgroundImage = `url('${safeCssUrl}')`;
             }
 
             /* ── 2. 統計摘要 ── */
             safeText('statDays', `${tour.itinerary?.length || '--'} 天`);
             safeText('statAirlines', tour.airline || '精選航空');
 
-            /* ── 3. 標籤 ── */
+            /* ── 3. 標籤（透過 escHtml 防止標籤資料注入惡意 HTML） ── */
             if (Array.isArray(tour.tags) && tour.tags.length) {
                 safeHtml('tourTags', tour.tags.map(t =>
-                    `<span class="tag-pill">${t}</span>`
+                    `<span class="tag-pill">${escHtml(t)}</span>`
                 ).join(''));
             }
 
@@ -620,18 +635,18 @@
                 if (!_incM && !_notesM) safeText('notesContent', _d);
             }
 
-            /* ── 5. 行程亮點 ── */
+            /* ── 5. 行程亮點（所有 DB 欄位皆透過 escHtml 處理後才插入 DOM） ── */
             if (Array.isArray(tour.highlights) && tour.highlights.length) {
                 safeHtml('tourHighlights', tour.highlights.map(h => `
                     <div class="highlight-item">
                         <div class="highlight-img">
-                            <img src="${h.img || 'images/placeholder.jpg'}"
-                                 loading="lazy" alt="${h.title || '行程亮點'}"
+                            <img src="${escHtml(h.img || 'images/placeholder.jpg')}"
+                                 loading="lazy" alt="${escHtml(h.title || '行程亮點')}"
                                  onerror="this.src='images/placeholder.jpg'">
                         </div>
                         <div class="highlight-text">
-                            <h3>${h.title || ''}</h3>
-                            <p>${h.desc || '專業規劃的深度行程，帶您領略在地文化之美。'}</p>
+                            <h3>${escHtml(h.title || '')}</h3>
+                            <p>${escHtml(h.desc || '專業規劃的深度行程，帶您領略在地文化之美。')}</p>
                         </div>
                     </div>
                 `).join(''));
@@ -639,31 +654,31 @@
                 safeHtml('tourHighlights', '<p style="color:var(--text-secondary);">此行程尚未設定亮點內容。</p>');
             }
 
-            /* ── 6. 每日行程 ── */
+            /* ── 6. 每日行程（所有 DB 欄位皆透過 escHtml 處理後才插入 DOM） ── */
             if (Array.isArray(tour.itinerary) && tour.itinerary.length) {
                 safeHtml('tourTimeline', tour.itinerary.map(day => `
                     <div class="day-group">
                         <div class="day-header">
-                            <span class="day-badge-num">DAY ${day.day}</span>
-                            <small><i class="fa-solid fa-location-dot" aria-hidden="true"></i> ${day.title || '當地行程'}</small>
+                            <span class="day-badge-num">DAY ${escHtml(String(day.day))}</span>
+                            <small><i class="fa-solid fa-location-dot" aria-hidden="true"></i> ${escHtml(day.title || '當地行程')}</small>
                         </div>
                         <div class="day-body">
                             <h3 class="day-title">
-                                <i class="fa-solid fa-route" aria-hidden="true"></i> ${day.title || ''}
+                                <i class="fa-solid fa-route" aria-hidden="true"></i> ${escHtml(day.title || '')}
                             </h3>
                             <div class="spot-list">
-                                ${(day.spots || []).map(s => `<div class="spot-item">${s}</div>`).join('')}
+                                ${(day.spots || []).map(s => `<div class="spot-item">${escHtml(s)}</div>`).join('')}
                             </div>
                             <div class="info-grid">
                                 <div class="info-box">
                                     <strong>🍱 今日餐食</strong>
-                                    早：${day.breakfast || '飯店內享用'}&nbsp;/&nbsp;
-                                    午：${day.lunch || '在地風味料理'}&nbsp;/&nbsp;
-                                    晚：${day.dinner || '敬請自理'}
+                                    早：${escHtml(day.breakfast || '飯店內享用')}&nbsp;/&nbsp;
+                                    午：${escHtml(day.lunch || '在地風味料理')}&nbsp;/&nbsp;
+                                    晚：${escHtml(day.dinner || '敬請自理')}
                                 </div>
                                 <div class="info-box">
                                     <strong>🏨 下榻飯店</strong>
-                                    ${day.hotel || '精選優質飯店或同級'}
+                                    ${escHtml(day.hotel || '精選優質飯店或同級')}
                                 </div>
                             </div>
                         </div>
