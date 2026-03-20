@@ -1014,7 +1014,7 @@
     <div id="quizModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="quizModalTitle">
         <div class="modal-content">
             <button class="close-btn" onclick="closeModal('quizModal')" aria-label="關閉智慧挑行程視窗">&times;</button>
-            <h2 id="quizModalTitle" id="quizQuestion" class="modal-heading">問題載入中...</h2>
+            <h2 id="quizModalTitle" class="modal-heading">問題載入中...</h2>
             <div id="quizOptions"></div>
             <div id="quizResult" style="display:none; text-align:center;">
                 <h3 style="margin-bottom:15px; color:var(--primary);">🎉 推薦給您的完美旅程</h3>
@@ -1080,6 +1080,20 @@
     <script>
     'use strict';
 
+    /* ── XSS 防護：HTML 跳脫函式
+         將資料庫取得的任何字串插入 innerHTML 前，必須先通過此函式處理。
+         可防止攻擊者透過 DB 資料注入 <script>、事件屬性等惡意 HTML。
+    ── */
+    function escHtml(str) {
+        if (str == null) return '';
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
     /* ═══════════════════════════════════════════════════════
        P0-安全性：Supabase 設定
        ⚠️  anon key 為公開金鑰，但必須確認 Supabase Dashboard 中
@@ -1113,16 +1127,16 @@
                 return;
             }
 
-            // 一次性渲染，提升效能
+            // 一次性渲染，提升效能（所有 DB 欄位透過 escHtml 跳脫，防止 Stored XSS）
             grid.innerHTML = allTours.map(t => `
-                <a href="itinerary.html?id=${t.id}" class="tour-card" aria-label="查看行程：${t.title}">
+                <a href="itinerary.html?id=${encodeURIComponent(t.id)}" class="tour-card" aria-label="查看行程：${escHtml(t.title)}">
                     <div class="tour-img-wrap">
-                        <img src="${t.image || 'images/placeholder.jpg'}"
+                        <img src="${escHtml(t.image || 'images/placeholder.jpg')}"
                              class="tour-img" loading="lazy"
-                             alt="${t.title}" width="400" height="240">
+                             alt="${escHtml(t.title)}" width="400" height="240">
                     </div>
                     <div class="tour-content">
-                        <h3 class="tour-title">${t.title}</h3>
+                        <h3 class="tour-title">${escHtml(t.title)}</h3>
                         <div class="price-wrap">
                             <span class="price-num">$${Number(t.price).toLocaleString()}</span>
                             <span>起</span>
@@ -1326,7 +1340,8 @@
             let bestTour = null;
             let bestScore = -1;
             allTours.forEach(t => {
-                const haystack = (t.title + ' ' + (t.description || '') + ' ' + (t.tags || '')).toLowerCase();
+                // description 欄位已廢棄並刪除，改用 included / notes 欄位提高匹配準確度
+            const haystack = (t.title + ' ' + (t.included || '') + ' ' + (t.notes || '') + ' ' + (Array.isArray(t.tags) ? t.tags.join(' ') : '')).toLowerCase();
                 let score = 0;
                 quizAnswerTags.forEach(tag => {
                     if (haystack.includes(tag.toLowerCase())) score++;
@@ -1335,7 +1350,7 @@
             });
             const rec = bestTour || allTours[Math.floor(Math.random() * allTours.length)];
             document.getElementById('recommendedTour').innerHTML =
-                `<a href="itinerary.html?id=${rec.id}" style="color:var(--primary); font-weight:900; font-size:1.1rem;">${rec.title}</a>
+                `<a href="itinerary.html?id=${encodeURIComponent(rec.id)}" style="color:var(--primary); font-weight:900; font-size:1.1rem;">${escHtml(rec.title)}</a>
                  <p style="margin-top:8px; font-size:0.9rem; color:#888;">根據您的喜好分析推薦</p>`;
         } else {
             document.getElementById('recommendedTour').innerHTML =

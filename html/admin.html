@@ -868,18 +868,9 @@
         document.getElementById('f-price').value = t.price || '';
         document.getElementById('f-airline').value = t.airline || '';
         document.getElementById('f-image').value = t.image || '';
-        // P2 改善：優先讀取新獨立欄位 included / notes；
-        // 向下相容：若新欄位皆為 null，退回解析舊 §INC§/§NOTES§ 格式
-        if (t.included != null || t.notes != null) {
-            document.getElementById('f-included').value = t.included || '';
-            document.getElementById('f-notes').value    = t.notes    || '';
-        } else {
-            const _desc = t.description || '';
-            const _incMatch   = _desc.match(/§INC§\n([\s\S]*?)(?:\n\n§NOTES§|$)/);
-            const _notesMatch = _desc.match(/§NOTES§\n([\s\S]*?)$/);
-            document.getElementById('f-included').value = _incMatch   ? _incMatch[1].trim()   : '';
-            document.getElementById('f-notes').value    = _notesMatch ? _notesMatch[1].trim() : (_incMatch ? '' : _desc);
-        }
+        // description 欄位已廢棄並刪除，直接讀取 included / notes 獨立欄位
+        document.getElementById('f-included').value = t.included || '';
+        document.getElementById('f-notes').value    = t.notes    || '';
         document.getElementById('f-tags').value = Array.isArray(t.tags) ? t.tags.join(', ') : '';
 
         // 載入圖片預覽
