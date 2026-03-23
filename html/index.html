@@ -587,6 +587,93 @@
         .team-features { margin-top: 30px; display: grid; grid-template-columns: 1fr 1fr; gap: 15px; font-weight: 700; color: var(--text-main); }
         .team-features li i { color: var(--primary); margin-right: 8px; }
 
+        /* ── 地球儀：找蛋寶服務版圖 ── */
+        .globe-section {
+            background: #0c0f14;
+            padding: 96px 0;
+            overflow: hidden;
+            position: relative;
+        }
+        .globe-section::before {
+            content: '';
+            position: absolute;
+            top: -60px; left: 50%;
+            transform: translateX(-50%);
+            width: 900px; height: 400px;
+            background: radial-gradient(ellipse, rgba(232,62,140,0.07) 0%, transparent 68%);
+            pointer-events: none;
+        }
+        .globe-wrapper {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 48px;
+            flex-wrap: wrap;
+        }
+        .globe-text { flex: 1; min-width: 280px; }
+        .globe-eyebrow {
+            font-size: 0.72rem;
+            font-weight: 700;
+            letter-spacing: 0.14em;
+            text-transform: uppercase;
+            color: rgba(255, 160, 200, 0.75);
+            margin-bottom: 12px;
+        }
+        .globe-title {
+            font-size: clamp(1.9rem, 3.5vw, 2.8rem);
+            font-weight: 900;
+            color: #fff;
+            letter-spacing: -0.03em;
+            line-height: 1.15;
+            margin-bottom: 16px;
+        }
+        .globe-desc {
+            color: rgba(255,255,255,0.48);
+            font-size: 0.95rem;
+            line-height: 1.85;
+            margin-bottom: 32px;
+            max-width: 380px;
+        }
+        .globe-dest-list {
+            display: flex;
+            flex-direction: column;
+            gap: 13px;
+        }
+        .globe-dest-list li {
+            display: flex;
+            align-items: baseline;
+            gap: 12px;
+            font-size: 0.875rem;
+            color: rgba(255,255,255,0.58);
+            line-height: 1.5;
+        }
+        .dest-flag { font-size: 1.2rem; flex-shrink: 0; }
+        .globe-hint {
+            color: rgba(255,255,255,0.2);
+            font-size: 0.73rem;
+            margin-top: 30px;
+            letter-spacing: 0.05em;
+        }
+        .globe-canvas-wrap {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 280px;
+        }
+        #globeCanvas {
+            width: 460px;
+            height: 460px;
+            max-width: 100%;
+            cursor: grab;
+            display: block;
+        }
+        #globeCanvas:active { cursor: grabbing; }
+        @media (max-width: 768px) {
+            #globeCanvas { width: 320px; height: 320px; }
+            .globe-wrapper { flex-direction: column-reverse; gap: 32px; }
+        }
+
         /* ── 見證 Marquee ── */
         .testimonials-section {
             background: var(--bg-body);
@@ -1064,6 +1151,50 @@
         </div>
     </section>
 
+    <!-- ── 找蛋寶服務版圖：互動地球儀 ── -->
+    <section class="globe-section" id="destinations" aria-label="全球服務範圍">
+        <div class="container globe-wrapper">
+
+            <!-- 左：文字 -->
+            <div class="globe-text reveal-left">
+                <p class="globe-eyebrow">Global Coverage</p>
+                <h2 class="globe-title">
+                    台灣出發，<br>
+                    <span class="text-gradient">飛向四大目的地</span>
+                </h2>
+                <p class="globe-desc">
+                    找蛋寶深耕日本、韓國、泰國、歐洲四大旅遊市場，每個城市皆有在地合作夥伴。
+                    無論您想賞楓、購物、享受海島，或踏上歐洲古城，我們都已備好最佳路線。
+                </p>
+                <ul class="globe-dest-list">
+                    <li>
+                        <span class="dest-flag">🇯🇵</span>
+                        <span><strong style="color:rgba(255,255,255,0.85)">日本</strong> — 東京・大阪・京都・札幌・沖繩</span>
+                    </li>
+                    <li>
+                        <span class="dest-flag">🇰🇷</span>
+                        <span><strong style="color:rgba(255,255,255,0.85)">韓國</strong> — 首爾・釜山・濟州</span>
+                    </li>
+                    <li>
+                        <span class="dest-flag">🇹🇭</span>
+                        <span><strong style="color:rgba(255,255,255,0.85)">泰國</strong> — 曼谷・清邁・普吉島・蘇美島</span>
+                    </li>
+                    <li>
+                        <span class="dest-flag">🇪🇺</span>
+                        <span><strong style="color:rgba(255,255,255,0.85)">歐洲</strong> — 巴黎・蘇黎世・羅馬・維也納</span>
+                    </li>
+                </ul>
+                <p class="globe-hint">✦ 可用滑鼠拖曳旋轉地球儀</p>
+            </div>
+
+            <!-- 右：地球儀 Canvas -->
+            <div class="globe-canvas-wrap reveal-right">
+                <canvas id="globeCanvas" aria-label="找蛋寶全球服務版圖互動地球儀" role="img"></canvas>
+            </div>
+
+        </div>
+    </section>
+
     <!-- ══════════════════════════════════════════════
          P2-UX: 顧客見證區
     ══════════════════════════════════════════════ -->
@@ -1420,6 +1551,7 @@
         initCounterAnimation();
         initScrollEffects();
         initScrollReveal();
+        initGlobe();
     });
 
     /* ═══════════════════════════════════════════════════════
@@ -1703,6 +1835,299 @@
             us: '電壓 120V / 頻率 60Hz<br>👉 <strong>同台灣雙扁頭，無需轉接頭。</strong>'
         };
         document.getElementById('plugResult').innerHTML = info[c] || '請選擇國家以顯示資訊';
+    }
+
+    /* ═══════════════════════════════════════════════════════
+       Interactive Globe — 找蛋寶服務版圖
+       原型：21st.dev interactive-globe.tsx（React + Canvas）
+       移植：純 Vanilla JS，零外部相依，保留完整物理邏輯
+       ───────────────────────────────────────────────────────
+       台北為出發點（品牌粉紅），射出航線至四大目的地城市；
+       初始角度設為亞洲朝前，使用者可拖曳自由旋轉。
+    ════════════════════════════════════════════════════════ */
+    function initGlobe() {
+        const canvas = document.getElementById('globeCanvas');
+        if (!canvas) return;
+
+        /* ── 地標：台北為家 + 全球 22 城市 ── */
+        const MARKERS = [
+            // 台灣（出發基地）
+            { lat:  25.04, lng:  121.53, label: '台北',    home: true },
+            // 日本
+            { lat:  35.68, lng:  139.69, label: '東京'               },
+            { lat:  34.69, lng:  135.50, label: '大阪'               },
+            { lat:  43.06, lng:  141.35, label: '札幌'               },
+            // 韓國
+            { lat:  37.56, lng:  126.97, label: '首爾'               },
+            // 泰國 / 東南亞
+            { lat:  13.75, lng:  100.50, label: '曼谷'               },
+            { lat:  18.79, lng:   98.98, label: '清邁'               },
+            { lat:   1.35, lng:  103.82, label: '新加坡'             },
+            { lat:  -8.34, lng:  115.09, label: '峇里島'             },
+            // 南亞
+            { lat:  19.08, lng:   72.88, label: '孟買'               },
+            // 中東
+            { lat:  25.20, lng:   55.27, label: '杜拜'               },
+            { lat:  41.01, lng:   28.95, label: '伊斯坦堡'           },
+            // 非洲
+            { lat:  30.04, lng:   31.24, label: '開羅'               },
+            // 東歐
+            { lat:  55.76, lng:   37.62, label: '莫斯科'             },
+            // 西歐
+            { lat:  48.86, lng:    2.35, label: '巴黎'               },
+            { lat:  47.37, lng:    8.54, label: '蘇黎世'             },
+            { lat:  41.90, lng:   12.50, label: '羅馬'               },
+            { lat:  51.51, lng:   -0.13, label: '倫敦'               },
+            // 北美
+            { lat:  40.71, lng:  -74.01, label: '紐約'               },
+            { lat:  34.05, lng: -118.24, label: '洛杉磯'             },
+            // 南美
+            { lat: -23.55, lng:  -46.63, label: '聖保羅'             },
+            // 大洋洲
+            { lat: -33.87, lng:  151.21, label: '雪梨'               },
+        ];
+
+        /* ── 航線：台北八方輻射 + 洲際長弧 + 區域連線（共 30 條） ── */
+        const CONNECTIONS = [
+            // ── 台北出發，覆蓋四大洲 ──
+            { from: [ 25.04,  121.53], to: [ 35.68,  139.69] }, // 台北 → 東京
+            { from: [ 25.04,  121.53], to: [ 37.56,  126.97] }, // 台北 → 首爾
+            { from: [ 25.04,  121.53], to: [ 13.75,  100.50] }, // 台北 → 曼谷
+            { from: [ 25.04,  121.53], to: [  1.35,  103.82] }, // 台北 → 新加坡
+            { from: [ 25.04,  121.53], to: [ 25.20,   55.27] }, // 台北 → 杜拜
+            { from: [ 25.04,  121.53], to: [ 48.86,    2.35] }, // 台北 → 巴黎
+            { from: [ 25.04,  121.53], to: [ 40.71,  -74.01] }, // 台北 → 紐約（跨太平洋）
+            { from: [ 25.04,  121.53], to: [-33.87,  151.21] }, // 台北 → 雪梨
+            // ── 跨太平洋 ──
+            { from: [ 35.68,  139.69], to: [ 34.05, -118.24] }, // 東京 → 洛杉磯
+            { from: [ 35.68,  139.69], to: [-33.87,  151.21] }, // 東京 → 雪梨
+            { from: [ 37.56,  126.97], to: [ 34.05, -118.24] }, // 首爾 → 洛杉磯
+            // ── 跨大西洋 ──
+            { from: [ 51.51,   -0.13], to: [ 40.71,  -74.01] }, // 倫敦 → 紐約
+            { from: [ 48.86,    2.35], to: [-23.55,  -46.63] }, // 巴黎 → 聖保羅
+            // ── 美洲內部 ──
+            { from: [ 40.71,  -74.01], to: [ 34.05, -118.24] }, // 紐約 → 洛杉磯
+            { from: [ 40.71,  -74.01], to: [-23.55,  -46.63] }, // 紐約 → 聖保羅
+            { from: [ 34.05, -118.24], to: [-23.55,  -46.63] }, // 洛杉磯 → 聖保羅
+            // ── 歐洲 ──
+            { from: [ 48.86,    2.35], to: [ 41.90,   12.50] }, // 巴黎 → 羅馬
+            { from: [ 48.86,    2.35], to: [ 41.01,   28.95] }, // 巴黎 → 伊斯坦堡
+            { from: [ 51.51,   -0.13], to: [ 47.37,    8.54] }, // 倫敦 → 蘇黎世
+            { from: [ 41.01,   28.95], to: [ 55.76,   37.62] }, // 伊斯坦堡 → 莫斯科
+            // ── 中東 / 非洲 ──
+            { from: [ 25.20,   55.27], to: [ 19.08,   72.88] }, // 杜拜 → 孟買
+            { from: [ 25.20,   55.27], to: [ 30.04,   31.24] }, // 杜拜 → 開羅
+            { from: [ 30.04,   31.24], to: [ 41.01,   28.95] }, // 開羅 → 伊斯坦堡
+            { from: [ 25.20,   55.27], to: [ 48.86,    2.35] }, // 杜拜 → 巴黎
+            // ── 東南亞 / 大洋洲 ──
+            { from: [  1.35,  103.82], to: [-33.87,  151.21] }, // 新加坡 → 雪梨
+            { from: [  1.35,  103.82], to: [ 19.08,   72.88] }, // 新加坡 → 孟買
+            { from: [  1.35,  103.82], to: [ -8.34,  115.09] }, // 新加坡 → 峇里島
+            { from: [ 13.75,  100.50], to: [ 18.79,   98.98] }, // 曼谷 → 清邁
+            // ── 北方長弧 ──
+            { from: [ 55.76,   37.62], to: [ 35.68,  139.69] }, // 莫斯科 → 東京
+            { from: [ 55.76,   37.62], to: [ 40.71,  -74.01] }, // 莫斯科 → 紐約
+        ];
+
+        /* ── Fibonacci sphere 均勻佈點（仿地球表面質感） ── */
+        const dots = [];
+        const NUM_DOTS = 1200;
+        const PHI = (1 + Math.sqrt(5)) / 2;   // 黃金比例
+        for (let i = 0; i < NUM_DOTS; i++) {
+            const theta = (2 * Math.PI * i) / PHI;
+            const phi   = Math.acos(1 - (2 * (i + 0.5)) / NUM_DOTS);
+            dots.push([
+                Math.cos(theta) * Math.sin(phi),
+                Math.cos(phi),
+                Math.sin(theta) * Math.sin(phi),
+            ]);
+        }
+
+        /* ── 座標轉換工具函式（與原 TSX 完全對應） ── */
+        function latLngToXYZ(lat, lng, r) {
+            const phi   = ((90 - lat) * Math.PI) / 180;
+            const theta = ((lng + 180) * Math.PI) / 180;
+            return [
+                -(r * Math.sin(phi) * Math.cos(theta)),
+                  r * Math.cos(phi),
+                  r * Math.sin(phi) * Math.sin(theta),
+            ];
+        }
+        function rotateX(x, y, z, a) {
+            const c = Math.cos(a), s = Math.sin(a);
+            return [x, y * c - z * s, y * s + z * c];
+        }
+        function rotateY(x, y, z, a) {
+            const c = Math.cos(a), s = Math.sin(a);
+            return [x * c + z * s, y, -x * s + z * c];
+        }
+        function project(x, y, z, cx, cy, fov) {
+            const scale = fov / (fov + z);
+            return [x * scale + cx, y * scale + cy];
+        }
+
+        /* ── 狀態 ── */
+        let rotY = -0.52;   // 初始使亞洲朝前（台北居中）
+        let rotX =  0.28;
+        let drag = { active: false, startX: 0, startY: 0, baseRotY: 0, baseRotX: 0 };
+        let time = 0;
+        let animId = null;
+
+        /* ── 色彩 ── */
+        const DOT_BASE   = 'rgba(148,190,255,ALPHA)';
+        const ARC_COLOR  = 'rgba(232,62,140,0.42)';
+        const MKR_COLOR  = 'rgba(255,160,205,1)';
+        const HOME_COLOR = 'rgba(232,62,140,1)';
+        const AUTO_SPEED = 0.0018;
+
+        /* ── 主繪製迴圈 ── */
+        function draw() {
+            const dpr = window.devicePixelRatio || 1;
+            const w   = canvas.clientWidth;
+            const h   = canvas.clientHeight;
+
+            // 僅在尺寸變化時重設 canvas 解析度（避免每幀重置導致閃爍）
+            if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) {
+                canvas.width  = Math.round(w * dpr);
+                canvas.height = Math.round(h * dpr);
+            }
+
+            const ctx = canvas.getContext('2d');
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+            const cx     = w / 2;
+            const cy     = h / 2;
+            const radius = Math.min(w, h) * 0.38;
+            const fov    = 600;
+
+            if (!drag.active) rotY += AUTO_SPEED;
+            time += 0.015;
+
+            ctx.clearRect(0, 0, w, h);
+
+            /* 外暈 */
+            const glow = ctx.createRadialGradient(cx, cy, radius * 0.8, cx, cy, radius * 1.55);
+            glow.addColorStop(0, 'rgba(55,110,255,0.05)');
+            glow.addColorStop(1, 'rgba(55,110,255,0)');
+            ctx.fillStyle = glow;
+            ctx.fillRect(0, 0, w, h);
+
+            /* 地球輪廓 */
+            ctx.beginPath();
+            ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+            ctx.strokeStyle = 'rgba(100,180,255,0.07)';
+            ctx.lineWidth = 1;
+            ctx.stroke();
+
+            /* 地球點陣 */
+            for (const [bx, by, bz] of dots) {
+                let [x, y, z] = [bx * radius, by * radius, bz * radius];
+                [x, y, z] = rotateX(x, y, z, rotX);
+                [x, y, z] = rotateY(x, y, z, rotY);
+                if (z > 0) continue;   // 背面剔除
+                const [sx, sy] = project(x, y, z, cx, cy, fov);
+                const alpha    = Math.max(0.08, 1 - (z + radius) / (2 * radius));
+                const dotR     = 1 + alpha * 0.8;
+                ctx.beginPath();
+                ctx.arc(sx, sy, dotR, 0, Math.PI * 2);
+                ctx.fillStyle = DOT_BASE.replace('ALPHA', alpha.toFixed(2));
+                ctx.fill();
+            }
+
+            /* 航線弧 + 流動光點 */
+            for (const conn of CONNECTIONS) {
+                let [x1, y1, z1] = latLngToXYZ(conn.from[0], conn.from[1], radius);
+                let [x2, y2, z2] = latLngToXYZ(conn.to[0],   conn.to[1],   radius);
+                [x1, y1, z1] = rotateX(x1, y1, z1, rotX);
+                [x1, y1, z1] = rotateY(x1, y1, z1, rotY);
+                [x2, y2, z2] = rotateX(x2, y2, z2, rotX);
+                [x2, y2, z2] = rotateY(x2, y2, z2, rotY);
+                if (z1 > radius * 0.3 && z2 > radius * 0.3) continue;
+
+                const [sx1, sy1] = project(x1, y1, z1, cx, cy, fov);
+                const [sx2, sy2] = project(x2, y2, z2, cx, cy, fov);
+
+                // 高度提升的弧線中控點
+                const mx  = (x1 + x2) / 2;
+                const my  = (y1 + y2) / 2;
+                const mz  = (z1 + z2) / 2;
+                const ml  = Math.sqrt(mx * mx + my * my + mz * mz);
+                const ah  = radius * 1.28;
+                const [scx, scy] = project((mx / ml) * ah, (my / ml) * ah, (mz / ml) * ah, cx, cy, fov);
+
+                ctx.beginPath();
+                ctx.moveTo(sx1, sy1);
+                ctx.quadraticCurveTo(scx, scy, sx2, sy2);
+                ctx.strokeStyle = ARC_COLOR;
+                ctx.lineWidth   = 1.2;
+                ctx.stroke();
+
+                // 沿弧移動的光點（貝塞爾參數化）
+                const t  = (Math.sin(time * 1.2 + conn.from[0] * 0.1) + 1) / 2;
+                const tx = (1-t)*(1-t)*sx1 + 2*(1-t)*t*scx + t*t*sx2;
+                const ty = (1-t)*(1-t)*sy1 + 2*(1-t)*t*scy + t*t*sy2;
+                ctx.beginPath();
+                ctx.arc(tx, ty, 2, 0, Math.PI * 2);
+                ctx.fillStyle = MKR_COLOR;
+                ctx.fill();
+            }
+
+            /* 地標標記 */
+            for (const m of MARKERS) {
+                let [x, y, z] = latLngToXYZ(m.lat, m.lng, radius);
+                [x, y, z] = rotateX(x, y, z, rotX);
+                [x, y, z] = rotateY(x, y, z, rotY);
+                if (z > radius * 0.1) continue;
+
+                const [sx, sy] = project(x, y, z, cx, cy, fov);
+                const pulse    = Math.sin(time * 2 + m.lat) * 0.5 + 0.5;
+                const color    = m.home ? HOME_COLOR : MKR_COLOR;
+
+                // 脈衝環
+                ctx.beginPath();
+                ctx.arc(sx, sy, 4 + pulse * 4, 0, Math.PI * 2);
+                ctx.strokeStyle = color.replace('1)', `${(0.18 + pulse * 0.14).toFixed(2)})`);
+                ctx.lineWidth   = 1;
+                ctx.stroke();
+
+                // 核心點（台北加大）
+                ctx.beginPath();
+                ctx.arc(sx, sy, m.home ? 4 : 2.5, 0, Math.PI * 2);
+                ctx.fillStyle = color;
+                ctx.fill();
+
+                // 標籤
+                ctx.font      = '10px "Noto Sans TC", system-ui, sans-serif';
+                ctx.fillStyle = color.replace('1)', '0.62)');
+                ctx.fillText(m.label, sx + 8, sy + 3);
+            }
+
+            animId = requestAnimationFrame(draw);
+        }
+
+        /* ── 拖曳旋轉 ── */
+        canvas.addEventListener('pointerdown', (e) => {
+            drag = { active: true, startX: e.clientX, startY: e.clientY, baseRotY: rotY, baseRotX: rotX };
+            canvas.setPointerCapture(e.pointerId);
+        });
+        canvas.addEventListener('pointermove', (e) => {
+            if (!drag.active) return;
+            rotY = drag.baseRotY + (e.clientX - drag.startX) * 0.005;
+            rotX = Math.max(-1, Math.min(1, drag.baseRotX + (e.clientY - drag.startY) * 0.005));
+        });
+        canvas.addEventListener('pointerup',    () => { drag.active = false; });
+        canvas.addEventListener('pointerleave', () => { drag.active = false; });
+
+        /* ── 頁籤切換時暫停動畫，節省 CPU ── */
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+                cancelAnimationFrame(animId);
+            } else {
+                animId = requestAnimationFrame(draw);
+            }
+        });
+
+        draw();
     }
     </script>
 </body>
