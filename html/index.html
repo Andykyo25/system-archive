@@ -202,9 +202,10 @@
         .section { padding: 96px 0; }
         .section-eyebrow {
             text-align: center;
-            font-size: 0.72rem;
-            font-weight: 700;
-            letter-spacing: 0.14em;
+            font-family: 'SF Mono', ui-monospace, 'Cascadia Code', 'Fira Code', monospace;
+            font-size: 0.68rem;
+            font-weight: 500;
+            letter-spacing: 0.12em;
             text-transform: uppercase;
             color: var(--primary);
             margin-bottom: 12px;
@@ -215,8 +216,8 @@
             margin-bottom: 14px;
             font-weight: 900;
             color: var(--ink);
-            letter-spacing: -0.025em;
-            line-height: 1.15;
+            letter-spacing: -0.035em;   /* 大字體收緊 tracking */
+            line-height: 1.1;
         }
         .section-subtitle {
             text-align: center;
@@ -224,6 +225,29 @@
             margin-bottom: 52px;
             font-size: 1rem;
             line-height: 1.7;
+        }
+        /* Inline section heading（標題左 / 副標右） */
+        .section-header-split {
+            display: flex;
+            align-items: flex-end;
+            justify-content: space-between;
+            gap: 48px;
+            margin-bottom: 48px;
+        }
+        .section-header-split .section-eyebrow,
+        .section-header-split .section-title { text-align: left; margin-bottom: 0; }
+        .section-header-split .section-title  { margin-top: 10px; }
+        .section-split-desc {
+            flex: 0 0 auto;
+            max-width: 32ch;
+            color: var(--text-secondary);
+            font-size: 0.95rem;
+            line-height: 1.75;
+            padding-bottom: 4px;
+        }
+        @media (max-width: 768px) {
+            .section-header-split { flex-direction: column; gap: 12px; }
+            .section-split-desc   { max-width: 100%; }
         }
 
         /* ── 按鈕系統 ── */
@@ -348,15 +372,26 @@
             position: absolute; inset: 0; z-index: 2;
             background: linear-gradient(to bottom, rgba(0,0,0,0.05) 0%, rgba(0,0,0,0.62) 100%);
         }
-        .hero-content { position: relative; z-index: 3; padding: 0 20px; }
+        /* Split headline layout（Schoger / Tailwind Plus 風格） */
+        .hero-content {
+            position: relative; z-index: 3;
+            width: 100%; max-width: 1240px;
+            padding: 0 40px;
+            display: grid;
+            grid-template-columns: 3fr 2fr;
+            gap: 64px;
+            align-items: center;
+        }
+        .hero-left  { text-align: left; }
+        .hero-right { text-align: left; display: flex; flex-direction: column; gap: 28px; }
 
-        /* ── 目的地膠囊標籤（取代 Hero Badge） ── */
+        /* ── 目的地膠囊標籤 ── */
         .hero-tags {
             display: flex;
             gap: 8px;
-            justify-content: center;
+            justify-content: flex-start;
             flex-wrap: wrap;
-            margin-bottom: 28px;
+            margin-bottom: 24px;
         }
         .hero-tags span {
             padding: 5px 16px;
@@ -373,15 +408,23 @@
         }
 
         .hero-title {
-            font-size: clamp(2.8rem, 6.5vw, 5rem);
+            font-size: clamp(2.8rem, 5.5vw, 4.8rem);
             font-weight: 900;
-            letter-spacing: -0.03em;
-            line-height: 1.1;
+            letter-spacing: -0.04em;
+            line-height: 1.05;
             text-shadow: 0 2px 20px rgba(0,0,0,0.25);
-            margin-bottom: 18px;
+            margin-bottom: 0;
         }
-        .hero-subtitle { font-size: clamp(1rem, 1.8vw, 1.25rem); font-weight: 300; opacity: 0.85; margin-bottom: 36px; letter-spacing: 0.01em; }
-        .hero-cta-group { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
+        .hero-subtitle {
+            font-size: clamp(0.95rem, 1.5vw, 1.1rem);
+            font-weight: 400;
+            opacity: 0.78;
+            margin-bottom: 0;
+            letter-spacing: 0.005em;
+            line-height: 1.75;
+            max-width: 36ch;
+        }
+        .hero-cta-group { display: flex; gap: 14px; justify-content: flex-start; flex-wrap: wrap; }
 
         /* Border Beam 主按鈕 */
         .btn-beam {
@@ -478,17 +521,16 @@
             padding: 30px 20px;
             border-radius: var(--radius-md);
             text-align: center;
-            box-shadow: var(--shadow-sm);
+            box-shadow: 0 0 0 1px rgba(0,0,0,0.05), 0 2px 8px rgba(0,0,0,0.05);
             cursor: pointer;
             transition: var(--transition);
-            border: 1px solid rgba(0,0,0,0.03);
             width: 100%;
             font-family: inherit;
             font-size: inherit;
             color: inherit;
             line-height: inherit;
         }
-        .tool-card:hover { transform: translateY(-8px); box-shadow: var(--shadow-md); border-color: var(--primary); }
+        .tool-card:hover { transform: translateY(-8px); box-shadow: 0 0 0 1px rgba(232,62,140,0.18), var(--shadow-md); }
         .tool-icon { font-size: 2.2rem; color: var(--primary); margin-bottom: 15px; }
         .tool-desc { font-size: 0.85rem; color: var(--text-secondary); margin-top: 8px; }
 
@@ -498,15 +540,16 @@
             background: var(--bg-surface);
             border-radius: 20px;
             overflow: hidden;
-            border: 1px solid rgba(0,0,0,0.07);
+            /* Outer ring 取代 border：shadow-based ring 不干擾外部陰影 */
+            box-shadow: 0 0 0 1px rgba(0,0,0,0.06), 0 1px 4px rgba(0,0,0,0.04);
             transition: var(--transition);
             display: flex;
             flex-direction: column;
             height: 100%;
-            box-shadow: none;
         }
-        .tour-card:hover { transform: translateY(-6px); box-shadow: 0 16px 40px rgba(0,0,0,0.1); border-color: transparent; }
-        .tour-img-wrap { height: 220px; overflow: hidden; position: relative; }
+        .tour-card:hover { transform: translateY(-6px); box-shadow: 0 0 0 1px rgba(0,0,0,0), 0 16px 40px rgba(0,0,0,0.1); }
+        /* 同心圓角：外層 20px，內層圖片區頂部 18px（20 - 2px padding-equivalent） */
+        .tour-img-wrap { height: 220px; overflow: hidden; position: relative; border-radius: 18px 18px 0 0; }
         .tour-img { width: 100%; height: 100%; object-fit: cover; transition: transform 0.7s ease; }
         .tour-card:hover .tour-img { transform: scale(1.06); }
         /* 卡片序號標記 */
@@ -701,7 +744,7 @@
             background: white;
             border-radius: 20px;
             padding: 28px;
-            border: 1px solid rgba(0,0,0,0.07);
+            box-shadow: 0 0 0 1px rgba(0,0,0,0.06), 0 2px 8px rgba(0,0,0,0.04);
             position: relative;
             width: 320px; flex-shrink: 0;
         }
@@ -917,13 +960,38 @@
         .tab-item i { font-size: 1.2rem; }
         .tab-item.active, .tab-item:hover { color: var(--primary); }
 
+        /* ── Canvas grid 裝飾導軌（Stripe / Linear / Adio 風格） ── */
+        .page-grid {
+            position: fixed;
+            inset: 0;
+            z-index: 0;
+            pointer-events: none;
+            /* 容器寬度兩側的垂直細線 */
+            background:
+                linear-gradient(to right,
+                    transparent calc(50% - 600px),
+                    rgba(0,0,0,0.035) calc(50% - 600px),
+                    rgba(0,0,0,0.035) calc(50% - 599px),
+                    transparent calc(50% - 599px),
+                    transparent calc(50% + 599px),
+                    rgba(0,0,0,0.035) calc(50% + 599px),
+                    rgba(0,0,0,0.035) calc(50% + 600px),
+                    transparent calc(50% + 600px)
+                );
+        }
+
         /* ══════════════════════════════════════════════
            RWD 響應式
         ══════════════════════════════════════════════ */
         @media (max-width: 768px) {
             .navbar { top: 10px; }
             .nav-inner { margin: 0 12px; padding: 8px 12px 8px 16px; }
-            .hero-title { font-size: 2.2rem; }
+            .hero-content { grid-template-columns: 1fr; gap: 24px; padding: 0 24px; text-align: center; }
+            .hero-left, .hero-right { text-align: center; align-items: center; }
+            .hero-tags  { justify-content: center; }
+            .hero-cta-group { justify-content: center; }
+            .hero-subtitle { max-width: 100%; }
+            .hero-title { font-size: 2.4rem; }
             .trust-grid { grid-template-columns: repeat(2, 1fr); }
             .nav-links { display: none; } /* 行動版改用底部 Tab Bar */
             .mobile-tab-bar { display: block; }
@@ -945,6 +1013,9 @@
 </head>
 
 <body>
+
+    <!-- Canvas grid 裝飾垂直導軌 -->
+    <div class="page-grid" aria-hidden="true"></div>
 
     <!-- ══════════════════════════════════════════════
          P1-UX: 導覽列加入錨點連結
@@ -981,20 +1052,25 @@
         <div class="hero-dots"   aria-hidden="true"></div>
         <div class="hero-overlay"></div>
         <div class="hero-content">
-            <!-- 目的地標籤 -->
-            <div class="hero-tags" aria-label="服務目的地">
-                <span>🇯🇵 日本</span>
-                <span>🇰🇷 韓國</span>
-                <span>🇹🇭 泰國</span>
-                <span>🇪🇺 歐洲</span>
+            <!-- 左：標籤 + 主標 -->
+            <div class="hero-left">
+                <div class="hero-tags" aria-label="服務目的地">
+                    <span>🇯🇵 日本</span>
+                    <span>🇰🇷 韓國</span>
+                    <span>🇹🇭 泰國</span>
+                    <span>🇪🇺 歐洲</span>
+                </div>
+                <h1 class="hero-title">探索世界<br>從這裡開始</h1>
             </div>
-            <h1 class="hero-title">探索世界<br>從這裡開始</h1>
-            <p class="hero-subtitle">找蛋寶團隊｜為您嚴選日、韓、泰、歐洲頂級旅程</p>
-            <div class="hero-cta-group">
-                <a href="#tours" class="btn btn-beam">瀏覽熱門行程</a>
-                <button class="btn btn-outline" style="color:white;border-color:rgba(255,255,255,0.4);" onclick="startQuiz()">
-                    智慧挑行程
-                </button>
+            <!-- 右：副標 + CTA（頂部對齊） -->
+            <div class="hero-right">
+                <p class="hero-subtitle">找蛋寶團隊為您嚴選日本、韓國、泰國、歐洲頂級旅程，每條路線親自踩點確認，拒絕照騙。</p>
+                <div class="hero-cta-group">
+                    <a href="#tours" class="btn btn-beam">瀏覽熱門行程</a>
+                    <button class="btn btn-outline" style="color:white;border-color:rgba(255,255,255,0.4);" onclick="startQuiz()">
+                        智慧挑行程
+                    </button>
+                </div>
             </div>
         </div>
     </section>
@@ -1077,9 +1153,13 @@
     <!-- ── 行程區 ── -->
     <section class="section" id="tours">
         <div class="container">
-            <p class="section-eyebrow reveal">Featured Tours</p>
-            <h2 class="section-title reveal" data-delay="1">熱門行程<span class="text-gradient">推薦</span></h2>
-            <p class="section-subtitle reveal" data-delay="2">每條行程由找蛋寶團隊親自踩點確認，拒絕照騙</p>
+            <div class="section-header-split reveal">
+                <div>
+                    <p class="section-eyebrow">Featured Tours</p>
+                    <h2 class="section-title">熱門行程<span class="text-gradient">推薦</span></h2>
+                </div>
+                <p class="section-split-desc">每條行程由找蛋寶團隊親自踩點確認，拒絕照騙，選的每間飯店都是自己住過才推薦。</p>
+            </div>
             <!-- P3: Skeleton Loading (JS 載入後替換) -->
             <div class="tours-grid" id="toursGrid">
                 <div class="tour-card-skeleton">
