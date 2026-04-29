@@ -269,9 +269,37 @@ async function renderTech(code, s) {
 
   // 技術診斷（rule-based）
   let inst = [];
+  let sh = null;
   try { inst = (await api.institutional(code)) || []; } catch { /* 失敗只影響籌碼欄位 */ }
-  const d = diagnose(k, inst);
-  if (d) renderDiag(d);
+  try { sh = await api.shareholding(code); } catch { sh = null; }
+  const sharesOutstanding = sh?.sharesOutstanding || null;
+  const d = diagnose(k, inst, { sharesOutstanding });
+  if (d) {
+    renderDiag(d);
+    renderTechKpis(d);
+  }
+}
+
+// 把 Bias / ATR / 扣抵值 寫進新增的 KPI 卡片，並依條件加紅警示
+function renderTechKpis(d) {
+  const biasEl = document.getElementById('bias20');
+  const atrEl = document.getElementById('atr14');
+  const dedEl = document.getElementById('maDeduct20');
+  if (biasEl) {
+    if (d.bias20 == null) {
+      biasEl.textContent = '--';
+      biasEl.style.color = '';
+    } else {
+      biasEl.textContent = (d.bias20 > 0 ? '+' : '') + d.bias20.toFixed(2) + '%';
+      biasEl.style.color = d.bias20 > 10 ? 'var(--down)' : d.bias20 < -10 ? 'var(--up)' : '';
+    }
+  }
+  if (atrEl) {
+    atrEl.textContent = d.atr14 != null ? `±${d.atr14.toFixed(2)} 元` : '--';
+  }
+  if (dedEl) {
+    dedEl.textContent = d.maDeduct20 != null ? fmt(d.maDeduct20, 2) : '--';
+  }
 }
 
 // ──────── 技術診斷渲染 ────────
@@ -410,12 +438,51 @@ async function renderFund(code, s) {
 }
 
 // ──────── 籌碼面 ────────
+// 從 TaiwanStockHoldingSharesPer 結構抽出「外資/法人」與「散戶」概略：
+//   分級表的「1-999 股」「1,000-5,000」… 通常代表散戶；最大級距「>1,000 張」≈ 大戶＋法人
+function pickShareholderPct(rows) {
+  if (!Array.isArray(rows) || !rows.length) return { foreignPct: null, insiderPct: null, majorPct: null };
+  // 取最近一筆 date
+  const lastDate = rows.map((r) => r.date).sort().pop();
+  const day = rows.filter((r) => r.date === lastDate);
+  // 1000 張以上（級距 = 15 或文字含「1,000,001」「1000張」）= 大戶
+  const major = day.find((r) => /1000.?(張)|超過|1,000,001|>1,000,000/.test(r.HoldingSharesLevel || r.level || ''));
+  const small = day.find((r) => /^\s*1\b|1-999|1股以下/.test(r.HoldingSharesLevel || r.level || ''));
+  const num = (v) => Number.isFinite(+v) ? +v : null;
+  return {
+    majorPct: num(major?.percent ?? major?.percentage),
+    smallPct: num(small?.percent ?? small?.percentage),
+    foreignPct: null, // 此 dataset 不直接提供外資 %，需另外接 TaiwanStockShareholding
+    insiderPct: null,
+    lastDate,
+  };
+}
+
+function calcMajorWeekChange(rows) {
+  if (!Array.isArray(rows) || rows.length < 2) return null;
+  // 依 date asc，挑「1,000 張以上」級距
+  const lvlRe = /1000.?(張)|超過|1,000,001|>1,000,000/;
+  const major = rows.filter((r) => lvlRe.test(r.HoldingSharesLevel || r.level || ''))
+    .sort((a, b) => a.date.localeCompare(b.date));
+  if (major.length < 2) return null;
+  const last = +major[major.length - 1].percent;
+  // 找約一週前（5 個交易日）— 這個 dataset 通常週更，挑前一筆即可
+  const prev = +major[major.length - 2].percent;
+  if (!Number.isFinite(last) || !Number.isFinite(prev)) return null;
+  return last - prev;
+}
+
 async function renderChip(code, s) {
-  const foreignPct = (35 + Math.random() * 40).toFixed(1);
-  const insiderPct = (8 + Math.random() * 15).toFixed(2);
+  // 真實外資 / 大戶 / 董監 — 從 /api/shareholders（TaiwanStockHoldingSharesPer）
+  let shareholders = [];
+  try { shareholders = (await api.shareholders(code)) || []; } catch { shareholders = []; }
+  const sh = pickShareholderPct(shareholders);
+  const foreignTxt = sh.foreignPct != null ? sh.foreignPct.toFixed(1) + '%' : '--';
+  const insiderTxt = sh.insiderPct != null ? sh.insiderPct.toFixed(2) + '%' : (sh.majorPct != null ? '— (大戶 ' + sh.majorPct.toFixed(2) + '%)' : '--');
+
   document.getElementById('chip-kpi').innerHTML = `
-    <div class="kpi good"><div class="lab">外資持股 %</div><div class="val">${foreignPct}%</div></div>
-    <div class="kpi"><div class="lab">董監持股 %</div><div class="val">${insiderPct}%</div></div>
+    <div class="kpi good"><div class="lab">外資持股 %</div><div class="val">${foreignTxt}</div></div>
+    <div class="kpi"><div class="lab">董監持股 %</div><div class="val">${insiderTxt}</div></div>
     <div class="kpi warn"><div class="lab">融資餘額(張)</div><div class="val" id="chip-margin-buy">--</div></div>
     <div class="kpi"><div class="lab">融券餘額(張)</div><div class="val" id="chip-margin-sell">--</div></div>
   `;
@@ -485,6 +552,103 @@ async function renderChip(code, s) {
   document.getElementById('chip-source').textContent =
     (inst.length ? '三大法人 / ' : '三大法人 fallback / ') +
     (mg.length ? '融資融券：FinMind' : '融資融券 fallback');
+
+  // ─ 新增 4 KPI：投信佔股本 / 融資維持率 / 券資比 / 大戶持股週變 ─
+  // 投信佔股本：取近 3 日 trustPctOfCap 累加（server 端已 join），fallback 用 sharesOutstanding 自算
+  let trustPct = null;
+  const recentDates = [...new Set(inst.map((r) => r.date))].sort().slice(-3);
+  const trustRows = inst.filter((r) => recentDates.includes(r.date) && r.name?.includes('投信'));
+  const withPct = trustRows.filter((r) => Number.isFinite(+r.trustPctOfCap));
+  if (withPct.length) {
+    trustPct = withPct.reduce((sum, r) => sum + (+r.trustPctOfCap), 0);
+  } else {
+    try {
+      const shInfo = await api.shareholding(code);
+      const cap = shInfo?.sharesOutstanding;
+      if (cap) {
+        const trustNet = trustRows.reduce((sum, r) => sum + ((+r.buy || 0) - (+r.sell || 0)), 0);
+        trustPct = (trustNet / cap) * 100;
+      }
+    } catch {/* ignore */}
+  }
+  const trustEl = document.getElementById('trustPctCap');
+  if (trustEl) {
+    if (trustPct == null) {
+      trustEl.textContent = '--';
+      trustEl.style.color = '';
+    } else {
+      trustEl.textContent = (trustPct > 0 ? '+' : '') + trustPct.toFixed(3) + '%';
+      trustEl.style.color = trustPct > 0.5 ? 'var(--up)' : trustPct < -0.5 ? 'var(--down)' : '';
+    }
+  }
+
+  // 融資維持率 = (TodayBalance × 收盤價 × 1.6) / MarginPurchaseAmount × 100
+  // 若 MarginPurchaseAmount 不存在（FinMind 此 dataset 通常無此欄位），改採近似法：
+  //   maint ≈ (close / avg_buy_price) × (1 / 0.6) × 100，avg_buy_price 用近 60 日均收盤
+  const close = state.stocks[code]?.price || s.price || 0;
+  let maint = null;
+  if (Number.isFinite(+last.MarginPurchaseAmount) && +last.MarginPurchaseAmount > 0 && marginBuy > 0 && close) {
+    maint = (marginBuy * close * 1.6) / +last.MarginPurchaseAmount * 100;
+  } else if (close && mg.length >= 30) {
+    const avgBuy = mg.slice(-60).reduce((sum, r) => sum + (+r.MarginPurchaseTodayBalance || 0), 0) / Math.min(60, mg.length);
+    // 近似：用近期均餘為「假設買進價」並非完全準確，但可給出維持率方向訊號
+    if (avgBuy > 0) {
+      maint = (marginBuy * close) / (avgBuy * close * 0.6) * 100;
+    }
+  }
+  const maintEl = document.getElementById('marginMaint');
+  if (maintEl) {
+    if (maint == null) {
+      maintEl.textContent = '--';
+      maintEl.style.color = '';
+    } else {
+      maintEl.textContent = maint.toFixed(0) + '%';
+      maintEl.style.color = maint < 130 ? 'var(--down)' : maint > 166 ? 'var(--up)' : '';
+    }
+  }
+
+  // 券資比 = ShortSaleTodayBalance / MarginPurchaseTodayBalance × 100
+  const slRatio = marginBuy > 0 ? (shortBalance / marginBuy) * 100 : null;
+  const slEl = document.getElementById('shortLongRatio');
+  if (slEl) {
+    if (slRatio == null) {
+      slEl.textContent = '--';
+      slEl.style.color = '';
+    } else {
+      slEl.textContent = slRatio.toFixed(1) + '%';
+      slEl.style.color = slRatio > 30 ? 'var(--gold)' : '';
+    }
+  }
+
+  // 軋空候選 badge：券資比 > 30% 且 融資減少
+  const badgesEl = document.getElementById('s-badges');
+  if (badgesEl) {
+    const exists = badgesEl.querySelector('[data-tag="squeeze"]');
+    if (slRatio != null && slRatio > 30 && buyDelta < 0) {
+      if (!exists) {
+        const span = document.createElement('span');
+        span.className = 'badge gold';
+        span.dataset.tag = 'squeeze';
+        span.textContent = '軋空候選';
+        badgesEl.appendChild(span);
+      }
+    } else if (exists) {
+      exists.remove();
+    }
+  }
+
+  // 大戶持股週變
+  const wow = calcMajorWeekChange(shareholders);
+  const wowEl = document.getElementById('majorWow');
+  if (wowEl) {
+    if (wow == null) {
+      wowEl.textContent = '--';
+      wowEl.style.color = '';
+    } else {
+      wowEl.textContent = (wow > 0 ? '+' : '') + wow.toFixed(2) + '%';
+      wowEl.style.color = wow > 0 ? 'var(--up)' : wow < 0 ? 'var(--down)' : '';
+    }
+  }
 }
 
 function renderStockNews(code) {

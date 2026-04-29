@@ -3,6 +3,56 @@
 
 const avg = (arr) => arr.reduce((s, x) => s + x, 0) / (arr.length || 1);
 
+function std(arr) {
+  if (!arr.length) return 0;
+  const m = avg(arr);
+  const v = avg(arr.map((x) => (x - m) ** 2));
+  return Math.sqrt(v);
+}
+
+// 乖離率 = (last - MA(period)) / MA(period) * 100
+export function calcBias(closes, period = 20) {
+  if (!Array.isArray(closes) || closes.length < period) return null;
+  const slice = closes.slice(-period);
+  const m = avg(slice);
+  if (!m) return null;
+  return ((closes[closes.length - 1] - m) / m) * 100;
+}
+
+// Wilder ATR(14) — 平均真實波幅
+export function calcATR(k, period = 14) {
+  if (!Array.isArray(k) || k.length < period + 1) return null;
+  const tr = [];
+  for (let i = 1; i < k.length; i++) {
+    const a = k[i].high - k[i].low;
+    const b = Math.abs(k[i].high - k[i - 1].close);
+    const c = Math.abs(k[i].low - k[i - 1].close);
+    tr.push(Math.max(a, b, c));
+  }
+  // 第一個 ATR 用前 period 個 TR 的平均，之後用 Wilder smoothing
+  let atr = avg(tr.slice(0, period));
+  for (let i = period; i < tr.length; i++) {
+    atr = (atr * (period - 1) + tr[i]) / period;
+  }
+  return atr;
+}
+
+// 扣抵值 = period 日前的收盤價（MA 反轉判讀用）
+export function calcMaDeduct(closes, period = 20) {
+  if (!Array.isArray(closes) || closes.length < period) return null;
+  return closes[closes.length - period];
+}
+
+// 量能 Z-score：(last - mean) / std，>2 表示異常爆量
+export function calcVolZ(vols, period = 20) {
+  if (!Array.isArray(vols) || vols.length < period + 1) return null;
+  const ref = vols.slice(-period - 1, -1); // 不含當天
+  const m = avg(ref);
+  const s = std(ref);
+  if (!s) return null;
+  return (vols[vols.length - 1] - m) / s;
+}
+
 function calcKD(k, period = 9) {
   if (k.length < period) return { k: 50, d: 50 };
   let kVal = 50, dVal = 50;
@@ -53,10 +103,11 @@ function ma(k, n) {
   return avg(k.slice(-n).map((d) => d.close));
 }
 
-export function diagnose(k, inst = []) {
+export function diagnose(k, inst = [], opts = {}) {
   if (!k || k.length < 5) return null;
   const last = k[k.length - 1];
   const prev = k[k.length - 2];
+  const { sharesOutstanding } = opts;
 
   const ma5  = ma(k, 5);
   const ma20 = ma(k, 20);
@@ -126,16 +177,27 @@ export function diagnose(k, inst = []) {
   else if (!priceUp && volUp) priceVol = '價跌量增（出貨疑慮）';
   else priceVol = '價跌量縮（止跌）';
 
-  // 三大法人
-  const recentInst = (inst || []).slice(-3); // 近 3 日
+  // 三大法人 — 取近 3 日所有 row（每天每法人各一列）
+  const recentDates = [...new Set((inst || []).map((r) => r.date))].sort().slice(-3);
+  const recentInst = (inst || []).filter((r) => recentDates.includes(r.date));
   const sumByName = (kw) => recentInst
     .filter((r) => (r.name || '').includes(kw))
     .reduce((s, r) => s + ((+r.buy || 0) - (+r.sell || 0)), 0);
   const foreign = sumByName('外資') || sumByName('Foreign');
   const trust   = sumByName('投信');
   const dealer  = sumByName('自營');
-  const bias = (n) => n > 0 ? '偏買超' : n < 0 ? '偏賣超' : '中性';
+  const biasLabel = (n) => n > 0 ? '偏買超' : n < 0 ? '偏賣超' : '中性';
   const totalInst = foreign + trust + dealer;
+
+  // 投信佔股本比：近 3 日投信淨買股數 / 流通股數 × 100
+  // 若 inst row 帶有 trustPctOfCap（server-side 已 join），優先採用累加值
+  let trustPctOfCap = null;
+  const rowsWithPct = recentInst.filter((r) => r.name?.includes('投信') && Number.isFinite(+r.trustPctOfCap));
+  if (rowsWithPct.length) {
+    trustPctOfCap = rowsWithPct.reduce((s, r) => s + (+r.trustPctOfCap || 0), 0);
+  } else if (sharesOutstanding && sharesOutstanding > 0) {
+    trustPctOfCap = (trust / sharesOutstanding) * 100;
+  }
   const mainForce =
     foreign > 0 && trust > 0 ? '外資+投信同向買超' :
     foreign < 0 && trust < 0 ? '外資+投信同向賣超' :
@@ -174,8 +236,31 @@ export function diagnose(k, inst = []) {
     (!priceUp && volUp ? 1 : 0) +
     (totalInst < 0 ? 1 : 0);
 
-  const score = bullishPts - bearishPts; // -5 ~ +5
-  const winRate = Math.round(50 + score * 9); // 5 → 95%、-5 → 5%
+  // 高權重台股指標
+  const closes = k.map((d) => d.close);
+  const vols = k.map((d) => d.vol || 0);
+  const bias20 = calcBias(closes, 20);
+  const atr14 = calcATR(k, 14);
+  const maDeduct20 = calcMaDeduct(closes, 20);
+  const volZ = calcVolZ(vols, 20);
+  const turnoverRate = (sharesOutstanding && sharesOutstanding > 0 && last.vol)
+    ? ((last.vol * 1000) / sharesOutstanding) * 100   // vol 為「張」，× 1000 換成股
+    : null;
+
+  const score0 = bullishPts - bearishPts; // -5 ~ +5（原始五項加總）
+  let score = score0;
+
+  // 高權重指標懲罰／加分
+  if (bias20 != null && bias20 > 10) score -= 2;
+  if (bias20 != null && bias20 < -10 && kdSignal === '黃金交叉' && cur.k < 30) score += 2;
+  if (volZ != null && volZ > 2 && !priceUp) score -= 2;
+  if (cur.k > 80 && bias20 != null && bias20 > 8) score -= 2;
+
+  let winRate = Math.max(5, Math.min(95, Math.round(50 + score * 9))); // clamp 5-95
+  // 高檔頂背離硬上限：Bias > 10 且 KD > 80 屬典型過熱反轉模式，勝率封頂 35
+  if (bias20 != null && bias20 > 10 && cur.k > 80) winRate = Math.min(winRate, 35);
+  // 量爆收黑同樣強制壓低（出貨型態）
+  if (volZ != null && volZ > 2 && !priceUp && bias20 != null && bias20 > 5) winRate = Math.min(winRate, 30);
 
   let overall, action;
   if (score >= 3) {
@@ -201,8 +286,13 @@ export function diagnose(k, inst = []) {
     kd: { ...cur, signal: kdSignal, level: kdLevel },
     macd: { dif: difLast, dem: demLast, osc: oscLast, signal: macdSignal },
     vol: { ratio: volRatio, signal: volSignal, priceVol },
-    inst: { foreign, trust, dealer, total: totalInst, mainForce, bias: { foreign: bias(foreign), trust: bias(trust), dealer: bias(dealer) } },
+    inst: {
+      foreign, trust, dealer, total: totalInst, mainForce,
+      trustPctOfCap,
+      bias: { foreign: biasLabel(foreign), trust: biasLabel(trust), dealer: biasLabel(dealer) },
+    },
     range: { high60, low60, distToHigh, distToLow },
+    bias20, atr14, maDeduct20, volZ, turnoverRate,
     signals,
     score, winRate,
     overall, action,

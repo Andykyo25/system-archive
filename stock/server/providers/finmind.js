@@ -62,3 +62,31 @@ export function liveIndices(start_date) {
 export function tickSnapshot(stock_id) {
   return call('TaiwanStockTickSnapshot', { data_id: stock_id });
 }
+
+// 流通／發行股數 — 取最新一筆
+export async function sharesOutstanding(stock_id) {
+  // 嘗試 TaiwanStockShareholding（含 NumberOfSharesIssued / 外資投資餘額等欄位）
+  const start = new Date(Date.now() - 90 * 86400e3).toISOString().slice(0, 10);
+  const rows = await call('TaiwanStockShareholding', { data_id: stock_id, start_date: start });
+  if (!rows.length) return null;
+  const latest = rows[rows.length - 1];
+  // 嘗試多個常見欄位名（FinMind 不同時期 schema 略有差異）
+  const candidates = [
+    'NumberOfSharesIssued',
+    'IssuedShares',
+    'TotalNumberOfSharesIssued',
+    'ForeignInvestmentLimitationShares', // 為已發行總額（外資上限 = 100%）
+  ];
+  for (const f of candidates) {
+    const v = +latest[f];
+    if (Number.isFinite(v) && v > 0) {
+      return { date: latest.date, sharesOutstanding: v, raw: latest, field: f };
+    }
+  }
+  return { date: latest.date, sharesOutstanding: null, raw: latest, field: null };
+}
+
+// 大戶／散戶持股結構（依持股級距）
+export function majorShareholder(stock_id, start_date) {
+  return call('TaiwanStockHoldingSharesPer', { data_id: stock_id, start_date });
+}

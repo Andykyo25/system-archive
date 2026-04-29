@@ -98,6 +98,9 @@
           <div class="kpi"><div class="lab">20MA</div><div class="val" id="ma20">--</div></div>
           <div class="kpi warn"><div class="lab">KD(9)</div><div class="val" id="kd">--</div></div>
           <div class="kpi good"><div class="lab">RSI(14)</div><div class="val" id="rsi">--</div></div>
+          <div class="kpi"><div class="lab">Bias 20</div><div class="val" id="bias20">--</div></div>
+          <div class="kpi"><div class="lab">ATR(14)</div><div class="val" id="atr14">--</div></div>
+          <div class="kpi"><div class="lab">扣抵值 20</div><div class="val" id="maDeduct20">--</div></div>
         </div>
         <div class="chart-row">
           <div class="chart-wrap" style="height:260px"><canvas id="chartK"></canvas></div>
@@ -156,6 +159,12 @@
 
       <div class="pane" id="pane-chip" style="display:none">
         <div class="kpi-grid" id="chip-kpi"></div>
+        <div class="kpi-grid" style="margin-top:10px">
+          <div class="kpi"><div class="lab">投信佔股本</div><div class="val" id="trustPctCap">--</div></div>
+          <div class="kpi"><div class="lab">融資維持率</div><div class="val" id="marginMaint">--</div></div>
+          <div class="kpi"><div class="lab">券資比</div><div class="val" id="shortLongRatio">--</div></div>
+          <div class="kpi"><div class="lab">大戶持股週變</div><div class="val" id="majorWow">--</div></div>
+        </div>
         <div class="chip-row" style="margin-top:14px">
           <div class="chart-wrap" style="height:240px"><canvas id="chartFlow"></canvas></div>
           <div>

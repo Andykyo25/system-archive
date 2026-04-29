@@ -22,6 +22,8 @@ export const api = {
   margin: (code) => lcMemo(`margin:${code}`, 600e3, () => call(`/margin/${code}`)),
   revenue: (code) => lcMemo(`rev:${code}`, 86400e3, () => call(`/revenue/${code}`)),
   financial: (code) => lcMemo(`fin:${code}`, 86400e3, () => call(`/financial/${code}`)),
+  shareholding: (code) => lcMemo(`shares:${code}`, 86400e3, () => call(`/shareholding/${code}`)),
+  shareholders: (code) => lcMemo(`shrholders:${code}`, 3600e3, () => call(`/shareholders/${code}`)),
   postmarket: () => call('/postmarket/summary'),
   movers: () => call('/movers'),
   news: (category = 'tw_stock', limit = 20) => call(`/news?category=${category}&limit=${limit}`),

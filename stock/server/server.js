@@ -365,12 +365,43 @@ app.get('/api/quote/:code', async (req, res) => {
 });
 
 // ───────────────────────── 個股三大法人（近 30 日）─────────────────────────
+// 回傳每筆 row 加上 trustPctOfCap = (該日投信淨買股數 / 流通股數) × 100
 
 app.get('/api/institutional/:code', async (req, res) => {
   const code = req.params.code;
   const start = new Date(Date.now() - 30 * 86400e3).toISOString().slice(0, 10);
   try {
-    const data = await memo(`inst:${code}`, TTL_HIST / 24, () => finmind.institutional(code, start));
+    const [rawInst, sh] = await Promise.all([
+      memo(`inst:${code}`, TTL_HIST / 24, () => finmind.institutional(code, start)),
+      memo(`shares:${code}`, TTL_HIST, () => finmind.sharesOutstanding(code).catch(() => null)),
+    ]);
+    const cap = sh && sh.sharesOutstanding ? +sh.sharesOutstanding : null;
+    const data = (rawInst || []).map((r) => {
+      if (!cap || !r.name?.includes('投信')) return r;
+      const net = (+r.buy || 0) - (+r.sell || 0);
+      return { ...r, trustPctOfCap: (net / cap) * 100 };
+    });
+    ok(res, data);
+  } catch (e) { fail(res, e); }
+});
+
+// ───────────────────────── 流通股數 ─────────────────────────
+
+app.get('/api/shareholding/:code', async (req, res) => {
+  const code = req.params.code;
+  try {
+    const data = await memo(`shares:${code}`, TTL_HIST, () => finmind.sharesOutstanding(code));
+    ok(res, data);
+  } catch (e) { fail(res, e); }
+});
+
+// ───────────────────────── 大戶／散戶持股結構 ─────────────────────────
+
+app.get('/api/shareholders/:code', async (req, res) => {
+  const code = req.params.code;
+  const start = new Date(Date.now() - 90 * 86400e3).toISOString().slice(0, 10);
+  try {
+    const data = await memo(`shrholders:${code}`, TTL_HIST / 12, () => finmind.majorShareholder(code, start));
     ok(res, data);
   } catch (e) { fail(res, e); }
 });
