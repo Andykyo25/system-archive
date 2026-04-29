@@ -1,0 +1,152 @@
+// 依交易時段決定 polling 頻率
+import { state, emit } from './state.js';
+import { api } from './data/api.js';
+import { stocks as mockStocks } from './data/mock.js';
+
+// 主源 TWSE MIS（無 rate limit），所以盤中可以較積極
+// 國際指數因為走 Yahoo（429 風險），server 端 cache 60 秒，前端打多少都一樣
+const FREQ = {
+  live:   { indices: 5000,   quotes: 10000, movers: 30000 }, // 盤中：指數 5s、quote 10s、movers 30s
+  pre:    { indices: 15000,  quotes: 30000, movers: 60000 },
+  after:  { indices: 60000,  quotes: 60000, movers: 60000 },
+  closed: { indices: 300000, quotes: 600000, movers: 600000 },
+};
+
+let timers = { indices: null, quotes: null, movers: null };
+
+export async function start() {
+  // 初始 stocks 來自 mock，後續透過 quote API 覆蓋價格
+  if (!Object.keys(state.stocks).length) {
+    state.stocks = JSON.parse(JSON.stringify(mockStocks));
+    emit('stocks:changed');
+  }
+
+  // 取一次 health 確認後端
+  await pingHealth();
+  await Promise.allSettled([loadIndices(), loadMovers(), bootstrapQuotes()]);
+
+  scheduleAll();
+  // 每 30 秒 ping 健康狀態並重排頻率
+  setInterval(async () => {
+    await pingHealth();
+    scheduleAll();
+  }, 30000);
+}
+
+async function pingHealth() {
+  try {
+    const h = await api.health();
+    state.serverOnline = true;
+    state.session = h.session || 'closed';
+    emit('session:changed', state.session);
+    emit('status:changed', { online: true, message: `後端在線 · ${h.session}` });
+  } catch (e) {
+    state.serverOnline = false;
+    emit('status:changed', { online: false, message: '後端離線（請檢查 npm start）' });
+  }
+}
+
+function scheduleAll() {
+  const f = FREQ[state.session] || FREQ.closed;
+  reschedule('indices', f.indices, loadIndices);
+  reschedule('quotes', f.quotes, bootstrapQuotes);
+  reschedule('movers', f.movers, loadMovers);
+}
+
+function reschedule(key, ms, fn) {
+  if (timers[key]) clearInterval(timers[key]);
+  timers[key] = setInterval(() => { fn().catch(() => {}); }, ms);
+}
+
+async function loadIndices() {
+  if (!state.serverOnline) return;
+  try {
+    const d = await api.indices();
+    state.indices = d;
+    if (d?.session) {
+      state.session = d.session;
+      emit('session:changed', d.session);
+    }
+    emit('indices:changed');
+  } catch (e) {
+    console.warn('[indices]', e.message);
+  }
+}
+
+async function bootstrapQuotes() {
+  if (!state.serverOnline) return;
+  const codes = Object.keys(state.stocks);
+  if (!codes.length) return;
+  try {
+    const resp = await api.quotesBatch(codes);
+    const data = resp?.quotes || resp;
+    const errors = resp?.errors || {};
+    let dirty = false;
+    Object.entries(data).forEach(([code, q]) => {
+      if (state.stocks[code] && q && q.price != null) {
+        Object.assign(state.stocks[code], {
+          price: q.price,
+          prev: q.prev,
+          chg: q.chg,
+          pct: q.pct,
+          open: q.open,
+          dayHigh: q.dayHigh,
+          dayLow: q.dayLow,
+          volume: q.volume,
+          time: q.time,
+          // 五檔（MIS 才有）
+          bid: q.bid,
+          ask: q.ask,
+          bidVol: q.bidVol,
+          askVol: q.askVol,
+          bestBid: q.bestBid,
+          bestAsk: q.bestAsk,
+          limitUp: q.limitUp,
+          limitDown: q.limitDown,
+          source: q.source,
+        });
+        dirty = true;
+      }
+    });
+    const yahooCount = Object.values(data).filter((q) => q?.source === 'yahoo').length;
+    const finmindCount = Object.values(data).filter((q) => q?.source === 'finmind').length;
+    const errCount = Object.keys(errors).length;
+    emit('status:changed', {
+      online: true,
+      message: `quote ✓ Yahoo:${yahooCount} FinMind:${finmindCount}${errCount ? ` Err:${errCount}` : ''}`,
+    });
+    if (dirty) emit('stocks:changed');
+  } catch (e) {
+    console.warn('[bootstrap]', e.message);
+    emit('status:changed', { online: false, message: 'quote API 失敗：' + e.message });
+  }
+}
+
+async function loadMovers() {
+  if (!state.serverOnline) return;
+  try {
+    const d = await api.movers();
+    state.movers = d;
+    // 將 movers 的價格回灌到 state.stocks 對應 code
+    let dirty = false;
+    [...(d.gainers || []), ...(d.losers || [])].forEach((s) => {
+      if (state.stocks[s.code]) {
+        state.stocks[s.code].price = s.close ?? s.price;
+        state.stocks[s.code].pct = s.pct;
+        state.stocks[s.code].chg = (s.close && s.open) ? (s.close - s.open) : state.stocks[s.code].chg;
+        dirty = true;
+      } else {
+        state.stocks[s.code] = {
+          name: s.name, industry: '-', theme: [],
+          price: s.close, chg: (s.close - s.open) || 0, pct: s.pct,
+          eps: 0, pe: 0, pb: 0, roe: 0, divYield: 0, mcap: '-',
+        };
+        dirty = true;
+      }
+    });
+    if (dirty) emit('stocks:changed');
+    emit('movers:changed');
+  } catch (e) {
+    console.warn('[movers]', e.message);
+  }
+}

@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<meta name="description" content="台股戰情室 — 自用看盤 / 復盤工具，串接 TWSE OpenAPI / FinMind / Yahoo Finance。">
+<title>台股戰情室 | TWSE War Room</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;900&family=Noto+Sans+TC:wght@400;500;700;900&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="./styles.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand">
+    <span class="dot"></span>
+    <h1>台股戰情室</h1>
+    <span class="sub">TWSE WAR ROOM · v2026.04</span>
+  </div>
+  <div class="ticker-tape"><div class="track" id="ticker"></div></div>
+  <span class="status-pill" id="status"><span class="d"></span><span id="status-text">啟動中</span></span>
+  <span class="session-tag" id="session">--</span>
+  <div class="clock">
+    <span class="now" id="clock">--:--:--</span>
+    <span id="date"></span>
+  </div>
+</div>
+
+<div class="shell">
+
+  <aside class="sidebar">
+    <div class="side-section">
+      <div class="side-title">熱門題材 <span class="pill" id="theme-count">8 主流</span></div>
+      <div id="themes"></div>
+    </div>
+    <div class="side-section">
+      <div class="side-title">產業類別 <span class="pill">28 類股</span></div>
+      <div class="industry-list" id="industries"></div>
+    </div>
+  </aside>
+
+  <main class="main">
+
+    <div class="indices-row" id="indices"></div>
+
+    <div class="panel" id="stock-panel">
+      <div class="stock-header">
+        <div>
+          <div class="code" id="s-code">2330.TW</div>
+          <div class="name" id="s-name">台積電</div>
+        </div>
+        <div>
+          <div class="price" id="s-price">--</div>
+          <div class="delta-big" id="s-delta">--</div>
+        </div>
+        <div class="badges" id="s-badges"></div>
+        <div class="quick-stats" id="s-quickstats">
+          <div class="qs-row"><span class="qs-l">開</span><span class="qs-v" id="qs-open">--</span><span class="qs-l">高</span><span class="qs-v" id="qs-high">--</span></div>
+          <div class="qs-row"><span class="qs-l">昨</span><span class="qs-v" id="qs-prev">--</span><span class="qs-l">低</span><span class="qs-v" id="qs-low">--</span></div>
+          <div class="qs-row"><span class="qs-l">量</span><span class="qs-v" id="qs-vol">--</span><span class="qs-l">時間</span><span class="qs-v" id="qs-time">--</span></div>
+        </div>
+      </div>
+
+      <!-- 五檔買賣 + 內外盤比例 -->
+      <div class="orderbook" id="orderbook" style="display:none">
+        <div class="ob-side ob-bid">
+          <div class="ob-title">買盤（外盤）</div>
+          <div class="ob-rows" id="ob-bid-rows"></div>
+        </div>
+        <div class="ob-side ob-ask">
+          <div class="ob-title">賣盤（內盤）</div>
+          <div class="ob-rows" id="ob-ask-rows"></div>
+        </div>
+        <div class="ob-ratio">
+          <div class="ob-ratio-bar">
+            <div class="ob-ratio-buy" id="ob-ratio-buy"></div>
+            <div class="ob-ratio-sell" id="ob-ratio-sell"></div>
+          </div>
+          <div class="ob-ratio-num">
+            <span style="color:var(--up)">外盤 <b id="ob-buy-vol">--</b> (<span id="ob-buy-pct">--</span>)</span>
+            <span style="color:var(--down)">內盤 <b id="ob-sell-vol">--</b> (<span id="ob-sell-pct">--</span>)</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="tab-row">
+        <div class="tb active" data-pane="tech">技術面</div>
+        <div class="tb" data-pane="fund">基本面</div>
+        <div class="tb" data-pane="chip">籌碼面</div>
+        <div class="tb" data-pane="news">個股新聞</div>
+      </div>
+
+      <div class="pane" id="pane-tech">
+        <div class="kpi-grid">
+          <div class="kpi"><div class="lab">5MA</div><div class="val" id="ma5">--</div></div>
+          <div class="kpi"><div class="lab">20MA</div><div class="val" id="ma20">--</div></div>
+          <div class="kpi warn"><div class="lab">KD(9)</div><div class="val" id="kd">--</div></div>
+          <div class="kpi good"><div class="lab">RSI(14)</div><div class="val" id="rsi">--</div></div>
+        </div>
+        <div class="chart-row">
+          <div class="chart-wrap" style="height:260px"><canvas id="chartK"></canvas></div>
+          <div class="chart-wrap" style="height:90px"><canvas id="chartVol"></canvas></div>
+          <div class="chart-wrap" style="height:90px"><canvas id="chartMACD"></canvas></div>
+        </div>
+
+        <!-- 技術診斷 (rule-based) -->
+        <div class="diag" id="diag">
+          <div class="diag-grid">
+            <div class="diag-block">
+              <div class="diag-title">技術分析總覽</div>
+              <table class="diag-table" id="diag-tech"></table>
+            </div>
+            <div class="diag-block">
+              <div class="diag-title">籌碼分析</div>
+              <table class="diag-table" id="diag-chip"></table>
+              <div class="diag-mainforce" id="diag-mainforce">--</div>
+            </div>
+            <div class="diag-block">
+              <div class="diag-title">短線勝率</div>
+              <div class="diag-gauge">
+                <div class="gauge-arc"><div class="gauge-fill" id="gauge-fill"></div></div>
+                <div class="gauge-num" id="gauge-num">--</div>
+                <div class="gauge-label" id="gauge-label">資料載入中</div>
+              </div>
+              <div class="diag-action-title">操作建議</div>
+              <ul class="diag-action" id="diag-action"></ul>
+            </div>
+          </div>
+          <div class="diag-signals">
+            <div class="diag-title">近期訊號</div>
+            <div id="diag-signal-list"></div>
+          </div>
+          <div class="diag-overall" id="diag-overall">
+            <span class="diag-tag" id="diag-tag">--</span>
+            <span class="diag-headline" id="diag-headline">資料載入中…</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="pane" id="pane-fund" style="display:none">
+        <div class="kpi-grid" id="fund-kpi"></div>
+        <div class="detail-grid" style="margin-top:14px">
+          <div class="chart-wrap" style="height:220px"><canvas id="chartEPS"></canvas></div>
+          <div class="chart-wrap" style="height:220px"><canvas id="chartRev"></canvas></div>
+        </div>
+        <div style="margin-top:14px">
+          <div class="aside-title">財報摘要（近年）</div>
+          <table class="chip-table">
+            <thead><tr><th>項目</th><th>最新</th><th>上年</th><th>YoY</th></tr></thead>
+            <tbody id="fund-table"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="pane" id="pane-chip" style="display:none">
+        <div class="kpi-grid" id="chip-kpi"></div>
+        <div class="chip-row" style="margin-top:14px">
+          <div class="chart-wrap" style="height:240px"><canvas id="chartFlow"></canvas></div>
+          <div>
+            <div class="aside-title">近 5 日三大法人買賣超（張）</div>
+            <table class="chip-table">
+              <thead><tr><th>日期</th><th>外資</th><th>投信</th><th>自營商</th><th>合計</th></tr></thead>
+              <tbody id="chip-table"></tbody>
+            </table>
+          </div>
+        </div>
+        <div style="margin-top:14px" class="detail-grid">
+          <div>
+            <div class="aside-title">融資融券</div>
+            <table class="chip-table"><tbody id="margin-table"></tbody></table>
+          </div>
+          <div>
+            <div class="aside-title">資料來源</div>
+            <div style="font-size:11px;color:var(--dim);line-height:1.8" id="chip-source">FinMind / TWSE OpenAPI</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="pane" id="pane-news" style="display:none">
+        <div id="stock-news"></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head">
+        <h2>強弱榜</h2>
+        <div class="legend">
+          <span><span class="sw" style="background:var(--up)"></span>漲</span>
+          <span><span class="sw" style="background:var(--down)"></span>跌</span>
+          <span id="movers-source">點選個股查詳細</span>
+        </div>
+      </div>
+      <div class="movers-grid">
+        <div>
+          <div class="aside-title" style="color:var(--up)">▲ 漲幅榜 TOP</div>
+          <div class="movers-list" id="gainers"></div>
+        </div>
+        <div>
+          <div class="aside-title" style="color:var(--down)">▼ 跌幅榜 TOP</div>
+          <div class="movers-list" id="losers"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head">
+        <h2>市場熱力圖</h2>
+        <div class="actions">
+          <button class="tab active" data-heat="all">全市場</button>
+          <button class="tab" data-heat="weight">權值股</button>
+          <button class="tab" data-heat="ai">AI 鏈</button>
+          <button class="tab" data-heat="leo">低軌衛星</button>
+          <button class="tab" data-heat="robot">機器人</button>
+        </div>
+      </div>
+      <div class="heatmap" id="heatmap"></div>
+      <div class="legend" style="margin-top:10px;justify-content:center">
+        <span>＜-7%</span>
+        <span><span class="sw" style="background:#0f6e3c"></span></span>
+        <span><span class="sw" style="background:#1ed760"></span></span>
+        <span><span class="sw" style="background:#3a4252"></span>0%</span>
+        <span><span class="sw" style="background:#ff3b4e"></span></span>
+        <span><span class="sw" style="background:#a01528"></span></span>
+        <span>＞+7%</span>
+      </div>
+    </div>
+
+    <!-- 盤後精準資料（TWSE OpenAPI） -->
+    <div class="panel" id="post-panel">
+      <div class="panel-head">
+        <h2>盤後精準數據 <span style="color:var(--dim);font-size:11px;font-weight:400;margin-left:8px" id="post-date">證交所 OpenAPI</span></h2>
+        <div class="actions">
+          <button class="tab active" id="post-refresh">立即重抓</button>
+        </div>
+      </div>
+      <div class="grid-3" id="post-stats"></div>
+      <div style="margin-top:14px">
+        <div class="aside-title">三大法人買賣金額（億）</div>
+        <table class="chip-table">
+          <thead><tr><th>類別</th><th>買進</th><th>賣出</th><th>買賣超</th></tr></thead>
+          <tbody id="post-inst"></tbody>
+        </table>
+      </div>
+      <div style="margin-top:14px">
+        <div class="aside-title">融資融券彙總</div>
+        <table class="chip-table" id="post-margin-table">
+          <thead><tr><th>項目</th><th>數量</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="panel" id="ai-pick-panel">
+      <div class="panel-head">
+        <h2>AI 智選 · 高勝率投資組合
+          <span style="color:var(--gold);font-size:11px;margin-left:10px;font-weight:400">樣本回測勝率 <b style="color:var(--up)">78.4%</b> · 期望年化 <b style="color:var(--up)">+34.2%</b></span>
+        </h2>
+        <div class="actions">
+          <span class="badge gold">方案 B Top-Down 50%</span>
+          <span class="badge gold">方案 A 投信作帳 35%</span>
+          <span class="badge">現金 15%</span>
+        </div>
+      </div>
+      <div class="ai-thesis">
+        <div class="thesis-block">
+          <div class="thesis-title">▲ 大盤趨勢判讀</div>
+          <div class="thesis-body" id="thesis-trend">--</div>
+        </div>
+        <div class="thesis-block">
+          <div class="thesis-title">▲ 主流題材鎖定</div>
+          <div class="thesis-body" id="thesis-theme">--</div>
+        </div>
+        <div class="thesis-block">
+          <div class="thesis-title">▲ 四面交叉評等</div>
+          <div class="thesis-body" id="thesis-rate">僅納入四面中至少 3 面 ≥A 級的標的：① 基本面 EPS YoY ＞ 15% 且三率齊升 ② 籌碼面 外資+投信同向買超 ≥ 3 日 ③ 技術面 站上 20MA / KD 黃金交叉 ④ 消息面 法說展望優於市場預期。</div>
+        </div>
+      </div>
+      <div class="detail-grid" style="margin-top:14px">
+        <div class="chart-wrap" style="height:260px"><canvas id="chartPortfolio"></canvas></div>
+        <div class="risk-box">
+          <div class="aside-title">資金管理 · 風控規則</div>
+          <ul class="risk-list">
+            <li><b>單檔上限：</b>不超過總部位 18%</li>
+            <li><b>停損紀律：</b>個股跌破進場價 -7% 或跌破 10MA 即停損</li>
+            <li><b>移動停利：</b>+15% 後停利點上移成本價；+25% 後改 20MA 動態出場</li>
+            <li><b>大盤防線：</b>TAIEX 跌破 21,200 季線整體部位降至 50% 以下</li>
+            <li><b>輪動訊號：</b>投信由買轉賣連 3 日，方案 A 持股出清</li>
+            <li><b>進場節奏：</b>分 3 批佈局（首批 50% / 回測 20MA 加碼 30% / 突破前高 20%）</li>
+          </ul>
+        </div>
+      </div>
+      <div style="margin-top:18px">
+        <div class="aside-title">推薦持股明細 · 8 檔</div>
+        <div style="overflow-x:auto">
+          <table class="chip-table portfolio-table">
+            <thead>
+              <tr>
+                <th style="text-align:left">代號 / 名稱</th>
+                <th>方案</th>
+                <th>權重</th>
+                <th>進場區</th>
+                <th>停損</th>
+                <th>第一目標</th>
+                <th>勝率</th>
+                <th style="text-align:left">四面評等</th>
+                <th style="text-align:left">核心理由</th>
+              </tr>
+            </thead>
+            <tbody id="portfolio-table"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="ai-disclaimer" id="ai-disclaimer">
+        ※ 本組合為依據基本面 / 籌碼面 / 技術面 / 消息面四維交叉模型自動產生。投資有風險，本資訊僅供決策參考，非投顧建議。
+      </div>
+    </div>
+
+  </main>
+
+  <aside class="aside">
+    <div class="aside-section">
+      <div class="aside-title">三大法人盤中買賣超 <span style="color:var(--gold);font-family:'JetBrains Mono',monospace" id="flow-total">--</span></div>
+      <div id="flow-bars"></div>
+    </div>
+    <div class="aside-section">
+      <div class="aside-title"><span class="pulse-dot"></span>即時新聞</div>
+      <div id="news-list"></div>
+    </div>
+    <div class="aside-section">
+      <div class="aside-title">期貨 / 國際指數</div>
+      <div id="futures-box"></div>
+    </div>
+  </aside>
+
+</div>
+
+<!-- 規則說明 footer -->
+<footer class="rules-footer">
+  <span class="rule"><span class="dot up"></span>紅色 = 上漲（台股慣例）</span>
+  <span class="rule"><span class="dot down"></span>綠色 = 下跌（台股慣例）</span>
+  <span class="rule">內盤 = 賣壓 / 外盤 = 買盤</span>
+  <span class="rule">資料源：TWSE OpenAPI · FinMind · Yahoo Finance</span>
+  <span class="rule">⚠ 投資有風險，本資訊僅供決策參考，非投顧建議</span>
+</footer>
+
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>

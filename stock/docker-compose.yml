@@ -1,0 +1,19 @@
+services:
+  twse-warroom:
+    build: .
+    container_name: twse-warroom
+    restart: unless-stopped
+    ports:
+      - "5174:5174"
+    environment:
+      - PORT=5174
+      - FINMIND_TOKEN=${FINMIND_TOKEN}
+      - CACHE_TTL_HISTORICAL_MS=${CACHE_TTL_HISTORICAL_MS:-86400000}
+      - CACHE_TTL_REALTIME_MS=${CACHE_TTL_REALTIME_MS:-5000}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:5174/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    # 如果要加 nginx 或自己掛憑證，把這個 service 放後面
+    # 或加 traefik labels 自動 HTTPS

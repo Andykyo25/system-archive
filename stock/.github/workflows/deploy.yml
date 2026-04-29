@@ -1,0 +1,61 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:        # 也允許手動觸發
+
+jobs:
+  # ─── 語法檢查（無 ESLint，只用 node --check）───
+  syntax-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Syntax check
+        run: |
+          node --check server/server.js
+          find server src -name '*.js' -exec node --check {} \;
+
+  # ─── 部署到自家 Linux server（透過 SSH + docker compose）───
+  # 需要在 GitHub Repo Settings → Secrets and variables → Actions 設定：
+  #   DEPLOY_HOST       你的伺服器 IP / domain
+  #   DEPLOY_USER       SSH 使用者
+  #   DEPLOY_PATH       server 上的 repo 路徑（例：/srv/stock）
+  #   SSH_PRIVATE_KEY   部署用的 SSH key（整個 -----BEGIN ...----- 內容）
+  #   FINMIND_TOKEN     你的 FinMind token
+  deploy:
+    needs: syntax-check
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Sync source
+        run: |
+          rsync -az --delete \
+            --exclude='.git' --exclude='node_modules' --exclude='.env' \
+            ./ "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:${{ secrets.DEPLOY_PATH }}/"
+
+      - name: Write .env on server
+        run: |
+          ssh "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" "cat > ${{ secrets.DEPLOY_PATH }}/.env" <<EOF
+          PORT=5174
+          FINMIND_TOKEN=${{ secrets.FINMIND_TOKEN }}
+          CACHE_TTL_HISTORICAL_MS=86400000
+          CACHE_TTL_REALTIME_MS=5000
+          EOF
+
+      - name: Restart docker compose
+        run: |
+          ssh "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
+            "cd ${{ secrets.DEPLOY_PATH }} && docker compose up -d --build && docker compose ps"
