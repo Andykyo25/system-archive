@@ -2,6 +2,7 @@ import { state, on, emit } from './state.js';
 import { start as startScheduler } from './scheduler.js';
 import * as topbar from './ui/topbar.js';
 import * as search from './ui/search.js';
+import * as drawer from './ui/drawer.js';
 import * as sidebar from './ui/sidebar.js';
 import * as indices from './ui/indices.js';
 import * as heatmap from './ui/heatmap.js';
@@ -16,6 +17,7 @@ import * as postPanel from './ui/postPanel.js';
 function boot() {
   topbar.mount();
   search.mount();
+  drawer.mount();
   sidebar.mount();
   indices.mount();
   heatmap.mount();

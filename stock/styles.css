@@ -174,6 +174,12 @@ button{font-family:inherit;color:inherit;background:none;border:0;cursor:pointer
 #post-panel .stat .v{font-family:'JetBrains Mono',monospace;font-size:20px;font-weight:700;margin-top:4px}
 #post-panel .stat .v.up{color:var(--up)} #post-panel .stat .v.down{color:var(--down)}
 
+/* ── Drawer toggle 按鈕（預設手機才顯示） ── */
+.drawer-toggle{display:none;background:var(--bg-3);border:1px solid var(--line);color:var(--txt);width:36px;height:36px;border-radius:6px;font-size:18px;line-height:1;cursor:pointer;flex-shrink:0;padding:0}
+.drawer-toggle:hover{background:#1a2332;border-color:var(--gold)}
+.drawer-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:80;opacity:0;pointer-events:none;transition:opacity .2s}
+.drawer-overlay.show{opacity:1;pointer-events:auto}
+
 /* Responsive */
 @media(max-width:1280px){
   .shell{grid-template-columns:200px 1fr 280px}
@@ -181,9 +187,163 @@ button{font-family:inherit;color:inherit;background:none;border:0;cursor:pointer
   .heatmap{grid-template-columns:repeat(6,1fr)}
   #post-panel .grid-3{grid-template-columns:1fr 1fr}
 }
+
+/* ─────────── 平板 / 小螢幕 (≤960) ─────────── */
 @media(max-width:960px){
   .shell{grid-template-columns:1fr}
-  .sidebar,.aside{display:none}
+  .drawer-toggle{display:inline-block}
+  /* sidebar / aside 改成可滑出 drawer */
+  .sidebar,.aside{
+    position:fixed;top:0;height:100vh;width:78%;max-width:320px;
+    z-index:90;overflow-y:auto;
+    transform:translateX(-100%);transition:transform .25s ease;
+    padding:60px 14px 14px 14px;
+  }
+  .aside{right:0;left:auto;transform:translateX(100%);border-left:1px solid var(--line);border-right:none}
+  .sidebar.open{transform:translateX(0)}
+  .aside.open{transform:translateX(0)}
+  .sidebar,.aside{display:block}
+  /* 主畫面 padding 縮小 */
+  .main{padding:12px}
+}
+
+/* ─────────── 手機 (≤768) ─────────── */
+@media(max-width:768px){
+  /* Topbar 改成可換行 */
+  .topbar{flex-wrap:wrap;padding:8px 12px;gap:8px}
+  .brand h1{font-size:14px}
+  .brand .sub{display:none}
+  .ticker-tape{order:99;flex-basis:100%;height:28px}
+  .ticker-tape .item{font-size:11px}
+  .search-box{flex:1;min-width:0;width:auto}
+  .search-box input{font-size:12px}
+  .clock{font-size:11px}
+  .clock .now{font-size:13px}
+  .session-tag{padding:2px 6px;font-size:10px}
+  .status-pill{font-size:10px;padding:3px 8px}
+
+  /* 首頁指數卡 4 個改成 2 欄 */
+  .indices-row{grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:12px}
+  .index-card{padding:10px}
+  .index-card .val{font-size:18px}
+  .index-card .delta{font-size:11px}
+  .index-card .mini{height:28px}
+
+  /* Panel padding 縮小 */
+  .panel{padding:10px;margin-bottom:10px;border-radius:8px}
+  .panel-head{flex-wrap:wrap;gap:8px;margin-bottom:10px}
+  .panel-head h2{font-size:13px}
+  .panel-head .actions{gap:6px;flex-wrap:wrap}
+  .tab{padding:5px 10px;font-size:10px}
+
+  /* 個股 header 直式 */
+  .stock-header{gap:10px;padding-bottom:10px}
+  .stock-header .name{font-size:18px}
+  .stock-header .price{font-size:24px}
+  .stock-header .delta-big{font-size:12px}
+  .quick-stats{order:99;grid-column:span 2;width:100%;margin-left:0;font-size:10px;padding:6px 10px}
+  .quick-stats .qs-row{grid-template-columns:auto 1fr auto 1fr;gap:6px}
+
+  /* 五檔買賣盤縮小 */
+  .orderbook{padding:8px;gap:8px;grid-template-columns:1fr 1fr}
+  .ob-title{font-size:9px}
+  .ob-row{font-size:10px;padding:2px 6px;grid-template-columns:1fr 50px}
+
+  /* KPI grid 由 4 欄變 2 欄 */
+  .kpi-grid{grid-template-columns:repeat(2,1fr);gap:6px}
+  .kpi{padding:8px}
+  .kpi .lab{font-size:9px}
+  .kpi .val{font-size:13px}
+
+  /* Tab 列縮小 */
+  .tab-row{gap:0;overflow-x:auto;flex-wrap:nowrap}
+  .tab-row .tb{padding:6px 12px;font-size:11px;flex-shrink:0}
+
+  /* K 線圖縮小 */
+  .chart-wrap{padding:6px}
+  #pane-tech .chart-row > div:first-child{height:200px !important}
+  #pane-tech .chart-row > div:nth-child(2),
+  #pane-tech .chart-row > div:nth-child(3){height:70px !important}
+
+  /* 技術診斷區改單欄 */
+  .diag-grid{grid-template-columns:1fr;gap:8px}
+  .diag-block{padding:10px}
+
+  /* 短線勝率儀表縮小 */
+  .gauge-arc{width:120px;height:60px}
+  .gauge-num{font-size:20px}
+
+  /* 整體結論大字縮小 */
+  .diag-overall{flex-direction:column;align-items:flex-start;gap:8px;padding:10px}
+  .diag-headline{font-size:14px}
+
+  /* 強弱榜 movers 改單欄 */
+  .movers-grid{grid-template-columns:1fr;gap:8px}
+  .mover{padding:6px 8px}
+  .mover .info .n{font-size:12px}
+
+  /* 熱力圖 4 欄 */
+  .heatmap{grid-template-columns:repeat(4,1fr);gap:3px}
+  .heat{padding:6px 4px}
+  .heat .code{font-size:9px}
+  .heat .name{font-size:10px}
+  .heat .pct{font-size:10px}
+
+  /* 排行榜 / AI 智選表格：手機強制橫向滑動 + 縮小字 */
+  .ranking-table,.portfolio-table{font-size:11px;min-width:760px}
+  .ranking-table th,.portfolio-table th{font-size:9px;padding:6px 4px}
+  .ranking-table td,.portfolio-table td{padding:6px 4px}
+  .ranking-table .rk-sub{flex-direction:column;gap:1px}
+  .ranking-table .rk-sub span{padding:1px 3px;font-size:9px}
+
+  /* 控制列（預算/勝率輸入）改成換行 */
+  #ranking-panel .panel-head .actions,
+  #ai-pick-panel .panel-head .actions{width:100%;flex-direction:column;align-items:stretch;gap:6px}
+  #ranking-panel .panel-head label,
+  #ai-pick-panel .panel-head label{display:flex;align-items:center;justify-content:space-between;font-size:11px}
+  #ranking-panel input,#ai-pick-panel input,
+  #ranking-panel select,#ai-pick-panel select{width:auto;flex:0 0 140px}
+
+  /* 盤後精準 stat 改 1 欄 */
+  #post-panel .grid-3{grid-template-columns:1fr;gap:8px}
+  #post-panel .stat .v{font-size:16px}
+
+  /* AI 智選圓餅圖 + 風控規則 改單欄 */
+  .detail-grid{grid-template-columns:1fr;gap:10px}
+  .ai-thesis{grid-template-columns:1fr;gap:8px}
+  .thesis-block{padding:10px}
+  .thesis-body{font-size:11px}
+
+  /* Footer 改成多行 */
+  .rules-footer{padding:10px;gap:6px 14px;font-size:10px;flex-direction:column;align-items:flex-start}
+  .rules-footer .rule{display:inline-flex}
+
+  /* 個股新聞 / aside 內 news-item 縮小 */
+  .news-item{padding:8px}
+  .news-item .title{font-size:11px}
+
+  /* Sidebar drawer 內題材/產業卡縮小 */
+  .theme-card{padding:8px;margin-bottom:6px}
+  .theme-card .tname{font-size:12px}
+  .theme-card .tdesc{font-size:9px}
+  .industry-list button,.industry-item .industry-head{padding:6px 8px;font-size:11px}
+}
+
+/* ─────────── 超小手機 (≤480) ─────────── */
+@media(max-width:480px){
+  /* 指數卡單欄 */
+  .indices-row{grid-template-columns:1fr;gap:6px}
+  /* 熱力圖 3 欄 */
+  .heatmap{grid-template-columns:repeat(3,1fr)}
+  /* KPI grid 全部單欄 OR 雙欄 */
+  .kpi-grid{grid-template-columns:repeat(2,1fr)}
+  /* 五檔上下排 */
+  .orderbook{grid-template-columns:1fr}
+  /* 個股 header 名稱 */
+  .stock-header .name{font-size:16px}
+  .stock-header .price{font-size:20px}
+  /* 排行榜表格更小 */
+  .ranking-table{min-width:680px;font-size:10px}
 }
 
 /* AI Pick */
