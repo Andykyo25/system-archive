@@ -26,5 +26,15 @@ export const api = {
   shareholders: (code) => lcMemo(`shrholders:${code}`, 3600e3, () => call(`/shareholders/${code}`)),
   postmarket: () => call('/postmarket/summary'),
   movers: () => call('/movers'),
-  news: (category = 'tw_stock', limit = 20) => call(`/news?category=${category}&limit=${limit}`),
+  news: (category = 'tw_stock', limit = 20, keyword = '') =>
+    call(`/news?category=${category}&limit=${limit}${keyword ? `&keyword=${encodeURIComponent(keyword)}` : ''}`),
+  ranking: (codes, opts = {}) => {
+    const q = new URLSearchParams({
+      codes: codes.join(','),
+      limit: String(opts.limit || 10),
+      ...(opts.minWinRate ? { minWinRate: String(opts.minWinRate) } : {}),
+      ...(opts.maxBudget ? { maxBudget: String(opts.maxBudget) } : {}),
+    });
+    return call(`/ranking?${q}`);
+  },
 };

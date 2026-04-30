@@ -3,12 +3,12 @@ import { state, emit } from './state.js';
 import { api } from './data/api.js';
 import { stocks as mockStocks } from './data/mock.js';
 
-// 主源 TWSE MIS（無 rate limit），所以盤中可以較積極
-// 國際指數因為走 Yahoo（429 風險），server 端 cache 60 秒，前端打多少都一樣
+// 主源 TWSE MIS（無 rate limit），盤中積極 polling
+// 國際指數走 Yahoo（429 風險），server cache 60 秒，前端打多少都一樣
 const FREQ = {
-  live:   { indices: 5000,   quotes: 10000, movers: 30000 }, // 盤中：指數 5s、quote 10s、movers 30s
-  pre:    { indices: 15000,  quotes: 30000, movers: 60000 },
-  after:  { indices: 60000,  quotes: 60000, movers: 60000 },
+  live:   { indices: 3000,   quotes: 3000,  movers: 30000 }, // 盤中：指數 3s、quote 3s、movers 30s
+  pre:    { indices: 10000,  quotes: 15000, movers: 60000 },
+  after:  { indices: 30000,  quotes: 60000, movers: 60000 },
   closed: { indices: 300000, quotes: 600000, movers: 600000 },
 };
 

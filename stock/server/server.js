@@ -9,6 +9,7 @@ import * as twseMis from './providers/twseMis.js';
 import * as finmind from './providers/finmind.js';
 import * as yahoo from './providers/yahoo.js';
 import * as cnyes from './providers/cnyes.js';
+import { diagnose } from '../src/utils/diagnose.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -137,7 +138,8 @@ app.get('/api/diag', async (_req, res) => {
 // SOX / NDX / SPX：Yahoo
 app.get('/api/indices', async (_req, res) => {
   try {
-    const data = await memo('indices', TTL_LIVE, async () => {
+    // indices cache 1.5 秒（前端打 3 秒，server 確保不過頻打外部 API）
+    const data = await memo('indices', 1500, async () => {
       const session = getSession();
       // 台股
       const tw = await chain(
@@ -259,9 +261,9 @@ app.get('/api/quotes/batch', async (req, res) => {
     const out = {};
     const errors = {};
 
-    // ─ 主源：TWSE MIS（cache 3 秒，比 Yahoo TTL 5 秒短，因為 MIS 即時度更高）─
+    // ─ 主源：TWSE MIS（cache 1 秒，盡量即時。MIS 無 rate limit）─
     try {
-      const misResults = await memo(`mis:${codes.join(',')}`, 3000, () => twseMis.quotes(codes, 'tse'));
+      const misResults = await memo(`mis:${codes.join(',')}`, 1000, () => twseMis.quotes(codes, 'tse'));
       misResults.forEach((r) => {
         if (!r || r.error || r.price == null) {
           if (r?.error) errors[r.code] = r.error;
@@ -504,6 +506,106 @@ app.get('/api/movers', async (_req, res) => {
       }
     });
     ok(res, data);
+  } catch (e) { fail(res, e); }
+});
+
+// ───────────────────────── 短線勝率排行榜 ─────────────────────────
+// 對給定 codes 並行跑 diagnose，按 winRate 排序。
+// 為了保 FinMind quota，整體結果 cache 5 分鐘。
+app.get('/api/ranking', async (req, res) => {
+  const codes = (req.query.codes || '').split(',').map((s) => s.trim()).filter(Boolean);
+  const limit = +(req.query.limit || 10);
+  const minWinRate = +(req.query.minWinRate || 0);
+  const maxBudget = +(req.query.maxBudget || 0); // 單張預算上限（>0 才篩選）
+  if (!codes.length) return ok(res, []);
+
+  try {
+    const cacheKey = `ranking:${codes.join(',')}`;
+    const data = await memo(cacheKey, 5 * 60 * 1000, async () => {
+      const start = new Date(Date.now() - 90 * 86400e3).toISOString().slice(0, 10);
+
+      // 1. 取得即時報價（MIS 一次拿，含當前 close）
+      const misMap = {};
+      try {
+        const misResults = await memo(`mis:${codes.join(',')}`, 1000, () => twseMis.quotes(codes, 'tse'));
+        misResults.forEach((r) => { if (r?.code && r.price != null) misMap[r.code] = r; });
+      } catch { /* MIS 失敗也繼續 */ }
+
+      // 2. 並行抓 K 線 + 三大法人 + 流通股數，跑 diagnose
+      const tasks = codes.map(async (code) => {
+        try {
+          const [klineRaw, instRaw, shInfo] = await Promise.all([
+            memo(`kline:${code}:90`, 60000, () => finmind.stockPrice(code, start)),
+            memo(`inst:${code}`, TTL_HIST / 24, () => finmind.institutional(code, start)).catch(() => []),
+            memo(`shares:${code}`, TTL_HIST, () => finmind.sharesOutstanding(code).catch(() => null)),
+          ]);
+          if (!klineRaw || klineRaw.length < 30) return null;
+          const k = klineRaw.map((r) => ({
+            open: +r.open,
+            high: +(r.max ?? r.high),
+            low: +(r.min ?? r.low),
+            close: +r.close,
+            vol: +(r.Trading_Volume ?? r.volume ?? 0),
+            date: r.date,
+          })).filter((d) => Number.isFinite(d.close));
+          if (k.length < 30) return null;
+
+          // 用 MIS 即時價覆蓋最後一筆 close
+          const mis = misMap[code];
+          if (mis?.price != null) {
+            const last = k[k.length - 1];
+            last.close = mis.price;
+            if (mis.high && mis.high > last.high) last.high = mis.high;
+            if (mis.low && mis.low < last.low) last.low = mis.low;
+          }
+
+          const sharesOutstanding = shInfo?.sharesOutstanding || null;
+          const d = diagnose(k, instRaw, { sharesOutstanding });
+          if (!d) return null;
+
+          const close = k[k.length - 1].close;
+          const atr = d.atr14 || close * 0.025;
+          return {
+            code,
+            close,
+            prevClose: mis?.prevClose ?? k[k.length - 2]?.close,
+            chg: mis?.chg,
+            pct: mis?.pct,
+            winRate: d.winRate,
+            score: d.score,
+            subScores: d.subScores,
+            overall: d.overall,
+            action: d.action,
+            trend: d.trend,
+            kdSignal: d.kd.signal,
+            macdSignal: d.macd.signal,
+            volSignal: d.vol.signal,
+            mainForce: d.inst.mainForce,
+            bias20: d.bias20,
+            atr14: d.atr14,
+            entry: { low: +(close - atr * 0.5).toFixed(2), high: +(close + atr * 0.5).toFixed(2) },
+            stop: +(close - 2 * atr).toFixed(0),
+            target: +(close + 3 * atr).toFixed(0),
+            signals: d.signals?.slice(0, 2),
+            costPerLot: Math.round(close * 1000), // 一張成本 = close × 1000 股
+          };
+        } catch (e) {
+          return null;
+        }
+      });
+
+      const results = (await Promise.all(tasks)).filter(Boolean);
+      // 排序：winRate 降冪
+      results.sort((a, b) => b.winRate - a.winRate);
+      return results;
+    });
+
+    // 篩選（不算進 cache，因 cache key 不含 minWinRate / maxBudget）
+    let filtered = data;
+    if (minWinRate > 0) filtered = filtered.filter((r) => r.winRate >= minWinRate);
+    if (maxBudget > 0) filtered = filtered.filter((r) => r.costPerLot <= maxBudget);
+
+    ok(res, filtered.slice(0, limit));
   } catch (e) { fail(res, e); }
 });
 

@@ -19,6 +19,11 @@
     <h1>台股戰情室</h1>
     <span class="sub">TWSE WAR ROOM · v2026.04</span>
   </div>
+  <!-- 個股搜尋 -->
+  <div class="search-box">
+    <input id="search-input" type="text" placeholder="輸入代號或名稱（如 2330 / 台積電）" autocomplete="off">
+    <div class="search-suggest" id="search-suggest" style="display:none"></div>
+  </div>
   <div class="ticker-tape"><div class="track" id="ticker"></div></div>
   <span class="status-pill" id="status"><span class="d"></span><span id="status-text">啟動中</span></span>
   <span class="session-tag" id="session">--</span>
@@ -213,6 +218,51 @@
       </div>
     </div>
 
+    <!-- 短線勝率排行榜 -->
+    <div class="panel" id="ranking-panel">
+      <div class="panel-head">
+        <h2>短線勝率排行榜
+          <span style="color:var(--dim);font-size:11px;font-weight:400;margin-left:8px">即時掃描候選池 · 5 分鐘更新</span>
+        </h2>
+        <div class="actions" style="gap:8px;align-items:center">
+          <label style="font-size:11px;color:var(--dim)">資金預算
+            <input id="rk-budget" type="number" min="0" step="10000" value="500000" style="width:90px;background:var(--bg-3);color:var(--txt);border:1px solid var(--line);padding:4px 8px;border-radius:4px;font-family:'JetBrains Mono',monospace;margin-left:4px">
+          </label>
+          <label style="font-size:11px;color:var(--dim)">最低勝率
+            <select id="rk-minwin" style="background:var(--bg-3);color:var(--txt);border:1px solid var(--line);padding:4px 8px;border-radius:4px;margin-left:4px">
+              <option value="0">不限</option>
+              <option value="50" selected>50%</option>
+              <option value="60">60%</option>
+              <option value="70">70%</option>
+            </select>
+          </label>
+          <button class="tab" id="rk-refresh">重新評估</button>
+        </div>
+      </div>
+      <div style="overflow-x:auto">
+        <table class="chip-table ranking-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th style="text-align:left">代號 / 名稱</th>
+              <th>當前價</th>
+              <th>漲跌</th>
+              <th>單張成本</th>
+              <th>勝率</th>
+              <th>趨勢/動能/量價/籌碼</th>
+              <th style="text-align:left">即時結論</th>
+              <th>進場區</th>
+              <th>停損 / 目標</th>
+            </tr>
+          </thead>
+          <tbody id="ranking-tbody">
+            <tr><td colspan="10" style="color:var(--dim);text-align:center;padding:20px">資料評估中…</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div id="ranking-info" style="margin-top:10px;font-size:11px;color:var(--dim)"></div>
+    </div>
+
     <div class="panel">
       <div class="panel-head">
         <h2>市場熱力圖</h2>
@@ -263,13 +313,31 @@
 
     <div class="panel" id="ai-pick-panel">
       <div class="panel-head">
-        <h2>AI 智選 · 高勝率投資組合
-          <span style="color:var(--gold);font-size:11px;margin-left:10px;font-weight:400">樣本回測勝率 <b style="color:var(--up)">78.4%</b> · 期望年化 <b style="color:var(--up)">+34.2%</b></span>
+        <h2>AI 智選 · 依資金配置投資組合
+          <span style="color:var(--gold);font-size:11px;margin-left:10px;font-weight:400">依勝率與預算動態挑選</span>
         </h2>
-        <div class="actions">
-          <span class="badge gold">方案 B Top-Down 50%</span>
-          <span class="badge gold">方案 A 投信作帳 35%</span>
-          <span class="badge">現金 15%</span>
+        <div class="actions" style="gap:8px;align-items:center">
+          <label style="font-size:11px;color:var(--dim)">資金總額
+            <input id="ai-budget" type="number" min="10000" step="10000" value="500000" style="width:110px;background:var(--bg-3);color:var(--txt);border:1px solid var(--line);padding:4px 8px;border-radius:4px;font-family:'JetBrains Mono',monospace;margin-left:4px">
+          </label>
+          <label style="font-size:11px;color:var(--dim)">現金保留
+            <select id="ai-cash" style="background:var(--bg-3);color:var(--txt);border:1px solid var(--line);padding:4px 8px;border-radius:4px;margin-left:4px">
+              <option value="0">0%</option>
+              <option value="10">10%</option>
+              <option value="15" selected>15%</option>
+              <option value="25">25%</option>
+              <option value="40">40%</option>
+            </select>
+          </label>
+          <label style="font-size:11px;color:var(--dim)">最低勝率
+            <select id="ai-minwin" style="background:var(--bg-3);color:var(--txt);border:1px solid var(--line);padding:4px 8px;border-radius:4px;margin-left:4px">
+              <option value="50">50%</option>
+              <option value="55" selected>55%</option>
+              <option value="60">60%</option>
+              <option value="65">65%</option>
+            </select>
+          </label>
+          <button class="tab" id="ai-rebuild">重新配置</button>
         </div>
       </div>
       <div class="ai-thesis">
@@ -278,12 +346,12 @@
           <div class="thesis-body" id="thesis-trend">--</div>
         </div>
         <div class="thesis-block">
-          <div class="thesis-title">▲ 主流題材鎖定</div>
-          <div class="thesis-body" id="thesis-theme">--</div>
+          <div class="thesis-title">▲ 配置摘要</div>
+          <div class="thesis-body" id="thesis-summary">--</div>
         </div>
         <div class="thesis-block">
-          <div class="thesis-title">▲ 四面交叉評等</div>
-          <div class="thesis-body" id="thesis-rate">僅納入四面中至少 3 面 ≥A 級的標的：① 基本面 EPS YoY ＞ 15% 且三率齊升 ② 籌碼面 外資+投信同向買超 ≥ 3 日 ③ 技術面 站上 20MA / KD 黃金交叉 ④ 消息面 法說展望優於市場預期。</div>
+          <div class="thesis-title">▲ 配置邏輯</div>
+          <div class="thesis-body">勝率排序前 N 檔，依勝率分數加權配資金。單張成本超過預算的標的自動排除（避免太貴買不起）。一張上限 = 預算 × 30%。</div>
         </div>
       </div>
       <div class="detail-grid" style="margin-top:14px">
@@ -291,38 +359,39 @@
         <div class="risk-box">
           <div class="aside-title">資金管理 · 風控規則</div>
           <ul class="risk-list">
-            <li><b>單檔上限：</b>不超過總部位 18%</li>
-            <li><b>停損紀律：</b>個股跌破進場價 -7% 或跌破 10MA 即停損</li>
-            <li><b>移動停利：</b>+15% 後停利點上移成本價；+25% 後改 20MA 動態出場</li>
-            <li><b>大盤防線：</b>TAIEX 跌破 21,200 季線整體部位降至 50% 以下</li>
-            <li><b>輪動訊號：</b>投信由買轉賣連 3 日，方案 A 持股出清</li>
-            <li><b>進場節奏：</b>分 3 批佈局（首批 50% / 回測 20MA 加碼 30% / 突破前高 20%）</li>
+            <li><b>單檔上限：</b>不超過已投入資金 30%</li>
+            <li><b>停損紀律：</b>個股跌破 -2 ATR 或跌破 10MA</li>
+            <li><b>移動停利：</b>達 +3 ATR 後停利點上移成本價；超過後改 20MA 動態出場</li>
+            <li><b>大盤防線：</b>TAIEX 跌破季線整體部位降至 50% 以下</li>
+            <li><b>進場節奏：</b>分 3 批（首批 50% / 回測支撐加碼 30% / 突破前高 20%）</li>
           </ul>
         </div>
       </div>
       <div style="margin-top:18px">
-        <div class="aside-title">推薦持股明細 · 8 檔</div>
+        <div class="aside-title">推薦持股明細 · <span id="ai-count">--</span> 檔</div>
         <div style="overflow-x:auto">
           <table class="chip-table portfolio-table">
             <thead>
               <tr>
                 <th style="text-align:left">代號 / 名稱</th>
-                <th>方案</th>
-                <th>權重</th>
+                <th>當前價</th>
+                <th>張數</th>
+                <th>投入資金</th>
+                <th>佔比</th>
+                <th>勝率</th>
                 <th>進場區</th>
                 <th>停損</th>
-                <th>第一目標</th>
-                <th>勝率</th>
-                <th style="text-align:left">四面評等</th>
-                <th style="text-align:left">核心理由</th>
+                <th>目標</th>
+                <th style="text-align:left">即時診斷</th>
               </tr>
             </thead>
             <tbody id="portfolio-table"></tbody>
+            <tfoot id="portfolio-foot"></tfoot>
           </table>
         </div>
       </div>
       <div class="ai-disclaimer" id="ai-disclaimer">
-        ※ 本組合為依據基本面 / 籌碼面 / 技術面 / 消息面四維交叉模型自動產生。投資有風險，本資訊僅供決策參考，非投顧建議。
+        ※ 本組合依勝率排序與資金預算動態配置。勝率為技術面 + 籌碼面綜合分數，僅供參考非投顧建議。
       </div>
     </div>
 

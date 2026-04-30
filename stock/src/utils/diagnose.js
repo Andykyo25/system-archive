@@ -247,38 +247,119 @@ export function diagnose(k, inst = [], opts = {}) {
     ? ((last.vol * 1000) / sharesOutstanding) * 100   // vol 為「張」，× 1000 換成股
     : null;
 
-  const score0 = bullishPts - bearishPts; // -5 ~ +5（原始五項加總）
-  let score = score0;
+  const score0 = bullishPts - bearishPts; // -5 ~ +5（保留原 score 給 overall 判讀）
+  const score = score0;
 
-  // 高權重指標懲罰／加分
-  if (bias20 != null && bias20 > 10) score -= 2;
-  if (bias20 != null && bias20 < -10 && kdSignal === '黃金交叉' && cur.k < 30) score += 2;
-  if (volZ != null && volZ > 2 && !priceUp) score -= 2;
-  if (cur.k > 80 && bias20 != null && bias20 > 8) score -= 2;
+  // ─────── 勝率 v2：四面加權平均 + 風險懲罰 ───────
+  const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
-  let winRate = Math.max(5, Math.min(95, Math.round(50 + score * 9))); // clamp 5-95
-  // 高檔頂背離硬上限：Bias > 10 且 KD > 80 屬典型過熱反轉模式，勝率封頂 35
-  if (bias20 != null && bias20 > 10 && cur.k > 80) winRate = Math.min(winRate, 35);
-  // 量爆收黑同樣強制壓低（出貨型態）
-  if (volZ != null && volZ > 2 && !priceUp && bias20 != null && bias20 > 5) winRate = Math.min(winRate, 30);
+  // 1. 趨勢面 (0-100)：MA 排列 + Bias 偏離
+  let trendScore = 50;
+  if (aboveMa5)  trendScore += 5;
+  if (aboveMa20) trendScore += 10;
+  if (aboveMa60) trendScore += 10;
+  if (ma5 != null && ma20 != null && ma60 != null) {
+    if (ma5 > ma20 && ma20 > ma60) trendScore += 15;        // 多頭排列加分
+    else if (ma5 < ma20 && ma20 < ma60) trendScore -= 25;   // 空頭排列重扣
+  }
+  if (bias20 != null) {
+    if (bias20 > 10) trendScore -= 15;        // 過熱
+    else if (bias20 > 5) trendScore -= 5;
+    else if (bias20 < -10) trendScore += 10;  // 超跌反彈機會
+  }
+  trendScore = clamp(trendScore, 0, 100);
 
+  // 2. 動能面 (0-100)：KD 事件 + MACD 趨勢
+  let momentumScore = 50;
+  if (kdSignal === '黃金交叉') momentumScore += 20;     // 事件加重
+  else if (kdSignal === '多頭排列') momentumScore += 8;
+  else if (kdSignal === '死亡交叉') momentumScore -= 25;
+  else if (kdSignal === '空頭排列') momentumScore -= 10;
+  if (kdLevel === '高檔鈍化') momentumScore -= 15;
+  else if (kdLevel === '低檔鈍化') momentumScore += 8;
+  if (macdSignal === '多頭擴張') momentumScore += 15;
+  else if (macdSignal === '多頭縮減') momentumScore += 3;
+  else if (macdSignal === '空頭擴張') momentumScore -= 20;
+  else if (macdSignal === '空頭縮減') momentumScore -= 5;
+  momentumScore = clamp(momentumScore, 0, 100);
+
+  // 3. 量價面 (0-100)：今日量價組合 + 5 日量能趨勢
+  let volPriceScore = 50;
+  if (volSignal === '量能爆發' && priceUp) volPriceScore += 18;
+  else if (volSignal === '量能爆發' && !priceUp) volPriceScore -= 30;  // 出貨型態
+  else if (volSignal === '量能放大' && priceUp) volPriceScore += 10;
+  else if (volSignal === '量能萎縮' && priceUp) volPriceScore -= 6;     // 動能衰竭
+  if (priceVol === '價漲量增') volPriceScore += 10;
+  else if (priceVol === '價漲量縮（背離）') volPriceScore -= 10;
+  else if (priceVol === '價跌量增（出貨疑慮）') volPriceScore -= 15;
+  // 5 日量能趨勢（近 5 日 / 前 5 日）
+  if (vols.length >= 10) {
+    const recent5 = avg(vols.slice(-5));
+    const prior5 = avg(vols.slice(-10, -5)) || 1;
+    const volTrend = recent5 / prior5;
+    if (volTrend > 1.5 && priceUp) volPriceScore += 5;
+    else if (volTrend < 0.7 && !priceUp) volPriceScore += 3;  // 量縮止跌
+  }
+  volPriceScore = clamp(volPriceScore, 0, 100);
+
+  // 4. 籌碼面 (0-100)：法人方向（外資/投信權重高於自營）+ 投信佔比
+  let chipScore = 50;
+  // 外資 60% 權重、投信 30%、自營 10%
+  const weightedInst = foreign * 0.6 + trust * 0.3 + dealer * 0.1;
+  if (foreign > 0 && trust > 0 && dealer > 0) chipScore += 22;  // 三方共識
+  else if (foreign > 0 && trust > 0) chipScore += 18;
+  else if (foreign < 0 && trust < 0) chipScore -= 25;
+  else if (weightedInst > 1000) chipScore += 8;
+  else if (weightedInst < -1000) chipScore -= 12;
+  // 投信佔股本比（中小型股作帳訊號）
+  if (trustPctOfCap != null) {
+    if (trustPctOfCap > 0.5) chipScore += 12;
+    else if (trustPctOfCap > 0.2) chipScore += 6;
+    else if (trustPctOfCap < -0.3) chipScore -= 10;
+  }
+  chipScore = clamp(chipScore, 0, 100);
+
+  // 加權平均（四面）
+  const baseScore = trendScore * 0.30 + momentumScore * 0.25
+                  + volPriceScore * 0.20 + chipScore * 0.25;
+
+  // 5. 風險懲罰
+  let penalty = 0;
+  if (bias20 != null && bias20 > 10 && cur.k > 80) penalty += 25;     // 高檔頂背離
+  if (volZ != null && volZ > 2 && !priceUp && bias20 > 5) penalty += 20;  // 量爆收黑
+  if (distToHigh < 2 && volSignal === '量能萎縮') penalty += 10;       // 接近高點量縮
+  if (turnoverRate != null && turnoverRate > 15 && !priceUp) penalty += 10;  // 高週轉率收黑
+
+  // 最終勝率：clamp 到 [10, 80]，避免極值（市場有黑天鵝）
+  const winRate = Math.round(clamp(baseScore - penalty, 10, 80));
+
+  // ─────── overall / action 判讀 ───────
   let overall, action;
-  if (score >= 3) {
+  if (winRate >= 65) {
     overall = '多頭格局・趨勢向上';
     action = ['可分批佈局', '回測 20MA 加碼', '停損設於 10MA'];
-  } else if (score >= 1) {
+  } else if (winRate >= 55) {
     overall = '中期偏多・短線觀察';
     action = ['等待回測支撐再進場', '不追高', '注意量能變化'];
-  } else if (score >= -1) {
+  } else if (winRate >= 45) {
     overall = '盤整待變・方向未明';
     action = ['暫時觀望', '等待方向明確', '輕倉試水'];
-  } else if (score >= -3) {
+  } else if (winRate >= 30) {
     overall = '中期偏空・反彈逢高減碼';
     action = ['不接刀', '反彈即減碼', '保守為主'];
   } else {
     overall = '空頭格局・趨勢向下';
     action = ['空手等待', '禁追高', '等待止穩訊號'];
   }
+
+  // 子項細分（給 UI 顯示拆解）
+  const subScores = {
+    trend: Math.round(trendScore),
+    momentum: Math.round(momentumScore),
+    volPrice: Math.round(volPriceScore),
+    chip: Math.round(chipScore),
+    penalty: Math.round(penalty),
+  };
 
   return {
     trend, trendNote, shortTrend,
@@ -295,6 +376,7 @@ export function diagnose(k, inst = [], opts = {}) {
     bias20, atr14, maDeduct20, volZ, turnoverRate,
     signals,
     score, winRate,
+    subScores,
     overall, action,
   };
 }

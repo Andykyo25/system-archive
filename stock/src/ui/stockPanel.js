@@ -651,14 +651,48 @@ async function renderChip(code, s) {
   }
 }
 
-function renderStockNews(code) {
-  const list = stockNews[code] || [
-    { time: '今日', title: '近期無重大訊息（自動新聞抓取尚未啟用）' },
-    { time: '昨日', title: '產業利多帶動族群表現' },
-  ];
-  document.getElementById('stock-news').innerHTML = list.map((n) => `
-    <div class="news-item">
-      <div class="time">${n.time}</div>
-      <div class="title">${n.title}</div>
-    </div>`).join('');
+async function renderStockNews(code) {
+  const box = document.getElementById('stock-news');
+  box.innerHTML = `<div class="news-item"><div class="title" style="color:var(--dim)">載入個股新聞中…</div></div>`;
+
+  const stock = state.stocks[code];
+  const stockName = stock?.name || '';
+
+  try {
+    // 抓最多 50 筆台股新聞，本地過濾標題或摘要含代號或股名
+    const list = await api.news('tw_stock', 50);
+    const filtered = (list || []).filter((n) => {
+      const text = `${n.title} ${n.summary || ''}`;
+      // 代號需要前後不接其他數字（避免 23300 命中 2330）
+      const codeRegex = new RegExp(`(?<!\\d)${code}(?!\\d)`);
+      return codeRegex.test(text) || (stockName && text.includes(stockName));
+    }).slice(0, 15);
+
+    if (!filtered.length) {
+      box.innerHTML = `
+        <div class="news-item"><div class="time">--</div>
+          <div class="title" style="color:var(--dim)">最近 50 則台股新聞中，沒有提到 ${stockName}（${code}）</div>
+        </div>`;
+      return;
+    }
+
+    box.innerHTML = filtered.map((n) => {
+      const url = n.url ? `href="${n.url}" target="_blank" rel="noopener"` : '';
+      const urgent = n.publishAt && (Date.now() / 1000 - n.publishAt < 3600);
+      return `
+        <a class="news-item" ${url} style="display:block;color:inherit;text-decoration:none">
+          <div class="time">${n.time}<span class="tag ${urgent ? 'urgent' : ''}" style="margin-left:6px">${n.category || '台股'}</span></div>
+          <div class="title">${n.title}</div>
+          ${n.summary ? `<div style="color:var(--dim);font-size:11px;margin-top:4px;line-height:1.5">${n.summary}…</div>` : ''}
+        </a>`;
+    }).join('');
+  } catch (e) {
+    // fallback 用 mock
+    const fallback = stockNews[code] || [{ time: '今日', title: `新聞抓取失敗：${e.message}` }];
+    box.innerHTML = fallback.map((n) => `
+      <div class="news-item">
+        <div class="time">${n.time}</div>
+        <div class="title">${n.title}</div>
+      </div>`).join('');
+  }
 }
