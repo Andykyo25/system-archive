@@ -23,6 +23,7 @@ export const api = {
   revenue: (code) => lcMemo(`rev:${code}`, 86400e3, () => call(`/revenue/${code}`)),
   financial: (code) => lcMemo(`fin:${code}`, 86400e3, () => call(`/financial/${code}`)),
   shareholding: (code) => lcMemo(`shares:${code}`, 86400e3, () => call(`/shareholding/${code}`)),
+  fundamentals: (code) => lcMemo(`fund:${code}`, 3600e3, () => call(`/fundamentals/${code}`)),
   shareholders: (code) => lcMemo(`shrholders:${code}`, 3600e3, () => call(`/shareholders/${code}`)),
   postmarket: () => call('/postmarket/summary'),
   movers: () => call('/movers'),

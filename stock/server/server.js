@@ -417,6 +417,105 @@ app.get('/api/institutional/:code', async (req, res) => {
   } catch (e) { fail(res, e); }
 });
 
+// ───────────────────────── 個股基本面整合 ─────────────────────────
+// 整合：TWSE BWIBBU_ALL（PE/PB/殖利率）+ FinMind financial（EPS/毛利/營益）+ shareholding（市值/外資 %）
+app.get('/api/fundamentals/:code', async (req, res) => {
+  const code = req.params.code;
+  try {
+    const data = await memo(`fund:${code}`, TTL_HIST / 24, async () => {
+      const out = { code };
+
+      // 1. TWSE BWIBBU_ALL — PE / PB / 殖利率（每日更新）
+      try {
+        const all = await memo('bwibbu:all', TTL_HIST / 24, () => twse.bwibbu());
+        const r = all.find((x) => x.Code === code);
+        if (r) {
+          out.pe = +r.PEratio || null;
+          out.pb = +r.PBratio || null;
+          out.divYield = +r.DividendYield || null;
+        }
+      } catch (e) { out.bwibbuError = e.message; }
+
+      // 2. FinMind shareholding — 流通股數 + 外資持股 %
+      try {
+        const start = new Date(Date.now() - 30 * 86400e3).toISOString().slice(0, 10);
+        const sh = await memo(`shareholdingRaw:${code}`, TTL_HIST, () =>
+          finmind.majorShareholder ? null : null  // 用下面那個更準確的
+        ).catch(() => null);
+
+        // FinMind TaiwanStockShareholding 直接呼叫拿外資 %
+        const shRows = await memo(`shareholding-raw:${code}`, TTL_HIST / 24, async () => {
+          const url = `https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockShareholding&data_id=${code}&start_date=${start}`;
+          const headers = process.env.FINMIND_TOKEN ? { Authorization: `Bearer ${process.env.FINMIND_TOKEN}` } : {};
+          const r = await fetch(url, { headers });
+          if (!r.ok) throw new Error(`finmind shareholding HTTP ${r.status}`);
+          const j = await r.json();
+          if (j.status !== 200) throw new Error(`finmind ${j.msg}`);
+          return j.data || [];
+        });
+        const latestSh = shRows[shRows.length - 1];
+        if (latestSh) {
+          out.foreignPct = +latestSh.ForeignInvestmentSharesRatio || null;
+          out.sharesOutstanding = +latestSh.NumberOfSharesIssued || null;
+          out.foreignRemainPct = +latestSh.ForeignInvestmentRemainRatio || null;
+          out.shareDate = latestSh.date;
+        }
+      } catch (e) { out.shareholdingError = e.message; }
+
+      // 3. FinMind financial — EPS（近 4 季 TTM）、毛利率、營益率、ROE
+      try {
+        const finStart = new Date(Date.now() - 2 * 365 * 86400e3).toISOString().slice(0, 10);
+        const fin = await memo(`fin-raw:${code}`, TTL_HIST, () => finmind.financial(code, finStart));
+
+        // 取最近 4 季 EPS 加總（TTM）
+        const epsRows = (fin || []).filter((r) => r.type === 'EPS' || r.type === 'BasicEPS')
+          .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+        if (epsRows.length >= 4) {
+          out.epsTTM = epsRows.slice(-4).reduce((sum, r) => sum + (+r.value || 0), 0);
+          out.epsLastQ = +epsRows[epsRows.length - 1].value;
+        } else if (epsRows.length) {
+          out.epsLastQ = +epsRows[epsRows.length - 1].value;
+        }
+
+        // 最近一季 毛利率 / 營益率 / ROE
+        const lastDate = (fin || []).map((r) => r.date).sort().pop();
+        if (lastDate) {
+          const last = (fin || []).filter((r) => r.date === lastDate);
+          const findVal = (...types) => {
+            for (const t of types) {
+              const row = last.find((r) => r.type === t);
+              if (row && Number.isFinite(+row.value)) return +row.value;
+            }
+            return null;
+          };
+          const rev = findVal('Revenue', 'OperatingRevenue');
+          const grossProfit = findVal('GrossProfit');
+          const operatingIncome = findVal('OperatingIncome', 'OperatingProfit');
+          const netIncome = findVal('IncomeAfterTaxes', 'EAT', 'NetIncome');
+          const equity = findVal('Equity', 'TotalEquity', 'StockHoldersEquity');
+
+          if (rev && grossProfit) out.gpm = (grossProfit / rev) * 100;
+          if (rev && operatingIncome) out.opm = (operatingIncome / rev) * 100;
+          if (netIncome && equity) out.roe = (netIncome / equity) * 100 * 4; // 季 → 年化（粗略）
+          out.financialDate = lastDate;
+        }
+      } catch (e) { out.financialError = e.message; }
+
+      // 4. 市值 = 當前股價 × 流通股數
+      try {
+        const mis = await memo(`mis:${code}`, 1000, () => twseMis.quotes([code], 'tse'));
+        const m = mis[0];
+        if (m && m.price && out.sharesOutstanding) {
+          out.mcap = m.price * out.sharesOutstanding;
+        }
+      } catch (e) { out.misError = e.message; }
+
+      return out;
+    });
+    ok(res, data);
+  } catch (e) { fail(res, e); }
+});
+
 // ───────────────────────── 流通股數 ─────────────────────────
 
 app.get('/api/shareholding/:code', async (req, res) => {
@@ -500,29 +599,49 @@ app.get('/api/postmarket/summary', async (_req, res) => {
 
 // ───────────────────────── 強弱榜（依當日 K 線排序）─────────────────────────
 
-app.get('/api/movers', async (_req, res) => {
+app.get('/api/movers', async (req, res) => {
+  // 可調參數：?minValue=100000000（最低成交金額，預設 1 億）&excludeETF=1
+  const minValue = +(req.query.minValue || 100_000_000);  // 1 億成交金額過濾
+  const excludeETF = req.query.excludeETF !== '0';
+
   try {
-    const data = await memo('movers', TTL_LIVE, async () => {
-      // 盤後優先 TWSE STOCK_DAY_ALL；盤中走 TWSE MI_INDEX20（漲幅前 20）
+    const data = await memo(`movers:${minValue}:${excludeETF}`, 30000, async () => {
       try {
         const rows = await twse.stockDayAll();
         const arr = rows
-          .filter((r) => r.ClosingPrice && r.OpeningPrice && +r.TradeVolume > 0)
+          .filter((r) => r.ClosingPrice && +r.TradeVolume > 0 && +r.TradeValue >= minValue)
+          // 排除 ETF / 受益憑證（代號 4-5 字、開頭 00 = ETF）
+          .filter((r) => !excludeETF || !/^00/.test(r.Code))
+          // 排除權證（5-6 字）與全額交割股
+          .filter((r) => /^\d{4}$/.test(r.Code))
           .map((r) => {
             const close = +r.ClosingPrice;
-            const open = +r.OpeningPrice;
-            const pct = ((close - open) / open) * 100;
+            const change = +r.Change || 0;          // 跟「昨收」的漲跌點數（TWSE 直接給）
+            const prevClose = close - change;
+            const pct = prevClose ? (change / prevClose) * 100 : 0;
             return {
-              code: r.Code, name: r.Name, close, open,
+              code: r.Code, name: r.Name, close,
+              open: +r.OpeningPrice,
               high: +r.HighestPrice, low: +r.LowestPrice,
-              volume: +r.TradeVolume, pct,
+              volume: +r.TradeVolume,
+              tradeValue: +r.TradeValue,
+              prevClose, change, pct,
             };
           })
           .filter((s) => Number.isFinite(s.pct));
-        const gainers = [...arr].sort((a, b) => b.pct - a.pct).slice(0, 12);
-        const losers = [...arr].sort((a, b) => a.pct - b.pct).slice(0, 12);
-        return { source: 'twse', gainers, losers };
+
+        // 排序前再做一次 sanity check：漲跌幅應在 ±10% 內（台股漲跌停限制）
+        const sane = arr.filter((s) => s.pct >= -11 && s.pct <= 11);
+        const gainers = [...sane].sort((a, b) => b.pct - a.pct).slice(0, 12);
+        const losers  = [...sane].sort((a, b) => a.pct - b.pct).slice(0, 12);
+        return {
+          source: 'twse',
+          algo: `跟昨收比 · 成交金額 ≥ ${(minValue / 1e8).toFixed(0)} 億${excludeETF ? ' · 排除 ETF' : ''}`,
+          totalScanned: arr.length,
+          gainers, losers,
+        };
       } catch (e) {
+        // 盤中 fallback：MI_INDEX20（漲幅前 20）
         const top = await twse.topGainers();
         const arr = top.map((r) => ({
           code: r.Code, name: r.Name,
@@ -532,7 +651,7 @@ app.get('/api/movers', async (_req, res) => {
           volume: +r.TradeVolume,
           pct: r.Dir === '-' ? -((+r.Change / (+r.ClosingPrice + +r.Change)) * 100) : ((+r.Change / (+r.ClosingPrice - +r.Change)) * 100),
         }));
-        return { source: 'twse-top', gainers: arr.slice(0, 12), losers: [] };
+        return { source: 'twse-top', algo: '盤中漲幅前 20（fallback）', gainers: arr.slice(0, 12), losers: [] };
       }
     });
     ok(res, data);

@@ -13,10 +13,15 @@ export function mount() {
 
 function row(s, i) {
   const cls = s.pct > 0 ? 'up' : 'down';
+  // 成交金額顯示：1 億以上用「X.X 億」、千萬用 「Y,YYY 萬」
+  const tv = s.tradeValue ? (s.tradeValue >= 1e8 ? `${(s.tradeValue / 1e8).toFixed(1)}億` : `${(s.tradeValue / 1e4).toFixed(0)}萬`) : '';
   return `
     <div class="mover ${cls}" data-code="${s.code}">
       <div class="rank">${i + 1}</div>
-      <div class="info"><div class="n">${s.name}</div><div class="c">${s.code} · ${s.industry || ''}</div></div>
+      <div class="info">
+        <div class="n">${s.name}</div>
+        <div class="c">${s.code}${tv ? ' · ' + tv : ''}</div>
+      </div>
       <div class="price"><div class="p">${fmt(s.close ?? s.price, 2)}</div><div class="pct">${sign(s.pct)}%</div></div>
     </div>`;
 }
@@ -36,7 +41,12 @@ function render() {
 
   gainersEl.innerHTML = g.map(row).join('');
   losersEl.innerHTML  = l.map(row).join('');
-  sourceEl.textContent = `來源 ${m.source || (fallback ? 'mock' : '—')}`;
+  // 顯示算法說明（為什麼這些股票上榜）
+  if (m.algo) {
+    sourceEl.textContent = `${m.algo}${m.totalScanned ? ` · 掃描 ${m.totalScanned} 檔` : ''}`;
+  } else {
+    sourceEl.textContent = `來源 ${m.source || (fallback ? 'mock' : '—')}`;
+  }
 
   document.querySelectorAll('.mover').forEach((el) =>
     el.addEventListener('click', () => emit('select', el.dataset.code))

@@ -378,17 +378,44 @@ function genMockK(base, days = 60) {
 
 // ──────── 基本面 ────────
 async function renderFund(code, s) {
-  const peClass = s.pe > 0 && s.pe < 15 ? 'good' : s.pe > 30 ? 'bad' : 'warn';
-  const roeClass = s.roe > 20 ? 'good' : s.roe < 10 ? 'bad' : 'warn';
+  // 並行抓 fundamentals（整合 BWIBBU + financial + shareholding + 市值）
+  let f = {};
+  try { f = await api.fundamentals(code); } catch { f = {}; }
+
+  // 把抓到的數值寫回 state.stocks（讓其他模組共用）
+  if (state.stocks[code]) {
+    Object.assign(state.stocks[code], {
+      pe: f.pe, pb: f.pb, divYield: f.divYield,
+      eps: f.epsTTM ?? f.epsLastQ,
+      roe: f.roe, gpm: f.gpm, opm: f.opm,
+      foreignPct: f.foreignPct,
+      sharesOutstanding: f.sharesOutstanding,
+      mcap: f.mcap,
+    });
+  }
+
+  // 顏色判定
+  const peClass = (f.pe > 0 && f.pe < 15) ? 'good' : f.pe > 30 ? 'bad' : f.pe ? 'warn' : '';
+  const roeClass = f.roe > 20 ? 'good' : f.roe > 0 && f.roe < 10 ? 'bad' : f.roe ? 'warn' : '';
+  const eps = f.epsTTM ?? f.epsLastQ;
+
+  // 市值轉「兆 / 億」
+  const mcapText = (m) => {
+    if (!m) return '--';
+    if (m >= 1e12) return (m / 1e12).toFixed(2) + ' 兆';
+    if (m >= 1e8) return (m / 1e8).toFixed(0) + ' 億';
+    return fmt(m, 0);
+  };
+
   document.getElementById('fund-kpi').innerHTML = `
-    <div class="kpi"><div class="lab">EPS (TTM)</div><div class="val">${s.eps > 0 ? fmt(s.eps, 2) : '虧損'}</div></div>
-    <div class="kpi ${peClass}"><div class="lab">本益比 PE</div><div class="val">${s.pe > 0 ? fmt(s.pe, 1) : '-'}</div></div>
-    <div class="kpi"><div class="lab">股價淨值比 PB</div><div class="val">${fmt(s.pb, 2)}</div></div>
-    <div class="kpi ${roeClass}"><div class="lab">ROE %</div><div class="val">${fmt(s.roe, 1)}</div></div>
-    <div class="kpi warn"><div class="lab">殖利率</div><div class="val">${fmt(s.divYield, 2)}%</div></div>
-    <div class="kpi"><div class="lab">毛利率</div><div class="val" id="fund-gpm">--</div></div>
-    <div class="kpi"><div class="lab">營益率</div><div class="val" id="fund-opm">--</div></div>
-    <div class="kpi"><div class="lab">市值</div><div class="val" style="font-size:14px">${s.mcap || '-'}</div></div>
+    <div class="kpi"><div class="lab">EPS ${f.epsTTM != null ? '(TTM)' : '(最新季)'}</div><div class="val">${eps != null ? (eps > 0 ? fmt(eps, 2) : '虧損') : '--'}</div></div>
+    <div class="kpi ${peClass}"><div class="lab">本益比 PE</div><div class="val">${f.pe != null ? fmt(f.pe, 1) : '--'}</div></div>
+    <div class="kpi"><div class="lab">股價淨值比 PB</div><div class="val">${f.pb != null ? fmt(f.pb, 2) : '--'}</div></div>
+    <div class="kpi ${roeClass}"><div class="lab">ROE % (年化)</div><div class="val">${f.roe != null ? fmt(f.roe, 1) : '--'}</div></div>
+    <div class="kpi warn"><div class="lab">殖利率</div><div class="val">${f.divYield != null ? fmt(f.divYield, 2) + '%' : '--'}</div></div>
+    <div class="kpi ${f.gpm > 30 ? 'good' : ''}"><div class="lab">毛利率</div><div class="val">${f.gpm != null ? fmt(f.gpm, 1) + '%' : '--'}</div></div>
+    <div class="kpi ${f.opm > 15 ? 'good' : ''}"><div class="lab">營益率</div><div class="val">${f.opm != null ? fmt(f.opm, 1) + '%' : '--'}</div></div>
+    <div class="kpi"><div class="lab">市值</div><div class="val" style="font-size:14px">${mcapText(f.mcap)}</div></div>
   `;
 
   // 月營收（FinMind）
@@ -473,16 +500,28 @@ function calcMajorWeekChange(rows) {
 }
 
 async function renderChip(code, s) {
-  // 真實外資 / 大戶 / 董監 — 從 /api/shareholders（TaiwanStockHoldingSharesPer）
-  let shareholders = [];
-  try { shareholders = (await api.shareholders(code)) || []; } catch { shareholders = []; }
-  const sh = pickShareholderPct(shareholders);
-  const foreignTxt = sh.foreignPct != null ? sh.foreignPct.toFixed(1) + '%' : '--';
-  const insiderTxt = sh.insiderPct != null ? sh.insiderPct.toFixed(2) + '%' : (sh.majorPct != null ? '— (大戶 ' + sh.majorPct.toFixed(2) + '%)' : '--');
+  // 並行抓：外資 % (fundamentals)、大戶結構、三大法人、融資融券
+  let foreignPct = null;
+  let majorPct = null;
+
+  try {
+    const f = await api.fundamentals(code);
+    foreignPct = f?.foreignPct;
+  } catch { /* ignore */ }
+
+  // 大戶 % 從 shareholders 級距抽（FinMind TaiwanStockHoldingSharesPer）
+  try {
+    const shareholders = (await api.shareholders(code)) || [];
+    const sh = pickShareholderPct(shareholders);
+    majorPct = sh.majorPct;
+  } catch { /* ignore */ }
+
+  const foreignTxt = foreignPct != null ? foreignPct.toFixed(2) + '%' : '--';
+  const majorTxt = majorPct != null ? majorPct.toFixed(2) + '%' : '--';
 
   document.getElementById('chip-kpi').innerHTML = `
     <div class="kpi good"><div class="lab">外資持股 %</div><div class="val">${foreignTxt}</div></div>
-    <div class="kpi"><div class="lab">董監持股 %</div><div class="val">${insiderTxt}</div></div>
+    <div class="kpi"><div class="lab">大戶持股 % (>1000張)</div><div class="val">${majorTxt}</div></div>
     <div class="kpi warn"><div class="lab">融資餘額(張)</div><div class="val" id="chip-margin-buy">--</div></div>
     <div class="kpi"><div class="lab">融券餘額(張)</div><div class="val" id="chip-margin-sell">--</div></div>
   `;
