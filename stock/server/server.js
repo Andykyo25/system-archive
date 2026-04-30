@@ -8,6 +8,7 @@ import * as twse from './providers/twse.js';
 import * as twseMis from './providers/twseMis.js';
 import * as finmind from './providers/finmind.js';
 import * as yahoo from './providers/yahoo.js';
+import * as stooq from './providers/stooq.js';
 import * as cnyes from './providers/cnyes.js';
 import { diagnose } from '../src/utils/diagnose.js';
 
@@ -58,10 +59,28 @@ app.get('/api/diag', async (_req, res) => {
     today: todayIso(),
     serverTime: new Date().toISOString(),
     mis: {},
+    stooq: {},
     yahoo: {},
     finmind: {},
     twse: {},
   };
+
+  // Stooq 國際指數
+  try {
+    const t0 = Date.now();
+    const r = await stooq.quotes(['^SOX', '^IXIC', '^GSPC', '^DJI']);
+    out.stooq.indices = {
+      ms: Date.now() - t0,
+      results: r.map((q) => ({
+        symbol: q.symbol,
+        displayName: q.displayName,
+        ok: !!(q && q.price != null),
+        price: q?.price,
+        prevClose: q?.prevClose,
+        error: q?.error,
+      })),
+    };
+  } catch (e) { out.stooq.error = e.message; }
 
   // TWSE MIS: 個股 + 大盤
   try {
@@ -200,8 +219,17 @@ app.get('/api/indices', async (_req, res) => {
         },
       );
 
-      // 國際指數（Yahoo cache 60 秒，避免和個股 quotes 競爭 429 quota）
-      const intl = await memo('intl', 60000, () => yahoo.quotes(['^SOX', '^IXIC', '^GSPC', '^DJI']));
+      // 國際指數：Stooq 主源（無 token 無 rate limit），Yahoo 備援（429 風險）
+      // cache 60 秒：避免太頻繁打外站
+      const intl = await memo('intl', 60000, async () => {
+        // 主源 Stooq
+        try {
+          const stooqResults = await stooq.quotes(['^SOX', '^IXIC', '^GSPC', '^DJI']);
+          if (stooqResults.some((q) => q && q.price != null)) return stooqResults;
+        } catch (e) { console.warn('[stooq intl]', e.message); }
+        // 備援 Yahoo
+        return yahoo.quotes(['^SOX', '^IXIC', '^GSPC', '^DJI']);
+      });
       const norm = (q) => {
         if (!q || q.price == null || q.prevClose == null) return null;
         return {
@@ -209,6 +237,8 @@ app.get('/api/indices', async (_req, res) => {
           change: q.price - q.prevClose,
           pct: q.prevClose ? ((q.price - q.prevClose) / q.prevClose) * 100 : 0,
           symbol: q.symbol,
+          displayName: q.displayName,
+          source: q.source,
         };
       };
       const m = Object.fromEntries(intl.filter(Boolean).map((q) => [q.symbol, norm(q)]));

@@ -42,6 +42,15 @@ function update() {
     card.classList.remove('up', 'down');
     if (change > 0) card.classList.add('up');
     else if (change < 0) card.classList.add('down');
+
+    // 動態 label（stooq 用 SOXX 代替 ^SOX，名稱要反映）
+    const labEl = card.querySelector('.lab');
+    if (labEl && data.displayName && data.displayName !== k.tag) {
+      labEl.textContent = `${data.displayName} · ${data.source || k.tag}`;
+    } else {
+      labEl.textContent = `${k.label} · ${k.tag}`;
+    }
+
     card.querySelector('[data-f="val"]').textContent = fmt(data.close, k.isInt ? 0 : 2);
     card.querySelector('[data-f="delta"]').textContent = `${sign(change)} (${sign(pct)}%)`;
     const meta = card.querySelector('[data-f="meta"]');
