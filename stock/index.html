@@ -111,7 +111,18 @@
           <div class="kpi"><div class="lab">Bias 20</div><div class="val" id="bias20">--</div></div>
           <div class="kpi"><div class="lab">ATR(14)</div><div class="val" id="atr14">--</div></div>
           <div class="kpi"><div class="lab">扣抵值 20</div><div class="val" id="maDeduct20">--</div></div>
+          <div class="kpi"><div class="lab">布林上 / 下軌 (20,2σ)</div><div class="val" id="bbBand" style="font-size:13px">--</div></div>
         </div>
+
+        <!-- 盤中即時走勢 (1 分線) -->
+        <div class="intraday-wrap" style="margin-bottom:14px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+            <div class="aside-title" style="margin:0">▲ 盤中即時走勢（1 分 K · 當日）</div>
+            <div id="intraday-stat" style="font-size:11px;color:var(--dim);font-family:'JetBrains Mono',monospace">--</div>
+          </div>
+          <div class="chart-wrap" style="height:160px;background:var(--bg-3);border-radius:6px;padding:6px"><canvas id="chartIntraday"></canvas></div>
+        </div>
+
         <div class="chart-row">
           <div class="chart-wrap" style="height:260px"><canvas id="chartK"></canvas></div>
           <div class="chart-wrap" style="height:90px"><canvas id="chartVol"></canvas></div>
@@ -148,6 +159,16 @@
           <div class="diag-overall" id="diag-overall">
             <span class="diag-tag" id="diag-tag">--</span>
             <span class="diag-headline" id="diag-headline">資料載入中…</span>
+          </div>
+
+          <!-- 操作劇本（個股精準建議）-->
+          <div class="diag-playbook" id="diag-playbook" style="margin-top:14px;padding:14px;background:linear-gradient(135deg,rgba(246,196,82,.06),rgba(122,92,255,.06));border:1px solid var(--line);border-left:3px solid var(--gold);border-radius:6px">
+            <div class="aside-title" style="margin-bottom:10px;display:flex;align-items:center;gap:8px">
+              ▲ 個股操作劇本
+              <span style="font-size:10px;color:var(--dim);font-weight:400;letter-spacing:0">基於 ATR + 均線 + 法人籌碼動態計算</span>
+            </div>
+            <div id="diag-playbook-text" style="font-size:12.5px;line-height:1.8;color:var(--txt);margin-bottom:8px">--</div>
+            <div class="diag-levels" id="diag-levels" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:6px;margin-top:10px"></div>
           </div>
         </div>
       </div>
@@ -223,51 +244,6 @@
       </div>
     </div>
 
-    <!-- 短線勝率排行榜 -->
-    <div class="panel" id="ranking-panel">
-      <div class="panel-head">
-        <h2>短線勝率排行榜
-          <span style="color:var(--dim);font-size:11px;font-weight:400;margin-left:8px">即時掃描候選池 · 5 分鐘更新</span>
-        </h2>
-        <div class="actions" style="gap:8px;align-items:center">
-          <label style="font-size:11px;color:var(--dim)">資金預算
-            <input id="rk-budget" type="number" min="0" step="10000" value="500000" style="width:90px;background:var(--bg-3);color:var(--txt);border:1px solid var(--line);padding:4px 8px;border-radius:4px;font-family:'JetBrains Mono',monospace;margin-left:4px">
-          </label>
-          <label style="font-size:11px;color:var(--dim)">最低勝率
-            <select id="rk-minwin" style="background:var(--bg-3);color:var(--txt);border:1px solid var(--line);padding:4px 8px;border-radius:4px;margin-left:4px">
-              <option value="0">不限</option>
-              <option value="50" selected>50%</option>
-              <option value="60">60%</option>
-              <option value="70">70%</option>
-            </select>
-          </label>
-          <button class="tab" id="rk-refresh">重新評估</button>
-        </div>
-      </div>
-      <div style="overflow-x:auto">
-        <table class="chip-table ranking-table">
-          <thead>
-            <tr>
-              <th>#</th>
-              <th style="text-align:left">代號 / 名稱</th>
-              <th>當前價</th>
-              <th>漲跌</th>
-              <th>單張成本</th>
-              <th>勝率</th>
-              <th>趨勢/動能/量價/籌碼</th>
-              <th style="text-align:left">即時結論</th>
-              <th>進場區</th>
-              <th>停損 / 目標</th>
-            </tr>
-          </thead>
-          <tbody id="ranking-tbody">
-            <tr><td colspan="10" style="color:var(--dim);text-align:center;padding:20px">資料評估中…</td></tr>
-          </tbody>
-        </table>
-      </div>
-      <div id="ranking-info" style="margin-top:10px;font-size:11px;color:var(--dim)"></div>
-    </div>
-
     <div class="panel">
       <div class="panel-head">
         <h2>市場熱力圖</h2>
@@ -313,6 +289,10 @@
           <thead><tr><th>項目</th><th>數量</th></tr></thead>
           <tbody></tbody>
         </table>
+      </div>
+      <div class="post-analysis" id="post-analysis" style="margin-top:18px;padding:14px;background:var(--bg-3);border-left:3px solid var(--gold);border-radius:6px;line-height:1.7">
+        <div class="aside-title" style="margin-bottom:10px">▲ 盤後解讀 · 操作建議</div>
+        <div id="post-analysis-body" style="font-size:12px;color:var(--txt)">資料載入中…</div>
       </div>
     </div>
 

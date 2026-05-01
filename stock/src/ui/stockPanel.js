@@ -150,6 +150,25 @@ function renderOrderbook(s) {
 function MA(arr, n) {
   return arr.map((_, i) => i < n - 1 ? null : arr.slice(i - n + 1, i + 1).reduce((s, x) => s + x.close, 0) / n);
 }
+// 布林通道 BBands(period, mult)：回 { mid, upper, lower }
+function BBands(arr, period = 20, mult = 2) {
+  const mid = MA(arr, period);
+  const upper = arr.map((_, i) => {
+    if (i < period - 1) return null;
+    const slice = arr.slice(i - period + 1, i + 1).map((d) => d.close);
+    const m = mid[i];
+    const v = slice.reduce((s, x) => s + (x - m) ** 2, 0) / period;
+    return m + mult * Math.sqrt(v);
+  });
+  const lower = arr.map((_, i) => {
+    if (i < period - 1) return null;
+    const slice = arr.slice(i - period + 1, i + 1).map((d) => d.close);
+    const m = mid[i];
+    const v = slice.reduce((s, x) => s + (x - m) ** 2, 0) / period;
+    return m - mult * Math.sqrt(v);
+  });
+  return { mid, upper, lower };
+}
 function MACDseries(arr) {
   const closes = arr.map((d) => d.close);
   const ema = (n) => {
@@ -185,24 +204,26 @@ async function renderTech(code, s) {
 
   // 關鍵：FinMind 日線盤中延遲 5-15 分鐘，用 state.stocks (Yahoo 即時) 覆蓋最後一筆
   const realtimePrice = state.stocks[code]?.price;
+  const realtimeVol = state.stocks[code]?.volume; // MIS 累計成交張數
   if (realData && realtimePrice != null && k.length >= 1) {
     const last = k[k.length - 1];
     const today = new Date().toISOString().slice(0, 10);
     if (last.date === today) {
       // 今日 K 棒：把 close 換成即時價（不動 open/high/low，因為 FinMind 已記錄）
       last.close = realtimePrice;
-      // 即時 high/low 用 max/min 比較
       if (realtimePrice > last.high) last.high = realtimePrice;
       if (realtimePrice < last.low) last.low = realtimePrice;
+      // MIS 量大於 FinMind 紀錄時，採 MIS 量（盤中即時）
+      if (Number.isFinite(realtimeVol) && realtimeVol > (last.vol || 0)) last.vol = realtimeVol;
     } else {
-      // FinMind 還沒更新今日，但 Yahoo 已經有今日盤中 → 補上一筆
+      // FinMind 還沒更新今日，但 Yahoo 已經有今日盤中 → 補上一筆（vol 用 MIS 數據）
       k.push({
         date: today,
-        open: realtimePrice,
-        high: realtimePrice,
-        low: realtimePrice,
+        open: state.stocks[code]?.open ?? realtimePrice,
+        high: state.stocks[code]?.dayHigh ?? realtimePrice,
+        low:  state.stocks[code]?.dayLow  ?? realtimePrice,
         close: realtimePrice,
-        vol: 0,
+        vol: Number.isFinite(realtimeVol) ? realtimeVol : 0,
       });
     }
   }
@@ -220,9 +241,26 @@ async function renderTech(code, s) {
 
   const labels = k.map((d, i) => d.date ? d.date.slice(5) : `D${i}`);
   const ma5 = MA(k, 5), ma20 = MA(k, 20), ma60 = MA(k, 60);
+  const bb = BBands(k, 20, 2);
   const closes = k.map((d) => d.close);
   document.getElementById('ma5').textContent = fmt(ma5[ma5.length - 1] || 0, 2);
   document.getElementById('ma20').textContent = fmt(ma20[ma20.length - 1] || 0, 2);
+  // 布林軌道 KPI（上 / 下）
+  const bbEl = document.getElementById('bbBand');
+  if (bbEl) {
+    const upN = bb.upper[bb.upper.length - 1];
+    const loN = bb.lower[bb.lower.length - 1];
+    if (upN != null && loN != null) {
+      const lastClose = closes[closes.length - 1];
+      const within = lastClose > loN && lastClose < upN;
+      const pos = lastClose >= upN ? '<span style="color:var(--down)">突破上軌</span>' :
+                  lastClose <= loN ? '<span style="color:var(--up)">跌破下軌</span>' :
+                  within ? '<span style="color:var(--dim)">通道內</span>' : '';
+      bbEl.innerHTML = `${fmt(upN, 1)} / ${fmt(loN, 1)} <div style="font-size:10px;margin-top:2px">${pos}</div>`;
+    } else {
+      bbEl.textContent = '--';
+    }
+  }
 
   const last9 = k.slice(-9);
   const high9 = Math.max(...last9.map((d) => d.high));
@@ -236,6 +274,10 @@ async function renderTech(code, s) {
   mountChart('chartK', {
     type: 'line',
     data: { labels, datasets: [
+      // 布林軌道 — 上軌（透明填到下軌）
+      { label: 'BB 上軌', data: bb.upper, borderColor: 'rgba(122,92,255,.55)', borderWidth: 1, pointRadius: 0, borderDash: [2, 3], fill: '+2', backgroundColor: 'rgba(122,92,255,.06)' },
+      { label: 'BB 中軌', data: bb.mid,   borderColor: 'rgba(122,92,255,.4)', borderWidth: 1, pointRadius: 0, borderDash: [4, 4] },
+      { label: 'BB 下軌', data: bb.lower, borderColor: 'rgba(122,92,255,.55)', borderWidth: 1, pointRadius: 0, borderDash: [2, 3] },
       { label: '收盤', data: closes, borderColor: '#f6c452', borderWidth: 1.6, pointRadius: 0, tension: .18 },
       { label: '5MA',  data: ma5,    borderColor: '#00e5ff', borderWidth: 1, pointRadius: 0, borderDash: [3, 3] },
       { label: '20MA', data: ma20,   borderColor: '#ff7a1a', borderWidth: 1, pointRadius: 0 },
@@ -267,6 +309,9 @@ async function renderTech(code, s) {
     options: { plugins: { legend: { labels: { color: '#aab2c0', font: { size: 9 } } } }, scales: { x: { display: false }, y: { ticks: theme.axis, grid: theme.grid } }, maintainAspectRatio: false, animation: false },
   });
 
+  // 盤中即時走勢（不阻塞主流程）
+  renderIntraday(code).catch(() => {});
+
   // 技術診斷（rule-based）
   let inst = [];
   let sh = null;
@@ -275,9 +320,74 @@ async function renderTech(code, s) {
   const sharesOutstanding = sh?.sharesOutstanding || null;
   const d = diagnose(k, inst, { sharesOutstanding });
   if (d) {
-    renderDiag(d);
+    renderDiag(d, k);
     renderTechKpis(d);
   }
+}
+
+// 盤中分時即時走勢圖（1 分 K，當日）
+async function renderIntraday(code) {
+  const statEl = document.getElementById('intraday-stat');
+  const canvas = document.getElementById('chartIntraday');
+  if (!canvas) return;
+
+  let resp;
+  try {
+    resp = await api.intraday(code, '1m');
+  } catch (e) {
+    if (statEl) statEl.textContent = '盤中資料載入失敗';
+    return;
+  }
+  const points = resp?.points || [];
+  if (!points.length) {
+    if (statEl) statEl.textContent = '今日尚未開盤 / 無分時資料';
+    mountChart('chartIntraday', {
+      type: 'line',
+      data: { labels: [], datasets: [] },
+      options: { plugins: { legend: { display: false } }, maintainAspectRatio: false, animation: false },
+    });
+    return;
+  }
+
+  const prevClose = resp?.meta?.prevClose;
+  const labels = points.map((p) => p.time);
+  const closes = points.map((p) => p.close);
+  const last = closes[closes.length - 1];
+  const high = Math.max(...closes);
+  const low  = Math.min(...closes);
+  const totalVol = points.reduce((s, p) => s + (p.volume || 0), 0);
+  const pct = prevClose ? ((last - prevClose) / prevClose) * 100 : 0;
+  const upColor = pct >= 0 ? '#ff3b4e' : '#1ed760';
+
+  if (statEl) {
+    statEl.innerHTML = `現價 <b style="color:${upColor}">${fmt(last, 2)}</b> · `
+      + `${pct >= 0 ? '+' : ''}${pct.toFixed(2)}% · `
+      + `日高 ${fmt(high, 2)} / 日低 ${fmt(low, 2)} · `
+      + `成交 ${fmt(totalVol, 0)}`;
+  }
+
+  // 平盤線：用昨收
+  const flatLine = prevClose != null ? closes.map(() => prevClose) : null;
+
+  const datasets = [
+    { label: '當日走勢', data: closes, borderColor: upColor, backgroundColor: pct >= 0 ? 'rgba(255,59,78,.10)' : 'rgba(30,215,96,.10)', borderWidth: 1.6, pointRadius: 0, tension: .15, fill: true },
+  ];
+  if (flatLine) {
+    datasets.push({ label: '昨收', data: flatLine, borderColor: 'rgba(170,178,192,.5)', borderDash: [4, 4], borderWidth: 1, pointRadius: 0 });
+  }
+
+  mountChart('chartIntraday', {
+    type: 'line',
+    data: { labels, datasets },
+    options: {
+      plugins: { legend: { display: false }, tooltip: { mode: 'index', intersect: false } },
+      scales: {
+        x: { ticks: { ...theme.axis, maxTicksLimit: 8 }, grid: theme.grid },
+        y: { ticks: theme.axis, grid: theme.grid },
+      },
+      maintainAspectRatio: false, animation: false,
+    },
+  });
 }
 
 // 把 Bias / ATR / 扣抵值 寫進新增的 KPI 卡片，並依條件加紅警示
@@ -303,7 +413,7 @@ function renderTechKpis(d) {
 }
 
 // ──────── 技術診斷渲染 ────────
-function renderDiag(d) {
+function renderDiag(d, k) {
   const f = (n, dec = 2) => n == null || !Number.isFinite(n) ? '--' : n.toFixed(dec);
   const cls = (s) => s.includes('多') || s.includes('黃金') || s.includes('擴張') || s.includes('放大') || s.includes('增') ? 'up'
     : s.includes('空') || s.includes('死') || s.includes('縮') || s.includes('減') ? 'down'
@@ -358,6 +468,30 @@ function renderDiag(d) {
   tagEl.className = 'diag-tag ' + tag;
   tagEl.textContent = tagText;
   document.getElementById('diag-headline').textContent = d.overall;
+
+  // ─ 操作劇本 ─
+  const pbText = document.getElementById('diag-playbook-text');
+  const pbLevels = document.getElementById('diag-levels');
+  if (pbText && d.playbook) pbText.textContent = d.playbook;
+  if (pbLevels && d.levels) {
+    const L = d.levels;
+    const cell = (lab, val, color) => `
+      <div style="background:var(--bg-3);padding:8px 10px;border-radius:5px">
+        <div style="font-size:9px;color:var(--dim);letter-spacing:1px;margin-bottom:3px">${lab}</div>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:700;color:${color || 'var(--txt)'}">${val ?? '--'}</div>
+      </div>`;
+    pbLevels.innerHTML = [
+      cell('進場區下', L.entryLow, 'var(--gold)'),
+      cell('進場區上', L.entryHigh, 'var(--gold)'),
+      cell('停損', L.stop, 'var(--down)'),
+      cell('停利①', L.target1, 'var(--up)'),
+      cell('停利②', L.target2, 'var(--up)'),
+      cell('5MA 支撐', L.support10, 'var(--neon)'),
+      cell('20MA 支撐', L.support20, 'var(--neon-2)'),
+      cell('60 日高', L.high60, 'var(--up)'),
+      cell('60 日低', L.low60, 'var(--down)'),
+    ].join('');
+  }
 }
 
 function genMockK(base, days = 60) {
@@ -698,19 +832,32 @@ async function renderStockNews(code) {
   const stockName = stock?.name || '';
 
   try {
-    // 抓最多 50 筆台股新聞，本地過濾標題或摘要含代號或股名
-    const list = await api.news('tw_stock', 50);
-    const filtered = (list || []).filter((n) => {
+    // 多源聚合：鉅亨網全文搜尋 + Yahoo Finance 新聞 + 多分類過濾
+    const keyword = stockName ? `${code} ${stockName}` : code;
+    let list = await api.news('tw_stock', 30, keyword);
+
+    // 仍要做一次本地過濾（搜尋 API 偶會帶回部分模糊命中）
+    const codeRegex = new RegExp(`(?<!\\d)${code}(?!\\d)`);
+    let filtered = (list || []).filter((n) => {
       const text = `${n.title} ${n.summary || ''}`;
-      // 代號需要前後不接其他數字（避免 23300 命中 2330）
-      const codeRegex = new RegExp(`(?<!\\d)${code}(?!\\d)`);
       return codeRegex.test(text) || (stockName && text.includes(stockName));
-    }).slice(0, 15);
+    });
+
+    // 二次備援：若搜尋沒結果，退回 tw_stock 多分類聚合過濾
+    if (!filtered.length) {
+      const fallback = await api.news('tw_stock', 80);
+      filtered = (fallback || []).filter((n) => {
+        const text = `${n.title} ${n.summary || ''}`;
+        return codeRegex.test(text) || (stockName && text.includes(stockName));
+      });
+    }
+
+    filtered = filtered.slice(0, 20);
 
     if (!filtered.length) {
       box.innerHTML = `
         <div class="news-item"><div class="time">--</div>
-          <div class="title" style="color:var(--dim)">最近 50 則台股新聞中，沒有提到 ${stockName}（${code}）</div>
+          <div class="title" style="color:var(--dim)">未找到 ${stockName}（${code}）相關新聞 — 已嘗試 鉅亨網全文搜尋 + Yahoo Finance + 多分類聚合</div>
         </div>`;
       return;
     }
@@ -718,9 +865,10 @@ async function renderStockNews(code) {
     box.innerHTML = filtered.map((n) => {
       const url = n.url ? `href="${n.url}" target="_blank" rel="noopener"` : '';
       const urgent = n.publishAt && (Date.now() / 1000 - n.publishAt < 3600);
+      const sourceTag = n.source && n.source !== '鉅亨網' ? ` · ${n.source}` : '';
       return `
         <a class="news-item" ${url} style="display:block;color:inherit;text-decoration:none">
-          <div class="time">${n.time}<span class="tag ${urgent ? 'urgent' : ''}" style="margin-left:6px">${n.category || '台股'}</span></div>
+          <div class="time">${n.time}<span class="tag ${urgent ? 'urgent' : ''}" style="margin-left:6px">${n.category || '台股'}${sourceTag}</span></div>
           <div class="title">${n.title}</div>
           ${n.summary ? `<div style="color:var(--dim);font-size:11px;margin-top:4px;line-height:1.5">${n.summary}…</div>` : ''}
         </a>`;

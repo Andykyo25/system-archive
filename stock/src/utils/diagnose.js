@@ -158,21 +158,25 @@ export function diagnose(k, inst = [], opts = {}) {
   else if (difLast < demLast && oscLast < oscPrev) macdSignal = '空頭擴張';
   else macdSignal = '空頭縮減';
 
-  // 量能
+  // 量能 — 修正：若今日 vol=0（可能為 Yahoo 即時 + FinMind 還沒更新合成的占位），不做量能判讀
   const recentVol = k.slice(-5).map((d) => d.vol || 0);
   const avgVol = avg(recentVol.slice(0, 4)) || 1;
-  const volRatio = (last.vol || 0) / avgVol;
+  const todayVol = last.vol || 0;
+  const volMissing = todayVol <= 0;            // 量能資料未到位
+  const volRatio = volMissing ? 1 : todayVol / avgVol;
   let volSignal;
-  if (volRatio > 1.8) volSignal = '量能爆發';
+  if (volMissing) volSignal = '量能待更新';
+  else if (volRatio > 1.8) volSignal = '量能爆發';
   else if (volRatio > 1.3) volSignal = '量能放大';
   else if (volRatio < 0.7) volSignal = '量能萎縮';
   else volSignal = '量能持平';
 
-  // 量價關係
+  // 量價關係 — 量能未更新時不做判讀
   const priceUp = last.close > prev.close;
-  const volUp = (last.vol || 0) > (prev.vol || 0);
+  const volUp = !volMissing && todayVol > (prev.vol || 0);
   let priceVol;
-  if (priceUp && volUp) priceVol = '價漲量增';
+  if (volMissing) priceVol = '量能未到，量價判讀延後';
+  else if (priceUp && volUp) priceVol = '價漲量增';
   else if (priceUp && !volUp) priceVol = '價漲量縮（背離）';
   else if (!priceUp && volUp) priceVol = '價跌量增（出貨疑慮）';
   else priceVol = '價跌量縮（止跌）';
@@ -209,18 +213,56 @@ export function diagnose(k, inst = [], opts = {}) {
   const distToHigh = ((high60 - last.close) / last.close) * 100;
   const distToLow  = ((last.close - low60) / last.close) * 100;
 
-  // 近期訊號（取最關鍵的 5 點）
+  // 近期訊號 — 加上交叉驗證（避免單一條件誤判）
+  // 規則：訊號需「主條件 + 至少一個輔助條件」才掛上，降低偽訊號率
   const signals = [];
-  if (kdSignal === '死亡交叉' && cur.k > 70) signals.push({ tag: '警示', text: 'KD 高檔死叉 — 短線回測風險' });
-  if (kdSignal === '黃金交叉' && cur.k < 30) signals.push({ tag: '機會', text: 'KD 低檔黃金叉 — 短線可期反彈' });
-  if (volSignal === '量能爆發' && priceUp) signals.push({ tag: '注意', text: '帶量突破 — 主力進場跡象' });
-  if (volSignal === '量能爆發' && !priceUp) signals.push({ tag: '警示', text: '高檔爆量收黑 — 主力調節跡象' });
-  if (priceVol === '價漲量縮（背離）') signals.push({ tag: '警示', text: '價量背離 — 上漲動能轉弱' });
-  if (distToHigh < 3) signals.push({ tag: '注意', text: `逼近 60 日高 ${high60.toFixed(2)} — 突破或回落關鍵` });
-  if (distToLow < 3) signals.push({ tag: '注意', text: `逼近 60 日低 ${low60.toFixed(2)} — 支撐測試` });
-  if (foreign > 0 && trust > 0 && dealer > 0) signals.push({ tag: '機會', text: '三大法人同步買超 — 多方共識' });
-  if (foreign < 0 && trust < 0) signals.push({ tag: '警示', text: '外資+投信同步賣超 — 主力撤離' });
-  if (!signals.length) signals.push({ tag: '中性', text: '目前無強烈買賣訊號' });
+
+  // KD 高檔死叉：需 KD 在 70+ 且收盤跌破 5MA（否則只是技術噪音）
+  if (kdSignal === '死亡交叉' && cur.k > 70 && (ma5 == null || last.close < ma5)) {
+    signals.push({ tag: '警示', text: `KD 高檔死叉 + 跌破 5MA — 短線回測風險（K=${cur.k.toFixed(0)}）` });
+  }
+  // KD 低檔黃金叉：需 KD 在 30- 且收盤上彎（last > prev）
+  if (kdSignal === '黃金交叉' && cur.k < 30 && priceUp) {
+    signals.push({ tag: '機會', text: `KD 低檔黃金叉 + 收紅 — 短線可期反彈（K=${cur.k.toFixed(0)}）` });
+  }
+  // 帶量突破：量爆 + 價漲 + 收盤站上 5MA
+  if (volSignal === '量能爆發' && priceUp && ma5 != null && last.close > ma5) {
+    signals.push({ tag: '注意', text: `帶量突破（量 ${volRatio.toFixed(1)}x 均量）+ 站上 5MA — 主力進場跡象` });
+  }
+  // 高檔爆量收黑：需 接近 60 日高 OR Bias > 5（單純收黑不足以判出貨）
+  if (volSignal === '量能爆發' && !priceUp && (distToHigh < 5 || (bias20 != null && bias20 > 5))) {
+    signals.push({ tag: '警示', text: `高檔爆量收黑（量 ${volRatio.toFixed(1)}x）— 主力調節跡象` });
+  }
+  // 價量背離：價漲量縮 + 距離 60 日高 < 5%
+  if (priceVol === '價漲量縮（背離）' && distToHigh < 5) {
+    signals.push({ tag: '警示', text: '高檔價量背離 — 上漲動能轉弱、留意拉回' });
+  }
+  // 接近 60 日高：需 量能放大或爆發 才稱「突破關鍵」
+  if (distToHigh < 3 && (volSignal === '量能放大' || volSignal === '量能爆發')) {
+    signals.push({ tag: '注意', text: `逼近 60 日高 ${high60.toFixed(2)} + 量能配合 — 突破或回落關鍵` });
+  } else if (distToHigh < 3) {
+    signals.push({ tag: '中性', text: `逼近 60 日高 ${high60.toFixed(2)}（量能未放大）— 觀察是否假突破` });
+  }
+  // 接近 60 日低：需 收紅 或 KD < 20 才稱「支撐有效」
+  if (distToLow < 3 && (priceUp || cur.k < 20)) {
+    signals.push({ tag: '機會', text: `逼近 60 日低 ${low60.toFixed(2)} + 止跌訊號 — 支撐測試成功率較高` });
+  } else if (distToLow < 3) {
+    signals.push({ tag: '警示', text: `逼近 60 日低 ${low60.toFixed(2)}（仍弱勢）— 留意破底` });
+  }
+  // 三大法人同步買超：保留高信賴訊號
+  if (foreign > 0 && trust > 0 && dealer > 0) {
+    signals.push({ tag: '機會', text: `三大法人同步買超（外+${(foreign / 1000).toFixed(0)}張、投+${(trust / 1000).toFixed(0)}張）— 多方共識` });
+  }
+  // 外資+投信同向賣超：搭配股價跌破 20MA 才是真撤離
+  if (foreign < 0 && trust < 0 && !aboveMa20) {
+    signals.push({ tag: '警示', text: '外資+投信同步賣超 + 跌破 20MA — 主力撤離' });
+  }
+  // 軋空候選：需 KD 黃金叉 / 多頭排列 且 法人偏買，避免單純技術反彈誤判
+  if (foreign > 0 && (kdSignal === '黃金交叉' || kdSignal === '多頭排列') && priceUp && volSignal !== '量能萎縮') {
+    signals.push({ tag: '機會', text: '外資買超 + KD 多方 + 帶量上攻 — 短線追擊優選' });
+  }
+
+  if (!signals.length) signals.push({ tag: '中性', text: '目前無強烈買賣訊號（多項指標未同步）' });
 
   // 整體結論
   const bullishPts =
@@ -333,23 +375,68 @@ export function diagnose(k, inst = [], opts = {}) {
   // 最終勝率：clamp 到 [10, 80]，避免極值（市場有黑天鵝）
   const winRate = Math.round(clamp(baseScore - penalty, 10, 80));
 
-  // ─────── overall / action 判讀 ───────
-  let overall, action;
+  // ─────── 進場 / 停損 / 目標價計算（用 ATR + MA） ───────
+  const close = last.close;
+  const atr = atr14 || close * 0.025;
+  // 進場區間：依勝率方向
+  // 多單：以 5MA / 20MA 為支撐買點，回測 0.5 ATR
+  // 空頭：建議在反彈到 ma5 附近觀察
+  const fmt2 = (n) => n != null ? +n.toFixed(2) : null;
+  const entryLow  = fmt2(close - atr * 0.5);
+  const entryHigh = fmt2(close + atr * 0.3);
+  const support10 = ma5 != null ? fmt2(ma5) : fmt2(close - atr);
+  const support20 = ma20 != null ? fmt2(ma20) : fmt2(close - atr * 2);
+  const stopPrice = fmt2(Math.max(close - atr * 2, support20 || 0));
+  const target1   = fmt2(close + atr * 1.5);
+  const target2   = fmt2(close + atr * 3);
+
+  // ─────── overall / action / playbook 判讀 ───────
+  let overall, action, playbook;
   if (winRate >= 65) {
     overall = '多頭格局・趨勢向上';
-    action = ['可分批佈局', '回測 20MA 加碼', '停損設於 10MA'];
+    action = [
+      `▶ 進場區：${entryLow} ~ ${entryHigh}（現價附近回測 0.5 ATR）`,
+      `▶ 加碼區：跌至 20MA ${support20} 加碼 30%（突破前高 +20%）`,
+      `▶ 停損：跌破 ${stopPrice}（-2 ATR）或失守 10MA ${support10}`,
+      `▶ 目標：第一停利 ${target1}（+1.5 ATR），第二停利 ${target2}（+3 ATR）`,
+    ];
+    playbook = `多方明確：可分 3 批進場（首批 50% 立即/${entryLow}~${entryHigh}、回測 20MA ${support20} 加碼 30%、突破前高 ${high60.toFixed(2)} 再加 20%）。停損 ${stopPrice}，達 ${target1} 後停利點上移到成本價，超過 ${target2} 改用 20MA 動態出場。`;
   } else if (winRate >= 55) {
     overall = '中期偏多・短線觀察';
-    action = ['等待回測支撐再進場', '不追高', '注意量能變化'];
+    action = [
+      `▶ 進場區：等待回測 5MA ${support10} 或 20MA ${support20} 再進場`,
+      `▶ 不追價：${close.toFixed(2)} 以上不主動追高`,
+      `▶ 停損：跌破 ${stopPrice}（-2 ATR）出場`,
+      `▶ 目標：${target1}（+1.5 ATR）為短線停利點`,
+    ];
+    playbook = `偏多但需等支撐：${close.toFixed(2)} 不追價，回測 ${support10}（5MA）輕倉 30%、回測 ${support20}（20MA）再加碼 30%。突破 ${high60.toFixed(2)} 才確認轉強。停損 ${stopPrice}，達 ${target1} 先停利一半。`;
   } else if (winRate >= 45) {
     overall = '盤整待變・方向未明';
-    action = ['暫時觀望', '等待方向明確', '輕倉試水'];
+    action = [
+      `▶ 觀望優先：${close.toFixed(2)} 在多空交界，避免重押`,
+      `▶ 短線區間：上 ${entryHigh}、下 ${support10}（區間操作）`,
+      `▶ 試水部位：上限總部位 10%，停損 ${stopPrice}`,
+      `▶ 等待訊號：突破 ${high60.toFixed(2)} 轉多 / 跌破 ${low60.toFixed(2)} 轉空`,
+    ];
+    playbook = `盤整格局：建議空手或極輕倉（≤10%）。等突破 ${high60.toFixed(2)} 確認多方，或跌破 ${low60.toFixed(2)} 確認空方再做方向。當沖可作 ${support10}~${entryHigh} 區間，但留意流動性。`;
   } else if (winRate >= 30) {
     overall = '中期偏空・反彈逢高減碼';
-    action = ['不接刀', '反彈即減碼', '保守為主'];
+    action = [
+      `▶ 持股減碼：反彈到 ${ma5 != null ? fmt2(ma5) : entryHigh} 即減 50%`,
+      `▶ 不接刀：${close.toFixed(2)} 不嘗試逢低承接`,
+      `▶ 停損嚴守：跌破 ${stopPrice} 全數出場`,
+      `▶ 等待訊號：站回 20MA ${support20} 才考慮重新評估`,
+    ];
+    playbook = `偏空格局：手中部位逢反彈（${ma5 != null ? fmt2(ma5) : entryHigh}）即減碼 50%，跌破 ${stopPrice} 全部清空。新進場一律觀望，需見「站回 20MA + 法人翻買 + 量縮止跌」三條件齊備才考慮回補。`;
   } else {
     overall = '空頭格局・趨勢向下';
-    action = ['空手等待', '禁追高', '等待止穩訊號'];
+    action = [
+      `▶ 空手為上：${close.toFixed(2)} 不持股、不抄底`,
+      `▶ 既有部位停損：跌破 ${stopPrice} 立即出場`,
+      `▶ 觀察點：${low60.toFixed(2)}（60 日低）+ KD 低檔背離`,
+      `▶ 翻多訊號：站回 20MA ${support20} + 量增`,
+    ];
+    playbook = `空頭明確：堅持空手。重新進場需符合三條件：(1) 站回 20MA ${support20}；(2) 法人連 3 日買超；(3) KD 自低檔上彎。任一不滿足即繼續觀望，禁追跌不停損。`;
   }
 
   // 子項細分（給 UI 顯示拆解）
@@ -377,6 +464,14 @@ export function diagnose(k, inst = [], opts = {}) {
     signals,
     score, winRate,
     subScores,
-    overall, action,
+    overall, action, playbook,
+    levels: {
+      entryLow, entryHigh,
+      stop: stopPrice,
+      target1, target2,
+      support10, support20,
+      high60: +high60.toFixed(2),
+      low60: +low60.toFixed(2),
+    },
   };
 }

@@ -37,7 +37,7 @@ function timeLabel(ts) {
   return d.toLocaleDateString('zh-TW', { month: '2-digit', day: '2-digit' });
 }
 
-// category 可選：tw_stock / wd_stock / cn_stock / forex / future
+// category 可選：tw_stock / wd_stock / cn_stock / forex / future / headline
 export async function newsList(category = 'tw_stock', limit = 20) {
   const url = `${BASE}/${category}?limit=${limit}`;
   const j = await fetchJson(url);
@@ -53,4 +53,47 @@ export async function newsList(category = 'tw_stock', limit = 20) {
     source: '鉅亨網',
     keyword: n.keyword || [],
   }));
+}
+
+// 多分類聚合 — 抓多個 category 後依 publishAt 去重 & 排序，給「個股新聞」搜尋用
+export async function newsAggregate(categories = ['tw_stock', 'headline', 'wd_stock'], limitEach = 60) {
+  const all = await Promise.allSettled(categories.map((c) => newsList(c, limitEach)));
+  const merged = [];
+  const seen = new Set();
+  all.forEach((r) => {
+    if (r.status !== 'fulfilled') return;
+    r.value.forEach((n) => {
+      if (seen.has(n.id)) return;
+      seen.add(n.id);
+      merged.push(n);
+    });
+  });
+  // 由新到舊
+  merged.sort((a, b) => (b.publishAt || 0) - (a.publishAt || 0));
+  return merged;
+}
+
+// 鉅亨網全文搜尋 — 用於精準個股新聞（依代號或股名搜尋）
+// API: https://api.cnyes.com/media/api/v1/search/news?q=<keyword>&limit=30
+export async function newsSearch(keyword, limit = 30) {
+  if (!keyword) return [];
+  const url = `https://api.cnyes.com/media/api/v1/search/news?q=${encodeURIComponent(keyword)}&limit=${limit}`;
+  try {
+    const j = await fetchJson(url);
+    const list = j?.items?.data || j?.data?.items || j?.items || [];
+    return list.map((n) => ({
+      id: n.newsId || n.id,
+      time: timeLabel(n.publishAt),
+      publishAt: n.publishAt,
+      title: decodeHTML(n.title),
+      summary: decodeHTML(n.summary || n.content || '').slice(0, 80),
+      url: `https://news.cnyes.com/news/id/${n.newsId || n.id}`,
+      category: n.categoryName || '搜尋',
+      source: '鉅亨網',
+      keyword: n.keyword || [],
+    })).filter((n) => n.id && n.title);
+  } catch (e) {
+    console.warn('[cnyes search]', e.message);
+    return [];
+  }
 }

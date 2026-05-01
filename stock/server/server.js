@@ -758,13 +758,62 @@ app.get('/api/ranking', async (req, res) => {
   } catch (e) { fail(res, e); }
 });
 
-// ───────────────────────── 即時新聞（鉅亨網）─────────────────────────
-
+// ───────────────────────── 即時新聞（鉅亨網 + Yahoo 多源）─────────────────────────
+// 一般用法：?category=tw_stock&limit=20  → 單一分類
+// 個股精準搜尋：?keyword=2330+台積電&limit=30 → 鉅亨網全文搜尋 + Yahoo 新聞 + 多分類聚合
 app.get('/api/news', async (req, res) => {
   const category = req.query.category || 'tw_stock';
   const limit = +(req.query.limit || 20);
+  const keyword = (req.query.keyword || '').trim();
+
   try {
+    if (keyword) {
+      // 個股關鍵字 — 多源聚合（cache 90 秒）
+      const cacheKey = `newsSearch:${keyword}:${limit}`;
+      const data = await memo(cacheKey, 90000, async () => {
+        const [search, agg, yh] = await Promise.allSettled([
+          cnyes.newsSearch(keyword, 30),
+          cnyes.newsAggregate(['tw_stock', 'headline', 'wd_stock'], 60),
+          yahoo.news(keyword, 20),
+        ]);
+        const all = [];
+        const seen = new Set();
+        const push = (n) => {
+          if (!n.title) return;
+          const key = (n.id ? `id:${n.id}` : '') + '|' + n.title.slice(0, 30);
+          if (seen.has(key)) return;
+          seen.add(key);
+          all.push(n);
+        };
+        if (search.status === 'fulfilled') search.value.forEach(push);
+        if (yh.status === 'fulfilled') yh.value.forEach(push);
+        // 聚合分類僅作 keyword 過濾後加入（避免無關新聞淹沒）
+        if (agg.status === 'fulfilled') {
+          const kws = keyword.split(/\s+/).filter(Boolean);
+          agg.value.forEach((n) => {
+            const text = `${n.title} ${n.summary || ''}`;
+            if (kws.some((k) => text.includes(k))) push(n);
+          });
+        }
+        all.sort((a, b) => (b.publishAt || 0) - (a.publishAt || 0));
+        return all.slice(0, limit);
+      });
+      return ok(res, data);
+    }
+
+    // 不帶 keyword → 維持原行為（單一分類）
     const data = await memo(`news:${category}:${limit}`, 60000, () => cnyes.newsList(category, limit));
+    ok(res, data);
+  } catch (e) { fail(res, e); }
+});
+
+// ───────────────────────── 個股盤中分時資料 ─────────────────────────
+// Yahoo intraday：1 分線、當日 → 給「即時走勢圖」用
+app.get('/api/intraday/:code', async (req, res) => {
+  const code = req.params.code;
+  const interval = req.query.interval || '1m';
+  try {
+    const data = await memo(`intraday:${code}:${interval}`, 30000, () => yahoo.intraday(`${code}.TW`, { interval, range: '1d' }));
     ok(res, data);
   } catch (e) { fail(res, e); }
 });
