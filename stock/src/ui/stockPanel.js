@@ -315,20 +315,57 @@ async function renderTech(code, s) {
 
   // 技術診斷 — 統一向後端拿（與 AI 智選共用同一份 diagnose 結果，避免雙路徑差異）
   let d = null;
+  let diagError = null;
   try {
     d = await api.diagnose(code);
   } catch (err) {
+    diagError = err.message;
     // 後端失敗時 fallback 到本地計算（為了不阻塞 UI）
-    let inst = [];
-    let sh = null;
-    try { inst = (await api.institutional(code)) || []; } catch {}
-    try { sh = await api.shareholding(code); } catch {}
-    d = diagnose(k, inst, { sharesOutstanding: sh?.sharesOutstanding || null });
+    try {
+      let inst = [];
+      let sh = null;
+      try { inst = (await api.institutional(code)) || []; } catch {}
+      try { sh = await api.shareholding(code); } catch {}
+      d = diagnose(k, inst, { sharesOutstanding: sh?.sharesOutstanding || null });
+    } catch (e2) {
+      console.warn('[diag local fallback]', e2.message);
+    }
   }
   if (d) {
     renderDiag(d, k);
     renderTechKpis(d);
+  } else {
+    renderDiagError(diagError || '無法產生診斷');
   }
+}
+
+// 診斷失敗時的友善 empty state（保留價量資訊，標出哪一段壞了）
+function renderDiagError(msg) {
+  const tagEl = document.getElementById('diag-tag');
+  const headEl = document.getElementById('diag-headline');
+  if (tagEl) { tagEl.className = 'diag-tag flat'; tagEl.textContent = '無法診斷'; }
+  if (headEl) headEl.textContent = msg;
+
+  document.getElementById('diag-tech').innerHTML = `<tr><td colspan="2" style="color:var(--dim);text-align:center;padding:20px">${msg}<br><span style="font-size:10px">技術指標暫無法計算 — 可能為週末/盤後 + 第三方 API 限流</span></td></tr>`;
+  document.getElementById('diag-chip').innerHTML = `<tr><td colspan="2" style="color:var(--dim);text-align:center;padding:20px">籌碼資料載入失敗</td></tr>`;
+  document.getElementById('diag-mainforce').textContent = '';
+  document.getElementById('diag-action').innerHTML = '<li style="color:var(--dim)">資料完整度不足，暫不提供操作建議</li>';
+  document.getElementById('diag-signal-list').innerHTML = `<div style="color:var(--dim);font-size:11px;padding:8px">無法產生訊號</div>`;
+  // 勝率儀表清空
+  const fillEl = document.getElementById('gauge-fill');
+  if (fillEl) fillEl.style.transform = `translateX(-50%) rotate(-90deg)`;
+  document.getElementById('gauge-num').textContent = '--';
+  document.getElementById('gauge-label').textContent = '資料不足';
+  // 驗證面板清空
+  ['val-consistency', 'val-accuracy', 'val-liquidity', 'val-cost'].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = '--';
+  });
+  // 操作劇本清空
+  const pbText = document.getElementById('diag-playbook-text');
+  if (pbText) pbText.textContent = '資料完整度不足，暫不提供操作劇本';
+  const pbLevels = document.getElementById('diag-levels');
+  if (pbLevels) pbLevels.innerHTML = '';
 }
 
 // 盤中分時即時走勢圖（1 分 K，當日）

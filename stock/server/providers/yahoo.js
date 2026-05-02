@@ -4,10 +4,17 @@
 const BASE = 'https://query1.finance.yahoo.com';
 const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36';
 
-async function fetchJson(url) {
-  const res = await fetch(url, { headers: { 'User-Agent': UA, Accept: 'application/json' } });
-  if (!res.ok) throw new Error(`yahoo HTTP ${res.status} ${url}`);
-  return res.json();
+async function fetchJson(url, { retries = 1, backoffMs = 800 } = {}) {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    const res = await fetch(url, { headers: { 'User-Agent': UA, Accept: 'application/json' } });
+    if (res.ok) return res.json();
+    // 429 rate limit：退避一次再試
+    if (res.status === 429 && attempt < retries) {
+      await new Promise((r) => setTimeout(r, backoffMs * (attempt + 1)));
+      continue;
+    }
+    throw new Error(`yahoo HTTP ${res.status} ${url}`);
+  }
 }
 
 // 即時報價（單一或多檔），回傳簡化結構

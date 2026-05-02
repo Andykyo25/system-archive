@@ -660,19 +660,49 @@ app.get('/api/movers', async (req, res) => {
 
 // ───────────────────────── 共用診斷邏輯（單一事實來源） ─────────────────────────
 // 同時給 /api/diagnose/:code 與 /api/ranking 使用，確保兩邊 winRate 一致
+// 設計原則：每個資料源獨立 catch，任一失敗不影響其他；K 線兩段 fallback (FinMind → Yahoo)
 async function loadStockDiagnose(code) {
   const start = new Date(Date.now() - 90 * 86400e3).toISOString().slice(0, 10);
   const today = todayIso();
 
+  // 4 個資料源全部包 catch，避免一個壞掉拖死全部
+  const safeCall = (label, fn) => fn().catch((e) => {
+    console.warn(`[diag ${code}] ${label} failed:`, e.message);
+    return null;
+  });
+
   const [klineRaw, instRaw, shInfo, misArr] = await Promise.all([
-    memo(`kline:${code}:90`, 60000, () => finmind.stockPrice(code, start)),
-    memo(`inst:${code}`, TTL_HIST / 24, () => finmind.institutional(code, start)).catch(() => []),
-    memo(`shares:${code}`, TTL_HIST, () => finmind.sharesOutstanding(code).catch(() => null)),
-    memo(`mis:${code}`, 1000, () => twseMis.quotes([code], 'tse')).catch(() => []),
+    safeCall('kline:finmind', () => memo(`kline:${code}:90`, 60000, () => finmind.stockPrice(code, start))),
+    safeCall('inst', () => memo(`inst:${code}`, TTL_HIST / 24, () => finmind.institutional(code, start))),
+    safeCall('shares', () => memo(`shares:${code}`, TTL_HIST, () => finmind.sharesOutstanding(code))),
+    safeCall('mis', () => memo(`mis:${code}`, 1000, () => twseMis.quotes([code], 'tse'))),
   ]);
 
-  if (!klineRaw || klineRaw.length < 30) return null;
-  const k = klineRaw.map((r) => ({
+  // K 線 fallback：FinMind 失敗或太少 → 試 Yahoo chart
+  let kSource = 'finmind';
+  let rawKline = klineRaw;
+  if (!rawKline || rawKline.length < 30) {
+    try {
+      const yhK = await memo(`yhKline:${code}:90`, 300000, () => yahoo.chart(`${code}.TW`, '3mo', '1d'));
+      if (yhK && yhK.length >= 30) {
+        rawKline = yhK.map((d) => ({
+          open: d.open, high: d.high, low: d.low, close: d.close,
+          // Yahoo 量是「股」單位 → 換成「張」
+          Trading_Volume: Math.round((d.volume || 0) / 1000),
+          date: d.date,
+        }));
+        kSource = 'yahoo';
+      }
+    } catch (e) {
+      console.warn(`[diag ${code}] yahoo kline fallback failed:`, e.message);
+    }
+  }
+
+  if (!rawKline || rawKline.length < 20) {
+    throw new Error(`K 線資料不足（FinMind/Yahoo 均無可用歷史）`);
+  }
+
+  const k = rawKline.map((r) => ({
     open: +r.open,
     high: +(r.max ?? r.high),
     low: +(r.min ?? r.low),
@@ -680,7 +710,8 @@ async function loadStockDiagnose(code) {
     vol: +(r.Trading_Volume ?? r.volume ?? 0),
     date: r.date,
   })).filter((d) => Number.isFinite(d.close));
-  if (k.length < 30) return null;
+
+  if (k.length < 20) throw new Error(`K 線有效筆數不足（${k.length} 筆）`);
 
   // ── 即時資料覆蓋（與前端邏輯保持一致：close/high/low/vol 全覆蓋；缺今日則補 bar）──
   const mis = misArr?.[0];

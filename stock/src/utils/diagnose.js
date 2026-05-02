@@ -188,6 +188,16 @@ export function diagnose(k, inst = [], opts = {}) {
   const aboveMa20 = ma20 != null && last.close >= ma20;
   const aboveMa60 = ma60 != null && last.close >= ma60;
 
+  // ── 預先計算所有指標（避免 TDZ）──
+  const closes = k.map((d) => d.close);
+  const vols = k.map((d) => d.vol || 0);
+  const bias20 = calcBias(closes, 20);
+  const atr14 = calcATR(k, 14);
+  const maDeduct20 = calcMaDeduct(closes, 20);
+  const volZ = calcVolZ(vols, 20);
+  const rsi14 = calcRSI(closes, 14);
+  const rsiPrev = calcRSI(closes.slice(0, -1), 14);
+
   // 趨勢判讀
   let trend, trendNote;
   if (aboveMa5 && aboveMa20 && aboveMa60 && ma5 > ma20 && ma20 > ma60) {
@@ -352,15 +362,6 @@ export function diagnose(k, inst = [], opts = {}) {
     (!priceUp && volUp ? 1 : 0) +
     (totalInst < 0 ? 1 : 0);
 
-  // 高權重台股指標
-  const closes = k.map((d) => d.close);
-  const vols = k.map((d) => d.vol || 0);
-  const bias20 = calcBias(closes, 20);
-  const atr14 = calcATR(k, 14);
-  const maDeduct20 = calcMaDeduct(closes, 20);
-  const volZ = calcVolZ(vols, 20);
-  const rsi14 = calcRSI(closes, 14);
-  const rsiPrev = calcRSI(closes.slice(0, -1), 14);
   // RSI 補進 signals（跟其他指標交叉驗證）
   if (rsi14 != null) {
     if (rsi14 > 80) signals.unshift({ tag: '警示', text: `RSI 過熱（${rsi14.toFixed(1)}）— 高檔追價風險增加` });
@@ -480,6 +481,19 @@ export function diagnose(k, inst = [], opts = {}) {
   if (turnoverRate != null && turnoverRate > 15 && !priceUp) penalty += 8;
   penalty = Math.min(penalty, 30);                                     // 罰分天花板
 
+  // ─── 預先計算 close/ATR/levels（避免後面 TDZ 引用） ───
+  const close = last.close;
+  const atr = atr14 || close * 0.025;
+  const fmt2 = (n) => n != null ? +n.toFixed(2) : null;
+  const entryLow  = fmt2(close - atr * 0.5);
+  const entryHigh = fmt2(close + atr * 0.3);
+  const support10 = ma5 != null ? fmt2(ma5) : fmt2(close - atr);
+  const support20 = ma20 != null ? fmt2(ma20) : fmt2(close - atr * 2);
+  const stopCandidates = [close - atr * 2, support10, support20].filter((v) => v != null && v < close);
+  const stopPrice = fmt2(stopCandidates.length ? Math.max(...stopCandidates) : close - atr * 2);
+  const target1 = fmt2(close + atr * 1.5);
+  const target2 = fmt2(close + atr * 3);
+
   // ──────────────────────────────────────────────
   // 6. 集成投票（Ensemble）+ 信心收縮（Regularization）
   // 設計理念：四個維度獨立投出 -1 ~ +1 分，計算平均與一致性
@@ -522,21 +536,7 @@ export function diagnose(k, inst = [], opts = {}) {
   // 8. Walk-forward 歷史驗證 — 用簡化版 quickDirection 對過去 60 日做 5 日 forward 命中率
   const historicalAccuracy = walkForwardAccuracy(k, { lookback: 60, holdDays: 5 });
 
-  // ─────── 進場 / 停損 / 目標價計算（用 ATR + MA） ───────
-  const close = last.close;
-  const atr = atr14 || close * 0.025;
-  const fmt2 = (n) => n != null ? +n.toFixed(2) : null;
-  // 多單方向（winRate >= 45 才有意義；空頭情境下這些只是參考價位）
-  const entryLow  = fmt2(close - atr * 0.5);
-  const entryHigh = fmt2(close + atr * 0.3);
-  const support10 = ma5 != null ? fmt2(ma5) : fmt2(close - atr);
-  const support20 = ma20 != null ? fmt2(ma20) : fmt2(close - atr * 2);
-  // 停損價修正：必須 < close，且選擇「最接近 close 的有效支撐」（保守原則 = 較高的停損點）
-  // 候選：close-2ATR、5MA、20MA — 取所有 < close 的最高者；若都 ≥ close 退到 close-2ATR
-  const stopCandidates = [close - atr * 2, support10, support20].filter((v) => v != null && v < close);
-  const stopPrice = fmt2(stopCandidates.length ? Math.max(...stopCandidates) : close - atr * 2);
-  const target1   = fmt2(close + atr * 1.5);
-  const target2   = fmt2(close + atr * 3);
+  // ─────── 進場 / 停損 / 目標價已於前面計算（close/atr/support10/support20/stopPrice/target1/target2） ───────
 
   // ─────── overall / action / playbook 判讀 ───────
   let overall, action, playbook;
