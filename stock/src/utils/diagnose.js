@@ -1,5 +1,13 @@
 // 技術診斷 — rule-based，從 K 線 + 三大法人推導訊號
 // 輸出結構固定，給 stockPanel 的「技術診斷」區塊渲染
+//
+// 過擬合對策（Anti-overfitting design）：
+//   1. Feature de-correlation：四面（trend/momentum/volPrice/chip）獨立評分，降低特徵重複加權
+//   2. Regularization (L2-like)：四面投票一致性低 → winRate 收縮回 50（防單面主導）
+//   3. Cross-validation：walkForwardAccuracy() 用過去 60 日做 5 日 forward 命中率
+//   4. Penalty cap：罰分天花板 30 分，避免單一情境多重扣分
+//   5. Economic constraints：流動性過濾 + 交易成本可行性檢查
+//   6. WinRate clamp：[15, 78]，承認黑天鵝不可預測（不允許 100% 信心）
 
 const avg = (arr) => arr.reduce((s, x) => s + x, 0) / (arr.length || 1);
 
@@ -103,6 +111,70 @@ function ma(k, n) {
   return avg(k.slice(-n).map((d) => d.close));
 }
 
+// ─────────────── Walk-forward 歷史驗證 ───────────────
+// 設計：給定 K 線，從 lookback 天前每日跑一次「簡化方向判讀」，
+// 對比 holdDays 後實際漲跌，計算命中率。等同 cross-validation。
+// 簡化判讀：MA 排列 + RSI 區間 + 收盤站上/跌破 MA20 → 投票決定方向
+function quickDirection(kSlice) {
+  if (!kSlice || kSlice.length < 25) return null;
+  const last = kSlice[kSlice.length - 1];
+  const closes = kSlice.map((d) => d.close);
+  const ma5_v = avg(closes.slice(-5));
+  const ma20_v = avg(closes.slice(-20));
+  const rsi = calcRSI(closes, 14);
+  const trendV = ma5_v > ma20_v ? 1 : -1;
+  const priceV = last.close > ma20_v ? 1 : -1;
+  const momV = rsi == null ? 0 : (rsi > 55 ? 1 : rsi < 45 ? -1 : 0);
+  const sum = trendV + priceV + momV;
+  return sum >= 2 ? 'long' : sum <= -2 ? 'short' : 'neutral';
+}
+
+export function walkForwardAccuracy(k, { lookback = 60, holdDays = 5 } = {}) {
+  if (!Array.isArray(k) || k.length < 30 + holdDays) return null;
+  let correct = 0, total = 0, longHits = 0, longTotal = 0, shortHits = 0, shortTotal = 0;
+  const start = Math.max(25, k.length - lookback - holdDays);
+  for (let i = start; i < k.length - holdDays; i++) {
+    const dir = quickDirection(k.slice(0, i + 1));
+    if (!dir || dir === 'neutral') continue;
+    const ret = (k[i + holdDays].close - k[i].close) / k[i].close;
+    const hit = (dir === 'long' && ret > 0) || (dir === 'short' && ret < 0);
+    if (hit) correct++;
+    total++;
+    if (dir === 'long') { longTotal++; if (hit) longHits++; }
+    else { shortTotal++; if (hit) shortHits++; }
+  }
+  if (total < 5) return null; // 樣本太少
+  return {
+    hitRate: +(correct / total * 100).toFixed(1),
+    samples: total,
+    longHitRate: longTotal ? +(longHits / longTotal * 100).toFixed(1) : null,
+    shortHitRate: shortTotal ? +(shortHits / shortTotal * 100).toFixed(1) : null,
+    holdDays,
+  };
+}
+
+// Wilder RSI(14)：股票圈標準算法
+export function calcRSI(closes, period = 14) {
+  if (!Array.isArray(closes) || closes.length < period + 1) return null;
+  let gain = 0, loss = 0;
+  for (let i = 1; i <= period; i++) {
+    const ch = closes[i] - closes[i - 1];
+    if (ch >= 0) gain += ch; else loss -= ch;
+  }
+  let avgGain = gain / period;
+  let avgLoss = loss / period;
+  for (let i = period + 1; i < closes.length; i++) {
+    const ch = closes[i] - closes[i - 1];
+    const g = ch > 0 ? ch : 0;
+    const l = ch < 0 ? -ch : 0;
+    avgGain = (avgGain * (period - 1) + g) / period;
+    avgLoss = (avgLoss * (period - 1) + l) / period;
+  }
+  if (avgLoss === 0) return 100;
+  const rs = avgGain / avgLoss;
+  return 100 - 100 / (1 + rs);
+}
+
 export function diagnose(k, inst = [], opts = {}) {
   if (!k || k.length < 5) return null;
   const last = k[k.length - 1];
@@ -158,15 +230,17 @@ export function diagnose(k, inst = [], opts = {}) {
   else if (difLast < demLast && oscLast < oscPrev) macdSignal = '空頭擴張';
   else macdSignal = '空頭縮減';
 
-  // 量能 — 修正：若今日 vol=0（可能為 Yahoo 即時 + FinMind 還沒更新合成的占位），不做量能判讀
-  const recentVol = k.slice(-5).map((d) => d.vol || 0);
-  const avgVol = avg(recentVol.slice(0, 4)) || 1;
+  // 量能 — 改為「對近 20 日均量」做比較（更接近專業判讀的「爆量」標準）
   const todayVol = last.vol || 0;
-  const volMissing = todayVol <= 0;            // 量能資料未到位
+  const volMissing = todayVol <= 0;
+  // 排除今日，取前 20 日均量（資料不足則退到 5 日）
+  const refVols = k.slice(-21, -1).map((d) => d.vol || 0).filter((v) => v > 0);
+  const ref5 = k.slice(-6, -1).map((d) => d.vol || 0).filter((v) => v > 0);
+  const avgVol = (refVols.length >= 10 ? avg(refVols) : (ref5.length ? avg(ref5) : 1)) || 1;
   const volRatio = volMissing ? 1 : todayVol / avgVol;
   let volSignal;
   if (volMissing) volSignal = '量能待更新';
-  else if (volRatio > 1.8) volSignal = '量能爆發';
+  else if (volRatio > 2.0) volSignal = '量能爆發';   // 200% 均量
   else if (volRatio > 1.3) volSignal = '量能放大';
   else if (volRatio < 0.7) volSignal = '量能萎縮';
   else volSignal = '量能持平';
@@ -262,7 +336,7 @@ export function diagnose(k, inst = [], opts = {}) {
     signals.push({ tag: '機會', text: '外資買超 + KD 多方 + 帶量上攻 — 短線追擊優選' });
   }
 
-  if (!signals.length) signals.push({ tag: '中性', text: '目前無強烈買賣訊號（多項指標未同步）' });
+  // RSI signals 將在後面計算完 rsi14 後才補進；空訊號 fallback 也順延到最後
 
   // 整體結論
   const bullishPts =
@@ -285,6 +359,19 @@ export function diagnose(k, inst = [], opts = {}) {
   const atr14 = calcATR(k, 14);
   const maDeduct20 = calcMaDeduct(closes, 20);
   const volZ = calcVolZ(vols, 20);
+  const rsi14 = calcRSI(closes, 14);
+  const rsiPrev = calcRSI(closes.slice(0, -1), 14);
+  // RSI 補進 signals（跟其他指標交叉驗證）
+  if (rsi14 != null) {
+    if (rsi14 > 80) signals.unshift({ tag: '警示', text: `RSI 過熱（${rsi14.toFixed(1)}）— 高檔追價風險增加` });
+    else if (rsi14 < 20) signals.unshift({ tag: '機會', text: `RSI 超賣（${rsi14.toFixed(1)}）— 短線反彈機會` });
+    // RSI 背離（價接近新高但 RSI 走弱）
+    if (distToHigh < 2 && rsiPrev != null && rsi14 < rsiPrev && rsi14 < 70) {
+      signals.push({ tag: '警示', text: `價接近 60 日高但 RSI 走弱 — 動能背離` });
+    }
+  }
+  // 訊號為空時補一個中性 fallback
+  if (!signals.length) signals.push({ tag: '中性', text: '目前無強烈買賣訊號（多項指標未同步）' });
   const turnoverRate = (sharesOutstanding && sharesOutstanding > 0 && last.vol)
     ? ((last.vol * 1000) / sharesOutstanding) * 100   // vol 為「張」，× 1000 換成股
     : null;
@@ -295,42 +382,62 @@ export function diagnose(k, inst = [], opts = {}) {
   // ─────── 勝率 v2：四面加權平均 + 風險懲罰 ───────
   const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
-  // 1. 趨勢面 (0-100)：MA 排列 + Bias 偏離
+  // 1. 趨勢面 (0-100)：MA 排列 + Bias 偏離（對稱化）
   let trendScore = 50;
-  if (aboveMa5)  trendScore += 5;
-  if (aboveMa20) trendScore += 10;
-  if (aboveMa60) trendScore += 10;
+  if (aboveMa5)  trendScore += 5; else trendScore -= 5;
+  if (aboveMa20) trendScore += 10; else trendScore -= 10;
+  if (aboveMa60) trendScore += 10; else trendScore -= 10;
   if (ma5 != null && ma20 != null && ma60 != null) {
-    if (ma5 > ma20 && ma20 > ma60) trendScore += 15;        // 多頭排列加分
-    else if (ma5 < ma20 && ma20 < ma60) trendScore -= 25;   // 空頭排列重扣
+    if (ma5 > ma20 && ma20 > ma60) trendScore += 18;        // 多頭排列
+    else if (ma5 < ma20 && ma20 < ma60) trendScore -= 18;   // 空頭排列（對稱）
   }
   if (bias20 != null) {
-    if (bias20 > 10) trendScore -= 15;        // 過熱
-    else if (bias20 > 5) trendScore -= 5;
-    else if (bias20 < -10) trendScore += 10;  // 超跌反彈機會
+    if (bias20 > 10) trendScore -= 12;        // 過熱
+    else if (bias20 > 5) trendScore -= 4;
+    else if (bias20 < -10) trendScore += 12;  // 超跌反彈（對稱）
+    else if (bias20 < -5) trendScore += 4;
   }
   trendScore = clamp(trendScore, 0, 100);
 
-  // 2. 動能面 (0-100)：KD 事件 + MACD 趨勢
+  // 2. 動能面 (0-100)：KD 事件 + MACD 趨勢 + RSI（多空對稱）
   let momentumScore = 50;
-  if (kdSignal === '黃金交叉') momentumScore += 20;     // 事件加重
+  // KD 事件 — 對稱權重
+  if (kdSignal === '黃金交叉') momentumScore += 20;
   else if (kdSignal === '多頭排列') momentumScore += 8;
-  else if (kdSignal === '死亡交叉') momentumScore -= 25;
-  else if (kdSignal === '空頭排列') momentumScore -= 10;
-  if (kdLevel === '高檔鈍化') momentumScore -= 15;
-  else if (kdLevel === '低檔鈍化') momentumScore += 8;
+  else if (kdSignal === '死亡交叉') momentumScore -= 20;   // 由 -25 → -20，對稱化
+  else if (kdSignal === '空頭排列') momentumScore -= 8;    // 由 -10 → -8
+  if (kdLevel === '高檔鈍化') momentumScore -= 12;
+  else if (kdLevel === '低檔鈍化') momentumScore += 12;
+  // 黃金交叉 + 低檔（K<30）= 強反轉訊號，雙重加分
+  if (kdSignal === '黃金交叉' && cur.k < 30) momentumScore += 8;
+  if (kdSignal === '死亡交叉' && cur.k > 70) momentumScore -= 8;
+  // MACD 對稱化
   if (macdSignal === '多頭擴張') momentumScore += 15;
   else if (macdSignal === '多頭縮減') momentumScore += 3;
-  else if (macdSignal === '空頭擴張') momentumScore -= 20;
-  else if (macdSignal === '空頭縮減') momentumScore -= 5;
+  else if (macdSignal === '空頭擴張') momentumScore -= 15;
+  else if (macdSignal === '空頭縮減') momentumScore -= 3;
+  // RSI(14) — 真實計算，整合到動能面
+  if (rsi14 != null) {
+    if (rsi14 > 80) momentumScore -= 12;          // 過熱
+    else if (rsi14 > 70) momentumScore -= 5;      // 偏熱
+    else if (rsi14 < 20) momentumScore += 12;     // 超賣反彈機會
+    else if (rsi14 < 30) momentumScore += 5;
+    else if (rsi14 >= 50 && rsi14 <= 65) momentumScore += 4;  // 健康偏多
+    // RSI 上彎反轉訊號（從低檔上來）
+    if (rsiPrev != null && rsi14 > rsiPrev && rsiPrev < 40 && rsi14 >= 40) momentumScore += 5;
+    // RSI 下彎反轉（從高檔下來）
+    if (rsiPrev != null && rsi14 < rsiPrev && rsiPrev > 60 && rsi14 <= 60) momentumScore -= 5;
+  }
   momentumScore = clamp(momentumScore, 0, 100);
 
-  // 3. 量價面 (0-100)：今日量價組合 + 5 日量能趨勢
+  // 3. 量價面 (0-100)：今日量價組合 + 5 日量能趨勢（對稱化）
   let volPriceScore = 50;
-  if (volSignal === '量能爆發' && priceUp) volPriceScore += 18;
-  else if (volSignal === '量能爆發' && !priceUp) volPriceScore -= 30;  // 出貨型態
-  else if (volSignal === '量能放大' && priceUp) volPriceScore += 10;
-  else if (volSignal === '量能萎縮' && priceUp) volPriceScore -= 6;     // 動能衰竭
+  if (volSignal === '量能爆發' && priceUp) volPriceScore += 22;       // 對稱化
+  else if (volSignal === '量能爆發' && !priceUp) volPriceScore -= 22; // 出貨型態（由 -30 → -22）
+  else if (volSignal === '量能放大' && priceUp) volPriceScore += 12;
+  else if (volSignal === '量能放大' && !priceUp) volPriceScore -= 8;
+  else if (volSignal === '量能萎縮' && priceUp) volPriceScore -= 6;
+  else if (volSignal === '量能萎縮' && !priceUp) volPriceScore += 4;  // 量縮止跌
   if (priceVol === '價漲量增') volPriceScore += 10;
   else if (priceVol === '價漲量縮（背離）') volPriceScore -= 10;
   else if (priceVol === '價跌量增（出貨疑慮）') volPriceScore -= 15;
@@ -365,28 +472,69 @@ export function diagnose(k, inst = [], opts = {}) {
   const baseScore = trendScore * 0.30 + momentumScore * 0.25
                   + volPriceScore * 0.20 + chipScore * 0.25;
 
-  // 5. 風險懲罰
+  // 5. 風險懲罰（罰分上限 30，避免單一情境多重扣分）
   let penalty = 0;
-  if (bias20 != null && bias20 > 10 && cur.k > 80) penalty += 25;     // 高檔頂背離
-  if (volZ != null && volZ > 2 && !priceUp && bias20 > 5) penalty += 20;  // 量爆收黑
-  if (distToHigh < 2 && volSignal === '量能萎縮') penalty += 10;       // 接近高點量縮
-  if (turnoverRate != null && turnoverRate > 15 && !priceUp) penalty += 10;  // 高週轉率收黑
+  if (bias20 != null && bias20 > 10 && cur.k > 80) penalty += 18;     // 高檔頂背離（由 25 → 18）
+  if (volZ != null && volZ > 2 && !priceUp && bias20 > 5) penalty += 15;  // 量爆收黑（由 20 → 15）
+  if (distToHigh < 2 && volSignal === '量能萎縮') penalty += 8;
+  if (turnoverRate != null && turnoverRate > 15 && !priceUp) penalty += 8;
+  penalty = Math.min(penalty, 30);                                     // 罰分天花板
 
-  // 最終勝率：clamp 到 [10, 80]，避免極值（市場有黑天鵝）
-  const winRate = Math.round(clamp(baseScore - penalty, 10, 80));
+  // ──────────────────────────────────────────────
+  // 6. 集成投票（Ensemble）+ 信心收縮（Regularization）
+  // 設計理念：四個維度獨立投出 -1 ~ +1 分，計算平均與一致性
+  //   - 高一致性（mad 小）→ 信心高，winRate 偏離 50 較多
+  //   - 低一致性（模組互打架）→ 信心低，winRate 收縮回 50 附近
+  //   - 等同 L1/L2 正則化：防止單面分數主導
+  // ──────────────────────────────────────────────
+  const toVote = (s) => clamp((s - 50) / 30, -1, 1);  // 50 中性 → 0；80→+1；20→-1
+  const votes = [toVote(trendScore), toVote(momentumScore), toVote(volPriceScore), toVote(chipScore)];
+  const meanVote = avg(votes);
+  const mad = avg(votes.map((v) => Math.abs(v - meanVote)));   // 平均絕對偏差
+  const consistency = clamp(1 - mad, 0, 1);                    // 0=分歧 1=共識
+  // shrinkFactor：一致性高才允許大幅偏離 50（保留至少 40% 收縮）
+  const shrinkFactor = 0.4 + 0.6 * consistency;
+  const regularizedBase = 50 + (baseScore - 50) * shrinkFactor;
+
+  // 7. 經濟限制（Economic Constraints）
+  // 流動性：近 20 日均「成交額（萬元）」< 5000 萬視為低流動性，訊號不可靠
+  const avgTurnover20 = vols.length >= 20
+    ? avg(vols.slice(-20).map((v, i) => (v || 0) * (closes[closes.length - 20 + i] || close) * 1000)) // 元
+    : null;
+  const liquidLevel = avgTurnover20 == null ? 'unknown'
+    : avgTurnover20 >= 5e8 ? 'high'   // 5 億以上
+    : avgTurnover20 >= 5e7 ? 'mid'    // 5000 萬以上
+    : 'low';
+  const liquidityShrink = liquidLevel === 'low' ? 0.7 : liquidLevel === 'mid' ? 0.9 : 1.0;
+
+  // 交易成本可行性：台股單趟交易成本 ≈ 0.585%，雙趟 1.17%；目標報酬至少需覆蓋 2 倍交易成本
+  const TX_COST_PCT = 1.17;
+  const expectedRetTarget1 = ((target1 != null ? target1 : close) - close) / close * 100;
+  const costFeasible = expectedRetTarget1 >= TX_COST_PCT * 2;  // ≥ 2.34%
+
+  // 整合：經濟限制做最後一道收縮（low liquidity / 不夠賺交易成本 → 信心壓低）
+  const economicShrink = liquidityShrink * (costFeasible ? 1.0 : 0.85);
+  const finalScore = 50 + (regularizedBase - 50) * economicShrink - penalty;
+
+  // 最終勝率：clamp 到 [15, 78]，黑天鵝不可預測
+  const winRate = Math.round(clamp(finalScore, 15, 78));
+
+  // 8. Walk-forward 歷史驗證 — 用簡化版 quickDirection 對過去 60 日做 5 日 forward 命中率
+  const historicalAccuracy = walkForwardAccuracy(k, { lookback: 60, holdDays: 5 });
 
   // ─────── 進場 / 停損 / 目標價計算（用 ATR + MA） ───────
   const close = last.close;
   const atr = atr14 || close * 0.025;
-  // 進場區間：依勝率方向
-  // 多單：以 5MA / 20MA 為支撐買點，回測 0.5 ATR
-  // 空頭：建議在反彈到 ma5 附近觀察
   const fmt2 = (n) => n != null ? +n.toFixed(2) : null;
+  // 多單方向（winRate >= 45 才有意義；空頭情境下這些只是參考價位）
   const entryLow  = fmt2(close - atr * 0.5);
   const entryHigh = fmt2(close + atr * 0.3);
   const support10 = ma5 != null ? fmt2(ma5) : fmt2(close - atr);
   const support20 = ma20 != null ? fmt2(ma20) : fmt2(close - atr * 2);
-  const stopPrice = fmt2(Math.max(close - atr * 2, support20 || 0));
+  // 停損價修正：必須 < close，且選擇「最接近 close 的有效支撐」（保守原則 = 較高的停損點）
+  // 候選：close-2ATR、5MA、20MA — 取所有 < close 的最高者；若都 ≥ close 退到 close-2ATR
+  const stopCandidates = [close - atr * 2, support10, support20].filter((v) => v != null && v < close);
+  const stopPrice = fmt2(stopCandidates.length ? Math.max(...stopCandidates) : close - atr * 2);
   const target1   = fmt2(close + atr * 1.5);
   const target2   = fmt2(close + atr * 3);
 
@@ -465,6 +613,19 @@ export function diagnose(k, inst = [], opts = {}) {
     score, winRate,
     subScores,
     overall, action, playbook,
+    direction: winRate >= 55 ? 'long' : winRate >= 45 ? 'neutral' : 'short',
+    rsi14, rsiPrev,
+    // 過擬合對策衍生指標
+    consistency: +(consistency * 100).toFixed(0),       // 0-100：四面共識度
+    moduleVotes: { trend: +votes[0].toFixed(2), momentum: +votes[1].toFixed(2), volPrice: +votes[2].toFixed(2), chip: +votes[3].toFixed(2) },
+    historicalAccuracy,                                  // walk-forward 命中率
+    economic: {
+      liquidity: liquidLevel,
+      avgTurnover20,                                     // 元
+      costFeasible,
+      txCostPct: TX_COST_PCT,
+      expectedReturn: +expectedRetTarget1.toFixed(2),
+    },
     levels: {
       entryLow, entryHigh,
       stop: stopPrice,

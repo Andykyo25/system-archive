@@ -269,7 +269,8 @@ async function renderTech(code, s) {
   const kVal = Math.min(95, Math.max(20, rsv * 0.5 + 50)).toFixed(1);
   const dVal = Math.min(95, Math.max(20, rsv * 0.4 + 55)).toFixed(1);
   document.getElementById('kd').textContent = `${kVal} / ${dVal}`;
-  document.getElementById('rsi').textContent = (50 + s.pct * 4).toFixed(1);
+  // RSI 留待 server diagnose 回填（renderTechKpis 會覆蓋為真實 RSI(14)）
+  document.getElementById('rsi').textContent = '計算中…';
 
   mountChart('chartK', {
     type: 'line',
@@ -312,13 +313,18 @@ async function renderTech(code, s) {
   // 盤中即時走勢（不阻塞主流程）
   renderIntraday(code).catch(() => {});
 
-  // 技術診斷（rule-based）
-  let inst = [];
-  let sh = null;
-  try { inst = (await api.institutional(code)) || []; } catch { /* 失敗只影響籌碼欄位 */ }
-  try { sh = await api.shareholding(code); } catch { sh = null; }
-  const sharesOutstanding = sh?.sharesOutstanding || null;
-  const d = diagnose(k, inst, { sharesOutstanding });
+  // 技術診斷 — 統一向後端拿（與 AI 智選共用同一份 diagnose 結果，避免雙路徑差異）
+  let d = null;
+  try {
+    d = await api.diagnose(code);
+  } catch (err) {
+    // 後端失敗時 fallback 到本地計算（為了不阻塞 UI）
+    let inst = [];
+    let sh = null;
+    try { inst = (await api.institutional(code)) || []; } catch {}
+    try { sh = await api.shareholding(code); } catch {}
+    d = diagnose(k, inst, { sharesOutstanding: sh?.sharesOutstanding || null });
+  }
   if (d) {
     renderDiag(d, k);
     renderTechKpis(d);
@@ -390,11 +396,75 @@ async function renderIntraday(code) {
   });
 }
 
-// 把 Bias / ATR / 扣抵值 寫進新增的 KPI 卡片，並依條件加紅警示
+// 過擬合對策面板：共識度、歷史命中率、流動性、成本可行性
+function renderValidation(d) {
+  // 1. 四面共識度
+  const cEl = document.getElementById('val-consistency');
+  if (cEl) {
+    const c = d.consistency ?? 0;
+    const tone = c >= 75 ? 'var(--up)' : c >= 50 ? 'var(--gold)' : 'var(--down)';
+    const lab = c >= 75 ? '高（訊號一致）' : c >= 50 ? '中（部分分歧）' : '低（模組互打）';
+    cEl.innerHTML = `<span style="color:${tone}">${c}%</span> <span style="color:var(--dim);font-size:10px">${lab}</span>`;
+  }
+
+  // 2. Walk-forward 歷史命中率
+  const aEl = document.getElementById('val-accuracy');
+  if (aEl) {
+    if (!d.historicalAccuracy) {
+      aEl.innerHTML = `<span style="color:var(--dim)">樣本不足</span>`;
+    } else {
+      const h = d.historicalAccuracy;
+      const tone = h.hitRate >= 60 ? 'var(--up)' : h.hitRate >= 50 ? 'var(--gold)' : 'var(--down)';
+      const note = h.hitRate >= 55 ? '可信度高' : h.hitRate >= 45 ? '與隨機接近' : '反向更佳？';
+      aEl.innerHTML = `<span style="color:${tone}">${h.hitRate}%</span> `
+        + `<span style="color:var(--dim);font-size:10px">(${h.samples} 筆樣本 · ${note})</span>`;
+    }
+  }
+
+  // 3. 流動性
+  const lEl = document.getElementById('val-liquidity');
+  if (lEl) {
+    const lq = d.economic?.liquidity || 'unknown';
+    const turn = d.economic?.avgTurnover20;
+    const turnText = turn ? (turn >= 1e8 ? (turn / 1e8).toFixed(1) + ' 億/日' : (turn / 1e4).toFixed(0) + ' 萬/日') : '--';
+    const map = {
+      high: { tone: 'var(--up)', text: '高' },
+      mid:  { tone: 'var(--gold)', text: '中' },
+      low:  { tone: 'var(--down)', text: '低（訊號雜訊較多）' },
+      unknown: { tone: 'var(--dim)', text: '--' },
+    };
+    const m = map[lq];
+    lEl.innerHTML = `<span style="color:${m.tone}">${m.text}</span> <span style="color:var(--dim);font-size:10px">${turnText}</span>`;
+  }
+
+  // 4. 成本可行性
+  const ceEl = document.getElementById('val-cost');
+  if (ceEl) {
+    const e = d.economic;
+    if (!e) { ceEl.textContent = '--'; return; }
+    const tone = e.costFeasible ? 'var(--up)' : 'var(--down)';
+    const lab = e.costFeasible ? '可覆蓋' : '不足 2x 成本';
+    ceEl.innerHTML = `<span style="color:${tone}">${lab}</span> `
+      + `<span style="color:var(--dim);font-size:10px">目標 +${e.expectedReturn}% / 成本 ${e.txCostPct}%</span>`;
+  }
+}
+
+// 把 Bias / ATR / 扣抵值 / RSI / KD 寫進 KPI 卡片，並依條件加紅警示
 function renderTechKpis(d) {
   const biasEl = document.getElementById('bias20');
   const atrEl = document.getElementById('atr14');
   const dedEl = document.getElementById('maDeduct20');
+  // RSI(14) — 真實計算（Wilder）
+  const rsiEl = document.getElementById('rsi');
+  if (rsiEl && d.rsi14 != null) {
+    rsiEl.textContent = d.rsi14.toFixed(1);
+    rsiEl.style.color = d.rsi14 > 70 ? 'var(--down)' : d.rsi14 < 30 ? 'var(--up)' : '';
+  }
+  // KD — 用 server diagnose 真實值覆蓋
+  const kdEl = document.getElementById('kd');
+  if (kdEl && d.kd?.k != null && d.kd?.d != null) {
+    kdEl.textContent = `${d.kd.k.toFixed(1)} / ${d.kd.d.toFixed(1)}`;
+  }
   if (biasEl) {
     if (d.bias20 == null) {
       biasEl.textContent = '--';
@@ -451,6 +521,9 @@ function renderDiag(d, k) {
   const label = pct >= 70 ? '高勝率' : pct >= 55 ? '偏多' : pct >= 45 ? '中性' : pct >= 30 ? '偏空' : '低勝率';
   document.getElementById('gauge-label').textContent = label;
 
+  // ─ 過擬合對策驗證指標 ─
+  renderValidation(d);
+
   // ─ 操作建議 ─
   document.getElementById('diag-action').innerHTML = d.action.map((a) => `<li>${a}</li>`).join('');
 
@@ -480,17 +553,41 @@ function renderDiag(d, k) {
         <div style="font-size:9px;color:var(--dim);letter-spacing:1px;margin-bottom:3px">${lab}</div>
         <div style="font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:700;color:${color || 'var(--txt)'}">${val ?? '--'}</div>
       </div>`;
-    pbLevels.innerHTML = [
-      cell('進場區下', L.entryLow, 'var(--gold)'),
-      cell('進場區上', L.entryHigh, 'var(--gold)'),
-      cell('停損', L.stop, 'var(--down)'),
-      cell('停利①', L.target1, 'var(--up)'),
-      cell('停利②', L.target2, 'var(--up)'),
-      cell('5MA 支撐', L.support10, 'var(--neon)'),
-      cell('20MA 支撐', L.support20, 'var(--neon-2)'),
-      cell('60 日高', L.high60, 'var(--up)'),
-      cell('60 日低', L.low60, 'var(--down)'),
-    ].join('');
+    // 方向感：long=做多視角；short=只顯示參考支撐/壓力，不顯示停利目標誤導
+    const dir = d.direction || (d.winRate >= 55 ? 'long' : d.winRate >= 45 ? 'neutral' : 'short');
+    let cells;
+    if (dir === 'long') {
+      cells = [
+        cell('進場區下', L.entryLow, 'var(--gold)'),
+        cell('進場區上', L.entryHigh, 'var(--gold)'),
+        cell('停損', L.stop, 'var(--down)'),
+        cell('停利①', L.target1, 'var(--up)'),
+        cell('停利②', L.target2, 'var(--up)'),
+        cell('5MA 支撐', L.support10, 'var(--neon)'),
+        cell('20MA 支撐', L.support20, 'var(--neon-2)'),
+        cell('60 日高', L.high60, 'var(--up)'),
+        cell('60 日低', L.low60, 'var(--down)'),
+      ];
+    } else if (dir === 'neutral') {
+      cells = [
+        cell('區間下緣', L.support10, 'var(--neon)'),
+        cell('區間上緣', L.entryHigh, 'var(--gold)'),
+        cell('多方確認', L.high60, 'var(--up)'),
+        cell('空方確認', L.low60, 'var(--down)'),
+        cell('20MA 中軸', L.support20, 'var(--neon-2)'),
+        cell('停損參考', L.stop, 'var(--down)'),
+      ];
+    } else {
+      // short：只顯示反彈壓力與支撐，不顯示「進場區/停利目標」避免誤導
+      cells = [
+        cell('反彈壓力①', L.support10, 'var(--gold)'),       // 5MA 反彈即減
+        cell('反彈壓力②', L.support20, 'var(--gold)'),       // 20MA 翻多訊號
+        cell('現有部位停損', L.stop, 'var(--down)'),
+        cell('60 日高', L.high60, 'var(--up)'),
+        cell('60 日低（破底警戒）', L.low60, 'var(--down)'),
+      ];
+    }
+    pbLevels.innerHTML = cells.join('');
   }
 }
 

@@ -148,6 +148,25 @@
                 <div class="gauge-num" id="gauge-num">--</div>
                 <div class="gauge-label" id="gauge-label">資料載入中</div>
               </div>
+              <!-- 過擬合對策：四維共識度 + 歷史命中率 + 經濟可行性 -->
+              <div class="validation-panel" id="validation-panel" style="margin-top:8px;font-size:10.5px;line-height:1.6">
+                <div style="display:flex;justify-content:space-between;padding:4px 0;border-top:1px dashed var(--line)">
+                  <span style="color:var(--dim)">四面共識度</span>
+                  <span id="val-consistency" style="font-family:'JetBrains Mono',monospace;font-weight:700">--</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;padding:4px 0;border-top:1px dashed var(--line)">
+                  <span style="color:var(--dim)">近 60 日歷史命中率</span>
+                  <span id="val-accuracy" style="font-family:'JetBrains Mono',monospace;font-weight:700">--</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;padding:4px 0;border-top:1px dashed var(--line)">
+                  <span style="color:var(--dim)">流動性</span>
+                  <span id="val-liquidity" style="font-family:'JetBrains Mono',monospace;font-weight:700">--</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;padding:4px 0;border-top:1px dashed var(--line)">
+                  <span style="color:var(--dim)">獲利 vs 交易成本</span>
+                  <span id="val-cost" style="font-family:'JetBrains Mono',monospace;font-weight:700">--</span>
+                </div>
+              </div>
               <div class="diag-action-title">操作建議</div>
               <ul class="diag-action" id="diag-action"></ul>
             </div>
@@ -220,79 +239,6 @@
 
       <div class="pane" id="pane-news" style="display:none">
         <div id="stock-news"></div>
-      </div>
-    </div>
-
-    <div class="panel">
-      <div class="panel-head">
-        <h2>強弱榜</h2>
-        <div class="legend">
-          <span><span class="sw" style="background:var(--up)"></span>漲</span>
-          <span><span class="sw" style="background:var(--down)"></span>跌</span>
-          <span id="movers-source">點選個股查詳細</span>
-        </div>
-      </div>
-      <div class="movers-grid">
-        <div>
-          <div class="aside-title" style="color:var(--up)">▲ 漲幅榜 TOP</div>
-          <div class="movers-list" id="gainers"></div>
-        </div>
-        <div>
-          <div class="aside-title" style="color:var(--down)">▼ 跌幅榜 TOP</div>
-          <div class="movers-list" id="losers"></div>
-        </div>
-      </div>
-    </div>
-
-    <div class="panel">
-      <div class="panel-head">
-        <h2>市場熱力圖</h2>
-        <div class="actions">
-          <button class="tab active" data-heat="all">全市場</button>
-          <button class="tab" data-heat="weight">權值股</button>
-          <button class="tab" data-heat="ai">AI 鏈</button>
-          <button class="tab" data-heat="leo">低軌衛星</button>
-          <button class="tab" data-heat="robot">機器人</button>
-        </div>
-      </div>
-      <div class="heatmap" id="heatmap"></div>
-      <div class="legend" style="margin-top:10px;justify-content:center">
-        <span>＜-7%</span>
-        <span><span class="sw" style="background:#0f6e3c"></span></span>
-        <span><span class="sw" style="background:#1ed760"></span></span>
-        <span><span class="sw" style="background:#3a4252"></span>0%</span>
-        <span><span class="sw" style="background:#ff3b4e"></span></span>
-        <span><span class="sw" style="background:#a01528"></span></span>
-        <span>＞+7%</span>
-      </div>
-    </div>
-
-    <!-- 盤後精準資料（TWSE OpenAPI） -->
-    <div class="panel" id="post-panel">
-      <div class="panel-head">
-        <h2>盤後精準數據 <span style="color:var(--dim);font-size:11px;font-weight:400;margin-left:8px" id="post-date">證交所 OpenAPI</span></h2>
-        <div class="actions">
-          <button class="tab active" id="post-refresh">立即重抓</button>
-        </div>
-      </div>
-      <div class="grid-3" id="post-stats"></div>
-      <div style="margin-top:14px">
-        <div class="aside-title">三大法人買賣金額（億）</div>
-        <table class="chip-table">
-          <thead><tr><th>類別</th><th>買進</th><th>賣出</th><th>買賣超</th></tr></thead>
-          <tbody id="post-inst"></tbody>
-        </table>
-      </div>
-      <div style="margin-top:14px">
-        <div class="aside-title">融資融券彙總</div>
-        <table class="chip-table" id="post-margin-table">
-          <thead><tr><th>項目</th><th>數量</th></tr></thead>
-          <tbody></tbody>
-        </table>
-      </div>
-      <div class="post-analysis" id="post-analysis" style="margin-top:18px;padding:14px;background:var(--bg-3);border-left:3px solid var(--gold);border-radius:6px;line-height:1.7">
-        <div class="aside-title" style="margin-bottom:10px">▲ 盤後解讀 · 操作建議</div>
-        <div id="post-analysis-body" style="font-size:12px;color:var(--txt)">資料載入中…</div>
       </div>
     </div>
 
@@ -376,7 +322,80 @@
         </div>
       </div>
       <div class="ai-disclaimer" id="ai-disclaimer">
-        ※ 本組合依勝率排序與資金預算動態配置。勝率為技術面 + 籌碼面綜合分數，僅供參考非投顧建議。
+        ※ 勝率採四維（趨勢/動能/量價/籌碼）獨立投票 + 一致性收縮（正則化）+ 過去 60 日 walk-forward 驗證 + 流動性與交易成本過濾，最大值 78% 不允許 100% 信心。技術面為基底分析，僅供參考非投顧建議。
+      </div>
+    </div>
+
+    <!-- 盤後精準資料（TWSE OpenAPI） -->
+    <div class="panel" id="post-panel">
+      <div class="panel-head">
+        <h2>盤後精準數據 <span style="color:var(--dim);font-size:11px;font-weight:400;margin-left:8px" id="post-date">證交所 OpenAPI</span></h2>
+        <div class="actions">
+          <button class="tab active" id="post-refresh">立即重抓</button>
+        </div>
+      </div>
+      <div class="grid-3" id="post-stats"></div>
+      <div style="margin-top:14px">
+        <div class="aside-title">三大法人買賣金額（億）</div>
+        <table class="chip-table">
+          <thead><tr><th>類別</th><th>買進</th><th>賣出</th><th>買賣超</th></tr></thead>
+          <tbody id="post-inst"></tbody>
+        </table>
+      </div>
+      <div style="margin-top:14px">
+        <div class="aside-title">融資融券彙總</div>
+        <table class="chip-table" id="post-margin-table">
+          <thead><tr><th>項目</th><th>數量</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="post-analysis" id="post-analysis" style="margin-top:18px;padding:14px;background:var(--bg-3);border-left:3px solid var(--gold);border-radius:6px;line-height:1.7">
+        <div class="aside-title" style="margin-bottom:10px">▲ 盤後解讀 · 操作建議</div>
+        <div id="post-analysis-body" style="font-size:12px;color:var(--txt)">資料載入中…</div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head">
+        <h2>強弱榜</h2>
+        <div class="legend">
+          <span><span class="sw" style="background:var(--up)"></span>漲</span>
+          <span><span class="sw" style="background:var(--down)"></span>跌</span>
+          <span id="movers-source">點選個股查詳細</span>
+        </div>
+      </div>
+      <div class="movers-grid">
+        <div>
+          <div class="aside-title" style="color:var(--up)">▲ 漲幅榜 TOP</div>
+          <div class="movers-list" id="gainers"></div>
+        </div>
+        <div>
+          <div class="aside-title" style="color:var(--down)">▼ 跌幅榜 TOP</div>
+          <div class="movers-list" id="losers"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head">
+        <h2>市場熱力圖</h2>
+        <div class="actions">
+          <button class="tab active" data-heat="all">全市場</button>
+          <button class="tab" data-heat="weight">權值股</button>
+          <button class="tab" data-heat="ai">AI 鏈</button>
+          <button class="tab" data-heat="leo">低軌衛星</button>
+          <button class="tab" data-heat="robot">機器人</button>
+        </div>
+      </div>
+      <div class="heatmap" id="heatmap"></div>
+      <div class="legend" style="margin-top:10px;justify-content:center">
+        <span>＜-7%</span>
+        <span><span class="sw" style="background:#0f6e3c"></span></span>
+        <span><span class="sw" style="background:#1ed760"></span></span>
+        <span><span class="sw" style="background:#3a4252"></span>0%</span>
+        <span><span class="sw" style="background:#ff3b4e"></span></span>
+        <span><span class="sw" style="background:#a01528"></span></span>
+        <span>＞+7%</span>
       </div>
     </div>
 

@@ -658,6 +658,88 @@ app.get('/api/movers', async (req, res) => {
   } catch (e) { fail(res, e); }
 });
 
+// ───────────────────────── 共用診斷邏輯（單一事實來源） ─────────────────────────
+// 同時給 /api/diagnose/:code 與 /api/ranking 使用，確保兩邊 winRate 一致
+async function loadStockDiagnose(code) {
+  const start = new Date(Date.now() - 90 * 86400e3).toISOString().slice(0, 10);
+  const today = todayIso();
+
+  const [klineRaw, instRaw, shInfo, misArr] = await Promise.all([
+    memo(`kline:${code}:90`, 60000, () => finmind.stockPrice(code, start)),
+    memo(`inst:${code}`, TTL_HIST / 24, () => finmind.institutional(code, start)).catch(() => []),
+    memo(`shares:${code}`, TTL_HIST, () => finmind.sharesOutstanding(code).catch(() => null)),
+    memo(`mis:${code}`, 1000, () => twseMis.quotes([code], 'tse')).catch(() => []),
+  ]);
+
+  if (!klineRaw || klineRaw.length < 30) return null;
+  const k = klineRaw.map((r) => ({
+    open: +r.open,
+    high: +(r.max ?? r.high),
+    low: +(r.min ?? r.low),
+    close: +r.close,
+    vol: +(r.Trading_Volume ?? r.volume ?? 0),
+    date: r.date,
+  })).filter((d) => Number.isFinite(d.close));
+  if (k.length < 30) return null;
+
+  // ── 即時資料覆蓋（與前端邏輯保持一致：close/high/low/vol 全覆蓋；缺今日則補 bar）──
+  const mis = misArr?.[0];
+  if (mis?.price != null) {
+    const last = k[k.length - 1];
+    if (last.date === today) {
+      last.close = mis.price;
+      if (mis.high && mis.high > last.high) last.high = mis.high;
+      if (mis.low && mis.low < last.low) last.low = mis.low;
+      if (Number.isFinite(mis.volume) && mis.volume > (last.vol || 0)) last.vol = mis.volume;
+    } else {
+      k.push({
+        date: today,
+        open: mis.open ?? mis.price,
+        high: mis.high ?? mis.price,
+        low: mis.low ?? mis.price,
+        close: mis.price,
+        vol: Number.isFinite(mis.volume) ? mis.volume : 0,
+      });
+    }
+  }
+
+  // ── 法人資料 enrich：補 trustPctOfCap（與 /api/institutional/:code 同邏輯）──
+  const cap = shInfo?.sharesOutstanding ? +shInfo.sharesOutstanding : null;
+  const instEnriched = (instRaw || []).map((r) => {
+    if (!cap || !r.name?.includes('投信')) return r;
+    const net = (+r.buy || 0) - (+r.sell || 0);
+    return { ...r, trustPctOfCap: (net / cap) * 100 };
+  });
+
+  const d = diagnose(k, instEnriched, { sharesOutstanding: cap });
+  if (!d) return null;
+
+  const close = k[k.length - 1].close;
+  const atr = d.atr14 || close * 0.025;
+  return {
+    ...d,
+    code,
+    close,
+    prevClose: mis?.prevClose ?? k[k.length - 2]?.close,
+    chg: mis?.chg,
+    pct: mis?.pct,
+    entry: { low: +(close - atr * 0.5).toFixed(2), high: +(close + atr * 0.5).toFixed(2) },
+    stopATR: +(close - 2 * atr).toFixed(0),
+    targetATR: +(close + 3 * atr).toFixed(0),
+    costPerLot: Math.round(close * 1000),
+  };
+}
+
+// ───────────────────────── 個股診斷（單檔） ─────────────────────────
+app.get('/api/diagnose/:code', async (req, res) => {
+  const code = req.params.code;
+  try {
+    const data = await memo(`diag:${code}`, 30000, () => loadStockDiagnose(code));
+    if (!data) return fail(res, new Error('資料不足無法診斷'));
+    ok(res, data);
+  } catch (e) { fail(res, e); }
+});
+
 // ───────────────────────── 短線勝率排行榜 ─────────────────────────
 // 對給定 codes 並行跑 diagnose，按 winRate 排序。
 // 為了保 FinMind quota，整體結果 cache 5 分鐘。
@@ -671,80 +753,39 @@ app.get('/api/ranking', async (req, res) => {
   try {
     const cacheKey = `ranking:${codes.join(',')}`;
     const data = await memo(cacheKey, 5 * 60 * 1000, async () => {
-      const start = new Date(Date.now() - 90 * 86400e3).toISOString().slice(0, 10);
-
-      // 1. 取得即時報價（MIS 一次拿，含當前 close）
-      const misMap = {};
-      try {
-        const misResults = await memo(`mis:${codes.join(',')}`, 1000, () => twseMis.quotes(codes, 'tse'));
-        misResults.forEach((r) => { if (r?.code && r.price != null) misMap[r.code] = r; });
-      } catch { /* MIS 失敗也繼續 */ }
-
-      // 2. 並行抓 K 線 + 三大法人 + 流通股數，跑 diagnose
+      // 用共用 helper：每檔結果 cache 30 秒（避免 FinMind 暴打）
       const tasks = codes.map(async (code) => {
         try {
-          const [klineRaw, instRaw, shInfo] = await Promise.all([
-            memo(`kline:${code}:90`, 60000, () => finmind.stockPrice(code, start)),
-            memo(`inst:${code}`, TTL_HIST / 24, () => finmind.institutional(code, start)).catch(() => []),
-            memo(`shares:${code}`, TTL_HIST, () => finmind.sharesOutstanding(code).catch(() => null)),
-          ]);
-          if (!klineRaw || klineRaw.length < 30) return null;
-          const k = klineRaw.map((r) => ({
-            open: +r.open,
-            high: +(r.max ?? r.high),
-            low: +(r.min ?? r.low),
-            close: +r.close,
-            vol: +(r.Trading_Volume ?? r.volume ?? 0),
-            date: r.date,
-          })).filter((d) => Number.isFinite(d.close));
-          if (k.length < 30) return null;
-
-          // 用 MIS 即時價覆蓋最後一筆 close
-          const mis = misMap[code];
-          if (mis?.price != null) {
-            const last = k[k.length - 1];
-            last.close = mis.price;
-            if (mis.high && mis.high > last.high) last.high = mis.high;
-            if (mis.low && mis.low < last.low) last.low = mis.low;
-          }
-
-          const sharesOutstanding = shInfo?.sharesOutstanding || null;
-          const d = diagnose(k, instRaw, { sharesOutstanding });
-          if (!d) return null;
-
-          const close = k[k.length - 1].close;
-          const atr = d.atr14 || close * 0.025;
+          const r = await memo(`diag:${code}`, 30000, () => loadStockDiagnose(code));
+          if (!r) return null;
+          // 對齊舊欄位，給前端 portfolio 表格用
           return {
-            code,
-            close,
-            prevClose: mis?.prevClose ?? k[k.length - 2]?.close,
-            chg: mis?.chg,
-            pct: mis?.pct,
-            winRate: d.winRate,
-            score: d.score,
-            subScores: d.subScores,
-            overall: d.overall,
-            action: d.action,
-            trend: d.trend,
-            kdSignal: d.kd.signal,
-            macdSignal: d.macd.signal,
-            volSignal: d.vol.signal,
-            mainForce: d.inst.mainForce,
-            bias20: d.bias20,
-            atr14: d.atr14,
-            entry: { low: +(close - atr * 0.5).toFixed(2), high: +(close + atr * 0.5).toFixed(2) },
-            stop: +(close - 2 * atr).toFixed(0),
-            target: +(close + 3 * atr).toFixed(0),
-            signals: d.signals?.slice(0, 2),
-            costPerLot: Math.round(close * 1000), // 一張成本 = close × 1000 股
+            code: r.code,
+            close: r.close,
+            prevClose: r.prevClose,
+            chg: r.chg,
+            pct: r.pct,
+            winRate: r.winRate,
+            score: r.score,
+            subScores: r.subScores,
+            overall: r.overall,
+            action: r.action,
+            trend: r.trend,
+            kdSignal: r.kd?.signal,
+            macdSignal: r.macd?.signal,
+            volSignal: r.vol?.signal,
+            mainForce: r.inst?.mainForce,
+            bias20: r.bias20,
+            atr14: r.atr14,
+            entry: r.entry,
+            stop: r.stopATR,
+            target: r.targetATR,
+            signals: r.signals?.slice(0, 2),
+            costPerLot: r.costPerLot,
           };
-        } catch (e) {
-          return null;
-        }
+        } catch { return null; }
       });
-
       const results = (await Promise.all(tasks)).filter(Boolean);
-      // 排序：winRate 降冪
       results.sort((a, b) => b.winRate - a.winRate);
       return results;
     });
@@ -768,7 +809,7 @@ app.get('/api/news', async (req, res) => {
 
   try {
     if (keyword) {
-      // 個股關鍵字 — 多源聚合（cache 90 秒）
+      // 個股關鍵字 — 多源聚合 + 嚴格過濾（cache 90 秒）
       const cacheKey = `newsSearch:${keyword}:${limit}`;
       const data = await memo(cacheKey, 90000, async () => {
         const [search, agg, yh] = await Promise.allSettled([
@@ -776,10 +817,26 @@ app.get('/api/news', async (req, res) => {
           cnyes.newsAggregate(['tw_stock', 'headline', 'wd_stock'], 60),
           yahoo.news(keyword, 20),
         ]);
+
+        // 從 keyword 拆出「代號」與「股名」，只接受其一明確命中的新聞
+        const tokens = keyword.split(/\s+/).filter(Boolean);
+        const codeToken = tokens.find((t) => /^\d{4,6}$/.test(t));
+        const nameTokens = tokens.filter((t) => !/^\d/.test(t) && t.length >= 2);
+        // 代號需前後不接其他數字（避免 23300 命中 2330）
+        const codeRe = codeToken ? new RegExp(`(?<!\\d)${codeToken}(?!\\d)`) : null;
+
+        const matchesStock = (n) => {
+          const text = `${n.title || ''} ${n.summary || ''}`;
+          if (!text.trim()) return false;
+          if (codeRe && codeRe.test(text)) return true;
+          if (nameTokens.some((nm) => text.includes(nm))) return true;
+          return false;
+        };
+
         const all = [];
         const seen = new Set();
         const push = (n) => {
-          if (!n.title) return;
+          if (!n.title || !matchesStock(n)) return;
           const key = (n.id ? `id:${n.id}` : '') + '|' + n.title.slice(0, 30);
           if (seen.has(key)) return;
           seen.add(key);
@@ -787,14 +844,7 @@ app.get('/api/news', async (req, res) => {
         };
         if (search.status === 'fulfilled') search.value.forEach(push);
         if (yh.status === 'fulfilled') yh.value.forEach(push);
-        // 聚合分類僅作 keyword 過濾後加入（避免無關新聞淹沒）
-        if (agg.status === 'fulfilled') {
-          const kws = keyword.split(/\s+/).filter(Boolean);
-          agg.value.forEach((n) => {
-            const text = `${n.title} ${n.summary || ''}`;
-            if (kws.some((k) => text.includes(k))) push(n);
-          });
-        }
+        if (agg.status === 'fulfilled') agg.value.forEach(push);
         all.sort((a, b) => (b.publishAt || 0) - (a.publishAt || 0));
         return all.slice(0, limit);
       });
