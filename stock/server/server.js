@@ -13,6 +13,7 @@ import * as cnyes from './providers/cnyes.js';
 import { diagnose } from '../src/utils/diagnose.js';
 import { newsSentiment } from '../src/utils/sentiment.js';
 import * as predictions from './predictions.js';
+import * as portfolio from './portfolio.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -828,6 +829,215 @@ async function loadStockDiagnose(code) {
     costPerLot: Math.round(close * 1000),
   };
 }
+
+// ───────────────────────── 個人持股追蹤 + 每日報告 ─────────────────────────
+// 列出所有持股（active / closed 都拿）— 並自動帶上「現在該怎麼辦」的診斷
+app.get('/api/portfolio', async (req, res) => {
+  try {
+    const status = req.query.status || null;
+    const holdings = await portfolio.list({ status });
+    // 給 active 持股自動套上即時診斷（背景並行）
+    const enriched = await Promise.all(holdings.map(async (h) => {
+      if (h.status !== 'active') return h;
+      try {
+        const d = await memo(`diag:${h.code}`, 30000, () => loadStockDiagnose(h.code));
+        if (!d) return h;
+        const currentPrice = d.close;
+        const cost = h.entry_price * h.lots * 1000;
+        const value = currentPrice * h.lots * 1000;
+        const pl = value - cost;
+        const plPct = ((currentPrice - h.entry_price) / h.entry_price) * 100;
+        // 簡易動作判讀（給報告用）
+        let advice;
+        if (d.personalAccuracy?.consecutiveBigError) advice = 'reduce';
+        else if (d.winRate >= 60 && plPct > 0) advice = 'hold';
+        else if (d.winRate >= 60) advice = 'add';
+        else if (d.winRate < 40 || (d.levels?.stop && currentPrice < d.levels.stop)) advice = 'sell';
+        else if (d.levels?.target1 && currentPrice >= d.levels.target1) advice = 'take_profit';
+        else advice = 'hold';
+        return {
+          ...h,
+          current_price: currentPrice,
+          pl,
+          pl_pct: +plPct.toFixed(2),
+          win_rate: d.winRate,
+          direction: d.direction,
+          advice,
+          stop: d.levels?.stop,
+          target1: d.levels?.target1,
+          name: d.name,
+        };
+      } catch {
+        return h;
+      }
+    }));
+    ok(res, enriched);
+  } catch (e) { fail(res, e); }
+});
+// 新增持股
+app.post('/api/portfolio', async (req, res) => {
+  try {
+    const data = await portfolio.add(req.body);
+    ok(res, data);
+  } catch (e) { fail(res, e, 400); }
+});
+// 平倉（出場）
+app.post('/api/portfolio/:id/close', async (req, res) => {
+  try {
+    const data = await portfolio.close(+req.params.id, req.body);
+    ok(res, data);
+  } catch (e) { fail(res, e, 400); }
+});
+// 編輯
+app.patch('/api/portfolio/:id', async (req, res) => {
+  try {
+    const data = await portfolio.update(+req.params.id, req.body);
+    ok(res, data);
+  } catch (e) { fail(res, e, 400); }
+});
+// 刪除
+app.delete('/api/portfolio/:id', async (req, res) => {
+  try {
+    const data = await portfolio.remove(+req.params.id);
+    ok(res, data);
+  } catch (e) { fail(res, e, 400); }
+});
+
+// ───────────────────────── 每日報告 / 每週復盤 ─────────────────────────
+// 每日報告：盤點所有 active 持股 + 個別建議
+app.get('/api/reports/daily', async (_req, res) => {
+  try {
+    const holdings = await portfolio.list({ status: 'active' });
+    if (!holdings.length) {
+      return ok(res, { date: todayIso(), holdings: 0, message: '目前無持股，請先到「我的持股」面板輸入', items: [] });
+    }
+    const items = await Promise.all(holdings.map(async (h) => {
+      const d = await memo(`diag:${h.code}`, 30000, () => loadStockDiagnose(h.code)).catch(() => null);
+      if (!d) return { code: h.code, error: '診斷失敗' };
+      const cur = d.close;
+      const plPct = ((cur - h.entry_price) / h.entry_price) * 100;
+      const days = Math.floor((Date.now() - new Date(h.entry_date).getTime()) / 86400000);
+      // 構建白話文段落
+      const lines = [];
+      lines.push(`【${h.code}${d.name ? ' ' + d.name : ''}】持有 ${days} 天，目前 ${cur.toFixed(2)}（買進 ${h.entry_price}）`);
+      lines.push(`  損益：${plPct >= 0 ? '+' : ''}${plPct.toFixed(2)}%（${plPct >= 0 ? '獲利' : '虧損'} ${Math.abs(((cur - h.entry_price) * h.lots * 1000)).toFixed(0)} 元）`);
+      lines.push(`  系統勝率 ${d.winRate}%，方向 ${d.direction === 'long' ? '偏多' : d.direction === 'short' ? '偏空' : '中性'}`);
+      if (d.levels?.stop && cur < d.levels.stop) {
+        lines.push(`  ⚠️ 已跌破停損 ${d.levels.stop} — 建議出場`);
+      } else if (d.levels?.target1 && cur >= d.levels.target1) {
+        lines.push(`  🎯 已達第一停利 ${d.levels.target1} — 建議停利一半`);
+      } else if (d.personalAccuracy?.consecutiveBigError) {
+        lines.push(`  ⚠️ 此股近期模型不準（連 3 筆誤差 > 5%）— 建議降低部位`);
+      } else if (d.winRate < 40) {
+        lines.push(`  ⚠️ 訊號偏空 — 反彈即減碼`);
+      } else if (d.winRate >= 60 && plPct < 0) {
+        lines.push(`  💡 訊號仍偏多但目前虧損 — 可考慮在 ${d.levels?.support20 || ''} 加碼攤平`);
+      } else if (d.winRate >= 60) {
+        lines.push(`  ✓ 訊號維持偏多 — 持有，目標 ${d.levels?.target1}、停損 ${d.levels?.stop}`);
+      } else {
+        lines.push(`  ⚪ 訊號中性 — 觀察 ${d.levels?.high60} / ${d.levels?.low60} 突破方向`);
+      }
+      return {
+        code: h.code,
+        name: d.name,
+        entryDate: h.entry_date,
+        entryPrice: h.entry_price,
+        lots: h.lots,
+        currentPrice: cur,
+        plPct: +plPct.toFixed(2),
+        plAmount: Math.round((cur - h.entry_price) * h.lots * 1000),
+        days,
+        winRate: d.winRate,
+        direction: d.direction,
+        stop: d.levels?.stop,
+        target1: d.levels?.target1,
+        text: lines.join('\n'),
+      };
+    }));
+    // 整體統計
+    const validItems = items.filter((i) => !i.error);
+    const totalPL = validItems.reduce((s, i) => s + (i.plAmount || 0), 0);
+    const winners = validItems.filter((i) => i.plPct > 0).length;
+    const losers = validItems.filter((i) => i.plPct < 0).length;
+    ok(res, {
+      date: todayIso(),
+      holdings: holdings.length,
+      summary: {
+        totalPL,
+        winners,
+        losers,
+        winRate: validItems.length ? +(winners / validItems.length * 100).toFixed(1) : 0,
+      },
+      items,
+    });
+  } catch (e) { fail(res, e); }
+});
+
+// 每週復盤：彙整本週所有持股的表現變化
+app.get('/api/reports/weekly', async (_req, res) => {
+  try {
+    const all = await portfolio.list();
+    const today = new Date();
+    const weekAgo = new Date(today.getTime() - 7 * 86400000);
+    const weekAgoIso = weekAgo.toISOString().slice(0, 10);
+    // 本週新進場的持股
+    const newThisWeek = all.filter((h) => h.entry_date >= weekAgoIso);
+    // 本週平倉的持股
+    const closedThisWeek = all.filter((h) => h.status === 'closed' && h.exit_date >= weekAgoIso);
+    // 最佳/最差表現（active 持股）
+    const active = all.filter((h) => h.status === 'active');
+    const enriched = await Promise.all(active.map(async (h) => {
+      const d = await memo(`diag:${h.code}`, 30000, () => loadStockDiagnose(h.code)).catch(() => null);
+      if (!d) return null;
+      const plPct = ((d.close - h.entry_price) / h.entry_price) * 100;
+      return { code: h.code, name: d.name, plPct, lots: h.lots, entryDate: h.entry_date };
+    }));
+    const validActive = enriched.filter(Boolean);
+    validActive.sort((a, b) => b.plPct - a.plPct);
+    const best = validActive.slice(0, 3);
+    const worst = validActive.slice(-3).reverse();
+
+    // 已平倉的本週實現獲利
+    const realizedPL = closedThisWeek.reduce((s, h) => {
+      if (h.exit_price && h.entry_price) {
+        return s + ((h.exit_price - h.entry_price) * h.lots * 1000);
+      }
+      return s;
+    }, 0);
+    const closedWinners = closedThisWeek.filter((h) => h.exit_price && h.exit_price > h.entry_price).length;
+
+    // 大盤本週表現（已 cache 1 天的 TAIEX kline）
+    let taiexWeekPct = null;
+    try {
+      const closes = await memo('taiex:closes:90', 86400000, async () => {
+        try {
+          const data = await yahoo.chart('^TWII', '3mo', '1d');
+          return (data || []).map((d) => +d.close).filter(Number.isFinite);
+        } catch { return []; }
+      });
+      if (closes.length >= 7) {
+        const now = closes[closes.length - 1];
+        const wago = closes[closes.length - 6]; // ~5 trading days
+        if (wago) taiexWeekPct = +(((now - wago) / wago) * 100).toFixed(2);
+      }
+    } catch { /* ignore */ }
+
+    ok(res, {
+      weekStart: weekAgoIso,
+      weekEnd: todayIso(),
+      newPositions: newThisWeek.length,
+      closedPositions: closedThisWeek.length,
+      activePositions: active.length,
+      realizedPL,
+      closedWinners,
+      taiexWeekPct,
+      best,
+      worst,
+      newThisWeek,
+      closedThisWeek,
+    });
+  } catch (e) { fail(res, e); }
+});
 
 // ───────────────────────── 預測追蹤（自我學習回饋資料） ─────────────────────────
 // Supabase 連線狀態 + memory cache 摘要

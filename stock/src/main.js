@@ -12,6 +12,7 @@ import * as stockPanel from './ui/stockPanel.js';
 import * as ranking from './ui/ranking.js';
 import * as portfolio from './ui/portfolio.js';
 import * as postPanel from './ui/postPanel.js';
+import * as holdings from './ui/holdings.js';
 
 // ─── 啟動 ───
 function boot() {
@@ -27,6 +28,7 @@ function boot() {
   ranking.mount();      // 短線勝率排行榜（會 emit 'ranking:updated'）
   portfolio.mount();    // AI 智選（訂閱 'ranking:updated'）
   postPanel.mount();
+  holdings.mount();     // 我的持股 + 每日報告 + 每週復盤
 
   // select 事件 → stock:selected
   on('select', (code) => emit('stock:selected', code));

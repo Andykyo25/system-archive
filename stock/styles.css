@@ -540,3 +540,66 @@ button{font-family:inherit;color:inherit;background:none;border:0;cursor:pointer
 .flash-down{animation:flashDown .8s ease}
 @keyframes flashUp{0%{background:rgba(255,59,78,.25)}100%{background:transparent}}
 @keyframes flashDown{0%{background:rgba(30,215,96,.25)}100%{background:transparent}}
+
+/* ───── AI 顧問建議卡片（白話文整合）───── */
+.advisor-card{
+  background:linear-gradient(135deg,rgba(246,196,82,.08),rgba(122,92,255,.04));
+  border:1px solid var(--line);border-left:4px solid var(--gold);border-radius:10px;
+  padding:18px 20px;margin-bottom:16px;
+}
+.advisor-header{display:flex;align-items:center;gap:12px;margin-bottom:10px;flex-wrap:wrap}
+.advisor-emoji{font-size:24px}
+.advisor-headline{font-size:18px;font-weight:900;color:var(--txt);flex:1 1 auto;letter-spacing:1px}
+.advisor-pill{padding:4px 10px;border-radius:14px;background:var(--bg-3);color:var(--gold);font-size:11px;font-weight:700;border:1px solid var(--gold)}
+.advisor-winrate{font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:900;color:var(--gold);background:var(--bg-3);padding:4px 10px;border-radius:6px}
+.advisor-summary{
+  font-size:13px;line-height:1.7;color:var(--txt);
+  background:var(--bg-3);border-radius:6px;padding:10px 14px;margin-bottom:12px;
+}
+.advisor-section{margin-bottom:12px}
+.advisor-section-title{font-size:12px;font-weight:700;color:var(--gold);margin-bottom:6px;letter-spacing:1px}
+.advisor-list{list-style:none;padding:0;margin:0}
+.advisor-list li{padding:5px 8px;font-size:12.5px;line-height:1.6;border-left:3px solid var(--up);background:rgba(255,59,78,.04);margin-bottom:3px;border-radius:0 4px 4px 0}
+.advisor-list-warn li{border-left-color:var(--gold);background:rgba(246,196,82,.06)}
+.advisor-actions{padding-left:24px;margin:0}
+.advisor-actions li{padding:4px 0;font-size:13px;line-height:1.6;color:var(--txt)}
+.advisor-actions li b{color:var(--gold)}
+.advisor-trust{font-size:12px;line-height:1.7;color:var(--txt)}
+.advisor-trust .item{display:inline-block;margin-right:14px;margin-bottom:4px}
+.advisor-trust .item b{color:var(--neon)}
+.advisor-details{margin-top:14px;padding-top:12px;border-top:1px dashed var(--line)}
+.advisor-details summary{cursor:pointer;color:var(--dim);font-size:11px;letter-spacing:1px;padding:4px 0}
+.advisor-details summary:hover{color:var(--gold)}
+.advisor-details[open] summary{color:var(--gold);margin-bottom:10px}
+.advisor-details-body{padding:8px 0;font-size:11px}
+.advisor-details-body .item{padding:5px 0;display:flex;justify-content:space-between;border-bottom:1px dashed rgba(255,255,255,.04)}
+.advisor-details-body .item .l{color:var(--dim)}
+.advisor-details-body .item .v{font-family:'JetBrains Mono',monospace;font-weight:700}
+
+/* ───── 持股追蹤面板 ───── */
+.holdings-panel{background:var(--bg-2);border:1px solid var(--line);border-radius:10px;padding:16px;margin-bottom:16px}
+.holding-form{display:grid;grid-template-columns:90px 130px 100px 80px 1fr auto;gap:8px;align-items:end;margin-bottom:14px;padding:12px;background:var(--bg-3);border-radius:6px}
+.holding-form label{font-size:10px;color:var(--dim);letter-spacing:1px;display:block;margin-bottom:4px}
+.holding-form input,.holding-form textarea{width:100%;background:var(--bg);color:var(--txt);border:1px solid var(--line);padding:6px 8px;border-radius:4px;font-family:'JetBrains Mono',monospace;font-size:12px}
+.holding-form button{padding:8px 14px;background:var(--gold);color:#000;border:0;border-radius:4px;font-weight:700;font-size:12px;cursor:pointer}
+.holding-form button:hover{background:#fcd664}
+.holdings-table{width:100%}
+.holdings-table th{font-size:10px;color:var(--gold);padding:8px;background:var(--bg-3);text-align:center}
+.holdings-table td{padding:10px 8px;font-family:'JetBrains Mono',monospace;font-size:12px;border-bottom:1px solid var(--line);text-align:center}
+.holdings-table tbody tr:hover{background:rgba(246,196,82,.04);cursor:pointer}
+.holdings-table .pl-up{color:var(--up);font-weight:700}
+.holdings-table .pl-down{color:var(--down);font-weight:700}
+.holdings-table .signal-buy{color:var(--up);font-weight:700}
+.holdings-table .signal-hold{color:var(--gold)}
+.holdings-table .signal-sell{color:var(--down);font-weight:700}
+.holdings-table .act-btn{padding:3px 8px;background:var(--bg-3);color:var(--dim);border:0;border-radius:3px;font-size:10px;cursor:pointer;margin-left:4px}
+.holdings-table .act-btn:hover{background:var(--down);color:#fff}
+.holdings-empty{padding:24px;text-align:center;color:var(--dim);font-size:13px;background:var(--bg-3);border-radius:6px}
+
+/* ───── 報告區 ───── */
+.report-section{background:var(--bg-3);border-radius:6px;padding:14px;margin-top:12px;font-size:12.5px;line-height:1.8;color:var(--txt)}
+.report-section h3{font-size:14px;color:var(--gold);margin-bottom:10px;font-weight:700}
+.report-section .report-line{padding:4px 0;border-bottom:1px dashed rgba(255,255,255,.04)}
+.report-section .report-line:last-child{border:0}
+.report-tabs{display:flex;gap:8px;margin-bottom:10px}
+.report-tabs .tab.active{background:var(--gold);color:#000}

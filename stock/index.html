@@ -131,6 +131,39 @@
 
         <!-- 技術診斷 (rule-based) -->
         <div class="diag" id="diag">
+
+          <!-- ▼ AI 顧問建議（白話文整合卡片） -->
+          <div class="advisor-card" id="advisor-card">
+            <div class="advisor-header">
+              <span class="advisor-emoji" id="advisor-emoji">⏳</span>
+              <span class="advisor-headline" id="advisor-headline">資料載入中…</span>
+              <span class="advisor-pill" id="advisor-pill">--</span>
+              <span class="advisor-winrate" id="advisor-winrate">--</span>
+            </div>
+            <div class="advisor-summary" id="advisor-summary">系統正在計算各項訊號…</div>
+
+            <div class="advisor-section">
+              <div class="advisor-section-title">📊 系統怎麼想（白話版）</div>
+              <ul class="advisor-list" id="advisor-positives"></ul>
+              <ul class="advisor-list advisor-list-warn" id="advisor-negatives"></ul>
+            </div>
+
+            <div class="advisor-section">
+              <div class="advisor-section-title">🎯 該怎麼做</div>
+              <ol class="advisor-actions" id="advisor-actions"></ol>
+            </div>
+
+            <div class="advisor-section">
+              <div class="advisor-section-title">📈 系統可信度</div>
+              <div class="advisor-trust" id="advisor-trust"></div>
+            </div>
+
+            <details class="advisor-details">
+              <summary>▼ 展開完整指標分析（適合進階用戶）</summary>
+              <div class="advisor-details-body" id="advisor-details-body"></div>
+            </details>
+          </div>
+
           <div class="diag-grid">
             <div class="diag-block">
               <div class="diag-title">技術分析總覽</div>
@@ -148,8 +181,8 @@
                 <div class="gauge-num" id="gauge-num">--</div>
                 <div class="gauge-label" id="gauge-label">資料載入中</div>
               </div>
-              <!-- 過擬合對策：四維共識度 + 歷史命中率 + 經濟可行性 -->
-              <div class="validation-panel" id="validation-panel" style="margin-top:8px;font-size:10.5px;line-height:1.6">
+              <!-- 過擬合對策：四維共識度 + 歷史命中率 + 經濟可行性（已整合到上方顧問卡片，這裡保留 hidden 給進階用戶） -->
+              <div class="validation-panel" id="validation-panel" style="display:none;margin-top:8px;font-size:10.5px;line-height:1.6">
                 <div style="display:flex;justify-content:space-between;padding:4px 0;border-top:1px dashed var(--line)">
                   <span style="color:var(--dim)">四面共識度</span>
                   <span id="val-consistency" style="font-family:'JetBrains Mono',monospace;font-weight:700">--</span>
@@ -257,6 +290,67 @@
       <div class="pane" id="pane-news" style="display:none">
         <div id="stock-news"></div>
       </div>
+    </div>
+
+    <!-- ▼ 我的持股 + 自動每日報告 + 每週復盤 -->
+    <div class="panel holdings-panel" id="holdings-panel">
+      <div class="panel-head">
+        <h2>我的持股
+          <span style="color:var(--dim);font-size:11px;font-weight:400;margin-left:8px">輸入買進記錄，系統自動追蹤分析 + 每日報告</span>
+        </h2>
+        <div class="actions report-tabs">
+          <button class="tab active" data-rep="daily">📋 今日報告</button>
+          <button class="tab" data-rep="weekly">📊 本週復盤</button>
+        </div>
+      </div>
+
+      <!-- 新增持股表單 -->
+      <form class="holding-form" id="holding-form">
+        <div>
+          <label>股票代號</label>
+          <input id="hf-code" type="text" placeholder="2330" required>
+        </div>
+        <div>
+          <label>進場日期</label>
+          <input id="hf-date" type="date" required>
+        </div>
+        <div>
+          <label>進場價</label>
+          <input id="hf-price" type="number" step="0.01" placeholder="600.00" required>
+        </div>
+        <div>
+          <label>張數</label>
+          <input id="hf-lots" type="number" min="1" value="1" required>
+        </div>
+        <div>
+          <label>備註（選填）</label>
+          <input id="hf-note" type="text" placeholder="例：法說會利多進場">
+        </div>
+        <button type="submit">＋ 加入持股</button>
+      </form>
+
+      <!-- 持股表格 -->
+      <div style="overflow-x:auto">
+        <table class="holdings-table" id="holdings-table">
+          <thead>
+            <tr>
+              <th style="text-align:left">代號 / 名稱</th>
+              <th>進場日</th>
+              <th>進場價</th>
+              <th>張數</th>
+              <th>現價</th>
+              <th>損益</th>
+              <th>勝率</th>
+              <th style="text-align:left">系統建議</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody id="holdings-tbody"></tbody>
+        </table>
+      </div>
+
+      <!-- 報告區（today / weekly 切換） -->
+      <div id="report-area"></div>
     </div>
 
     <div class="panel" id="ai-pick-panel">

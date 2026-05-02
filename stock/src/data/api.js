@@ -31,6 +31,28 @@ export const api = {
     call(`/news?category=${category}&limit=${limit}${keyword ? `&keyword=${encodeURIComponent(keyword)}` : ''}`),
   intraday: (code, interval = '1m') => lcMemo(`intra:${code}:${interval}`, 30e3, () => call(`/intraday/${code}?interval=${interval}`)),
   diagnose: (code) => lcMemo(`diag:${code}`, 30e3, () => call(`/diagnose/${code}`)),
+  // 持股追蹤 + 報告
+  portfolioList: () => call('/portfolio'),
+  portfolioAdd: async (body) => {
+    const res = await fetch(BASE + '/portfolio', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const j = await res.json();
+    if (!j.ok) throw new Error(j.error);
+    return j.data;
+  },
+  portfolioClose: async (id, body) => {
+    const res = await fetch(`${BASE}/portfolio/${id}/close`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
+    const j = await res.json();
+    if (!j.ok) throw new Error(j.error);
+    return j.data;
+  },
+  portfolioDelete: async (id) => {
+    const res = await fetch(`${BASE}/portfolio/${id}`, { method: 'DELETE' });
+    const j = await res.json();
+    if (!j.ok) throw new Error(j.error);
+    return j.data;
+  },
+  reportDaily: () => call('/reports/daily'),
+  reportWeekly: () => call('/reports/weekly'),
   ranking: (codes, opts = {}) => {
     const q = new URLSearchParams({
       codes: codes.join(','),

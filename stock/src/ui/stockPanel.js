@@ -341,6 +341,17 @@ async function renderTech(code, s) {
 
 // 診斷失敗時的友善 empty state（保留價量資訊，標出哪一段壞了）
 function renderDiagError(msg) {
+  // 顧問卡片：簡單回覆
+  document.getElementById('advisor-emoji').textContent = '⚠️';
+  document.getElementById('advisor-headline').textContent = '無法產生建議';
+  document.getElementById('advisor-pill').textContent = '資料不足';
+  document.getElementById('advisor-winrate').textContent = '--';
+  document.getElementById('advisor-summary').innerHTML = msg + '<br><span style="color:var(--dim);font-size:11px">可能為週末/盤後 + 第三方 API 限流，請稍後再試</span>';
+  document.getElementById('advisor-positives').innerHTML = '';
+  document.getElementById('advisor-negatives').innerHTML = '';
+  document.getElementById('advisor-actions').innerHTML = '<li style="color:var(--dim)">資料完整度不足，暫不提供操作建議</li>';
+  document.getElementById('advisor-trust').innerHTML = '';
+
   const tagEl = document.getElementById('diag-tag');
   const headEl = document.getElementById('diag-headline');
   if (tagEl) { tagEl.className = 'diag-tag flat'; tagEl.textContent = '無法診斷'; }
@@ -674,8 +685,238 @@ function renderTechKpis(d) {
   }
 }
 
+// ──────── AI 顧問白話文整合 ────────
+// 把 30+ 個技術指標翻成 3-5 句結論 + 行動清單
+function buildAdvisor(d, stockMeta) {
+  const winRate = d.winRate;
+  const dir = d.direction;
+  const consonance = d.multiTimeframe?.consonant;
+  const divergence = d.multiTimeframe?.divergent;
+  const liquid = d.economic?.liquidity;
+  const costOK = d.economic?.costFeasible;
+  const consensus = d.consistency;
+  const histAcc = d.historicalAccuracy?.hitRate;
+  const histSamples = d.historicalAccuracy?.samples;
+  const personalMul = d.personalAccuracy?.multiplier;
+  const personalErr = d.personalAccuracy?.consecutiveBigError;
+  const personalHit = d.personalAccuracy?.recentHitRate;
+  const newsLabel = d.newsSentiment?.label;
+  const rsValue = d.relativeStrength?.rs;
+  const bt = d.backtest;
+  const close = d.levels?.entryHigh ? null : null;
+  const code = d.code || '';
+  const name = stockMeta?.name || '';
+
+  // ─ 主結論 ─
+  let emoji, headline, pill;
+  if (personalErr) {
+    emoji = '⚠️'; headline = '此股近期模型不準，建議觀望'; pill = '系統低信心';
+  } else if (winRate >= 65 && costOK !== false) {
+    emoji = '🟢'; headline = '建議：分批進場'; pill = '訊號偏多';
+  } else if (winRate >= 55) {
+    emoji = '🟢'; headline = '建議：等回測再進場'; pill = '中期偏多';
+  } else if (winRate >= 45) {
+    emoji = '🟡'; headline = '建議：觀望優先'; pill = '訊號中性';
+  } else if (winRate >= 30) {
+    emoji = '🟠'; headline = '建議：減碼或不進場'; pill = '訊號偏空';
+  } else {
+    emoji = '🔴'; headline = '建議：不適合進場'; pill = '訊號明確偏空';
+  }
+  if (liquid === 'low') headline = '⚠ 低流動性 · ' + headline;
+
+  // ─ 一句話總結 ─
+  const summaryParts = [];
+  summaryParts.push(`<b>${name || code} ${d.close ? d.close.toFixed(2) : ''} 元</b>`);
+  if (d.pct != null) summaryParts.push(`今日 ${d.pct >= 0 ? '+' : ''}${d.pct.toFixed(2)}%`);
+  // 翻譯勝率
+  const wrText =
+    winRate >= 65 ? '系統評估短線勝率較高（多方訊號明顯）' :
+    winRate >= 55 ? '系統綜合判讀偏多，但需等回測支撐' :
+    winRate >= 45 ? '勝率剛過五成，多空力量目前各半' :
+    winRate >= 30 ? '空方訊號較強，逢反彈宜減碼' :
+    '訊號明確偏空，不建議承接';
+  summaryParts.push(wrText);
+  // 模型可信度
+  if (personalErr) {
+    summaryParts.push('<span style="color:var(--down)">且系統最近 3 次預測誤差大，建議降低權重</span>');
+  } else if (histAcc != null) {
+    if (histAcc >= 60) summaryParts.push('<span style="color:var(--up)">過去類似訊號命中率高</span>');
+    else if (histAcc < 45) summaryParts.push('<span style="color:var(--gold)">過去類似訊號命中率不高，僅供參考</span>');
+  }
+  const summary = summaryParts.join('，') + '。';
+
+  // ─ 正面訊號 ─
+  const positives = [];
+  // 法人
+  if (d.inst?.foreign > 0 && d.inst?.trust > 0) {
+    positives.push(`✓ <b>外資+投信同步買超</b>（外資 ${(d.inst.foreign/1000).toFixed(0)} 張、投信 ${(d.inst.trust/1000).toFixed(0)} 張）— 主力共識偏多`);
+  } else if (d.inst?.total > 5000) {
+    positives.push(`✓ 法人 3 日合計買超 ${(d.inst.total/1000).toFixed(0)} 張 — 籌碼面偏多`);
+  }
+  // KD
+  if (d.kd?.signal === '黃金交叉' && d.kd.k < 30) {
+    positives.push(`✓ <b>KD 低檔黃金交叉</b>（K=${d.kd.k.toFixed(0)}）— 短線反彈機會`);
+  } else if (d.kd?.signal === '黃金交叉') {
+    positives.push(`✓ KD 黃金交叉 — 動能轉強`);
+  }
+  // MA arrangement
+  if (d.trend === '多頭排列') positives.push(`✓ <b>均線多頭排列</b>（5/20/60 MA 由上而下）— 中長期格局健康`);
+  // 多時間框架
+  if (consonance) positives.push(`✓ <b>日週共振</b>（短中期方向一致）— 訊號可靠度提升`);
+  // RS
+  if (rsValue != null && rsValue > 5) positives.push(`✓ 60 日報酬贏大盤 ${rsValue.toFixed(1)}% — 強勢領漲股`);
+  // 新聞情緒
+  if (newsLabel === '偏多' || newsLabel === '略偏多') {
+    const kw = d.newsSentiment?.topKeywords?.pos?.slice(0, 2).join('、') || '';
+    positives.push(`✓ 新聞氛圍${newsLabel}${kw ? `（${kw}）` : ''}`);
+  }
+  // 回測
+  if (bt && bt.winRate >= 55 && bt.cumulativeReturn > 5) {
+    positives.push(`✓ 過去 60 日訊號回測勝率 ${bt.winRate}%、累積 +${bt.cumulativeReturn}% — 歷史表現可靠`);
+  }
+
+  // ─ 負面訊號 / 風險 ─
+  const negatives = [];
+  // 量能
+  if (d.vol?.signal === '量能萎縮') negatives.push(`⚠️ <b>量能萎縮</b> — 推升動能不足`);
+  // 接近高點
+  if (d.range?.distToHigh != null && d.range.distToHigh < 3) {
+    negatives.push(`⚠️ 接近 60 日高點 ${d.range.high60?.toFixed(2)} — 突破或回測的關鍵位`);
+  }
+  // 接近低點
+  if (d.range?.distToLow != null && d.range.distToLow < 3) {
+    negatives.push(`⚠️ 接近 60 日低點 ${d.range.low60?.toFixed(2)} — 跌破恐續弱`);
+  }
+  // 高檔鈍化
+  if (d.kd?.level === '高檔鈍化') negatives.push(`⚠️ KD 高檔鈍化 — 高位風險上升`);
+  // RSI 過熱
+  if (d.rsi14 > 75) negatives.push(`⚠️ RSI ${d.rsi14.toFixed(0)} 過熱 — 短線追價風險高`);
+  // 日週背離
+  if (divergence) negatives.push(`⚠️ <b>日週方向背離</b> — 短線多頭遇到週線阻力，留意陷阱`);
+  // 法人賣超
+  if (d.inst?.foreign < 0 && d.inst?.trust < 0) {
+    negatives.push(`⚠️ 外資+投信同步賣超 — 主力撤離訊號`);
+  }
+  // 流動性
+  if (liquid === 'low') {
+    const turn = d.economic?.avgTurnover20;
+    negatives.push(`⚠️ <b>低流動性</b>（日均成交 ${turn ? (turn/1e4).toFixed(0) + ' 萬' : '低'}）— 進出場滑價大`);
+  }
+  // 交易成本
+  if (costOK === false) {
+    negatives.push(`⚠️ 預期獲利空間 < 2 倍交易成本 — 賺賠比不夠好`);
+  }
+  // 新聞利空
+  if (newsLabel === '偏空' || newsLabel === '略偏空') {
+    const kw = d.newsSentiment?.topKeywords?.neg?.slice(0, 2).join('、') || '';
+    negatives.push(`⚠️ 新聞氛圍${newsLabel}${kw ? `（${kw}）` : ''}`);
+  }
+  // 連續誤差大
+  if (personalErr) {
+    negatives.push(`⚠️ <b>近 3 次預測誤差 > 5%</b> — 建議大幅降低部位或觀望`);
+  }
+
+  // ─ 行動建議（白話）─
+  const actions = [];
+  const L = d.levels;
+  if (winRate >= 65 && !personalErr && costOK !== false) {
+    actions.push(`<b>分批進場</b>：第一批 50% 在 ${L.entryLow}~${L.entryHigh}，回測 20MA <b>${L.support20}</b> 加碼 30%`);
+    actions.push(`<b>停損</b>：跌破 <b>${L.stop}</b> 立即出場（避免被套）`);
+    actions.push(`<b>停利</b>：第一目標 ${L.target1}（停利一半）、第二目標 ${L.target2}（剩餘改 20MA 動態出場）`);
+  } else if (winRate >= 55) {
+    actions.push(`<b>等支撐再進場</b>：等回測 5MA <b>${L.support10}</b> 或 20MA <b>${L.support20}</b>`);
+    actions.push(`<b>不追高</b>：${d.close?.toFixed(2)} 以上不主動買進`);
+    actions.push(`<b>停損 ${L.stop}</b>，目標 ${L.target1}`);
+  } else if (winRate >= 45) {
+    actions.push(`<b>觀望為主</b>：${d.close?.toFixed(2)} 在多空交界，避免重押`);
+    actions.push(`若想試水：上限<b>總部位 10%</b>、停損 ${L.stop}`);
+    actions.push(`<b>等待方向</b>：突破 ${L.high60} 才轉多 / 跌破 ${L.low60} 確認轉空`);
+  } else if (winRate >= 30) {
+    actions.push(`<b>反彈即減碼</b>：手中部位逢反彈到 ${L.support10} 即減 50%`);
+    actions.push(`<b>不接刀</b>：下跌中不嘗試承接`);
+    actions.push(`<b>翻多訊號</b>：站回 20MA ${L.support20} + 法人連 3 日買超 + 量能轉增`);
+  } else {
+    actions.push(`<b>空手等待</b>：不持股、不抄底`);
+    actions.push(`<b>既有部位</b>：跌破 ${L.stop} 立即清空`);
+    actions.push(`<b>觀察支撐</b>：${L.low60} + KD 低檔背離為止跌參考點`);
+  }
+
+  // ─ 系統可信度 ─
+  const trust = [];
+  if (consensus != null) {
+    const lvl = consensus >= 75 ? '高（訊號一致）' : consensus >= 50 ? '中（部分分歧）' : '低（模組互打）';
+    trust.push(`<span class="item">訊號一致度：<b>${consensus}%</b> ${lvl}</span>`);
+  }
+  if (histAcc != null && histSamples) {
+    trust.push(`<span class="item">歷史命中率：<b>${histAcc}%</b>（${histSamples} 筆樣本）</span>`);
+  }
+  if (personalHit != null) {
+    trust.push(`<span class="item">本股實測命中率：<b>${personalHit}%</b></span>`);
+  }
+  if (personalMul != null && personalMul !== 1) {
+    trust.push(`<span class="item">信心倍率：<b>×${personalMul}</b>（已套用）</span>`);
+  }
+  if (bt) {
+    trust.push(`<span class="item">回測 60 日：勝率 <b>${bt.winRate}%</b>、累積 <b>${bt.cumulativeReturn >= 0 ? '+' : ''}${bt.cumulativeReturn}%</b>、Sharpe <b>${bt.sharpe ?? '–'}</b></span>`);
+  }
+  if (liquid) {
+    const lq = liquid === 'high' ? '高' : liquid === 'mid' ? '中' : '低';
+    trust.push(`<span class="item">流動性：<b>${lq}</b></span>`);
+  }
+
+  return { emoji, headline, pill, winRate, summary, positives, negatives, actions, trust };
+}
+
+function renderAdvisor(d, stockMeta) {
+  const a = buildAdvisor(d, stockMeta);
+  document.getElementById('advisor-emoji').textContent = a.emoji;
+  document.getElementById('advisor-headline').textContent = a.headline;
+  document.getElementById('advisor-pill').textContent = a.pill;
+  document.getElementById('advisor-winrate').textContent = `勝率 ${a.winRate}%`;
+  document.getElementById('advisor-summary').innerHTML = a.summary;
+
+  document.getElementById('advisor-positives').innerHTML =
+    a.positives.length ? a.positives.map((t) => `<li>${t}</li>`).join('') : '';
+  document.getElementById('advisor-negatives').innerHTML =
+    a.negatives.length ? a.negatives.map((t) => `<li>${t}</li>`).join('') : '';
+
+  document.getElementById('advisor-actions').innerHTML =
+    a.actions.map((t) => `<li>${t}</li>`).join('');
+
+  document.getElementById('advisor-trust').innerHTML = a.trust.join('');
+
+  // 詳情區（保留進階用戶看的原始指標）
+  const det = document.getElementById('advisor-details-body');
+  if (det) {
+    const items = [];
+    items.push(`<div class="item"><span class="l">趨勢分數</span><span class="v">${d.subScores?.trend ?? '--'}</span></div>`);
+    items.push(`<div class="item"><span class="l">動能分數</span><span class="v">${d.subScores?.momentum ?? '--'}</span></div>`);
+    items.push(`<div class="item"><span class="l">量價分數</span><span class="v">${d.subScores?.volPrice ?? '--'}</span></div>`);
+    items.push(`<div class="item"><span class="l">籌碼分數</span><span class="v">${d.subScores?.chip ?? '--'}</span></div>`);
+    items.push(`<div class="item"><span class="l">罰分（風險懲罰）</span><span class="v">-${d.subScores?.penalty ?? 0}</span></div>`);
+    items.push(`<div class="item"><span class="l">RSI(14)</span><span class="v">${d.rsi14?.toFixed(1) ?? '--'}</span></div>`);
+    items.push(`<div class="item"><span class="l">KD</span><span class="v">${d.kd?.k?.toFixed(1) ?? '--'} / ${d.kd?.d?.toFixed(1) ?? '--'}</span></div>`);
+    items.push(`<div class="item"><span class="l">Bias 20</span><span class="v">${d.bias20?.toFixed(2) ?? '--'}%</span></div>`);
+    items.push(`<div class="item"><span class="l">ATR(14)</span><span class="v">±${d.atr14?.toFixed(2) ?? '--'} 元</span></div>`);
+    if (d.moduleAccuracy) {
+      ['trend', 'momentum', 'volPrice'].forEach((m) => {
+        const ma = d.moduleAccuracy[m];
+        if (ma) items.push(`<div class="item"><span class="l">${m} view 命中率</span><span class="v">${ma.hitRate ?? '--'}% (${ma.samples} 筆)</span></div>`);
+      });
+    }
+    if (d.dynamicWeights?.weights) {
+      const w = d.dynamicWeights.weights;
+      items.push(`<div class="item"><span class="l">動態權重</span><span class="v">趨${(w.trend*100).toFixed(0)}/動${(w.momentum*100).toFixed(0)}/量${(w.volPrice*100).toFixed(0)}/籌${(w.chip*100).toFixed(0)}</span></div>`);
+    }
+    det.innerHTML = items.join('');
+  }
+}
+
 // ──────── 技術診斷渲染 ────────
 function renderDiag(d, k) {
+  // 先把白話顧問卡片填好
+  renderAdvisor(d, state.stocks[state.currentCode]);
+
   const f = (n, dec = 2) => n == null || !Number.isFinite(n) ? '--' : n.toFixed(dec);
   const cls = (s) => s.includes('多') || s.includes('黃金') || s.includes('擴張') || s.includes('放大') || s.includes('增') ? 'up'
     : s.includes('空') || s.includes('死') || s.includes('縮') || s.includes('減') ? 'down'
