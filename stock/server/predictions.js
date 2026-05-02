@@ -1,31 +1,164 @@
-// 預測追蹤 / 自我學習回饋迴路
-// 流程：record() → validate() → getStats() → getConfidenceMultiplier() → 套回 diagnose
+// 預測追蹤 / 自我學習回饋迴路（Supabase backed）
 //
-// 設計重點：
-//   1. In-memory Map 為一級存放，定期 persist() 到 server/data/predictions.json
-//   2. 同一檔同一日只記一筆（避免反覆 query 灌爆）
-//   3. 每筆預測等 HOLD_DAYS 個交易日後比對實際收盤算 hit/miss + 誤差
-//   4. 連續 3 天 |預測-實際| > 5% → 標記為「大誤差」，自動降低該股訊號強度
-//   5. Railway container fs ephemeral，重啟時 load() 不到資料就從零開始累積
+// ───── 架構 ─────
+//   一級存放：in-memory Map（同步讀寫，API 回應不阻塞）
+//   二級存放：Supabase Postgres（持久化，跨 redeploy 保留）
+//
+//   寫路徑：record() → 更新 Map（同步） → markDirty() → 排程 flushDirty()（背景）
+//   讀路徑：getStats() / getConfidenceMultiplier() 直接讀 Map（同步、零網路）
+//   啟動：load() 一次拉下全部歷史 → 灌入 Map
+//   關機：persist() 強制 flush 待寫 queue
+//
+// ───── Supabase 資料表 schema（建議） ─────
+//   CREATE TABLE IF NOT EXISTS predictions (
+//     code            TEXT    NOT NULL,
+//     date            DATE    NOT NULL,
+//     close           NUMERIC NOT NULL,
+//     win_rate        INTEGER,
+//     direction       TEXT,
+//     target1         NUMERIC,
+//     stop            NUMERIC,
+//     expected_return NUMERIC,
+//     recorded_at     BIGINT,
+//     validated       BOOLEAN DEFAULT FALSE,
+//     actual_close    NUMERIC,
+//     actual_date     DATE,
+//     actual_return   NUMERIC,
+//     direction_hit   BOOLEAN,
+//     expected_error  NUMERIC,
+//     abs_error       NUMERIC,
+//     PRIMARY KEY (code, date)
+//   );
+//   CREATE INDEX IF NOT EXISTS idx_predictions_code ON predictions(code);
+//   CREATE INDEX IF NOT EXISTS idx_predictions_validated ON predictions(validated);
 
-import fs from 'node:fs';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { createClient } from '@supabase/supabase-js';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const STORE_DIR = path.resolve(__dirname, 'data');
-const STORE_FILE = path.join(STORE_DIR, 'predictions.json');
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_KEY = process.env.SUPABASE_KEY;
+
+let supabase = null;
+if (SUPABASE_URL && SUPABASE_KEY) {
+  supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
+    auth: { persistSession: false },
+  });
+}
 
 // 結構：Map<code, [{date, close, winRate, direction, target1, expectedReturn, validated, ...}]>
 const store = new Map();
-const HOLD_DAYS = 5;          // 預測標記後 5 個交易日才能驗證
-const MAX_PER_STOCK = 90;     // 每檔保留最近 90 筆
-const RECENT_WINDOW = 20;     // 最近準確度看最近 20 筆
+// 待 flush 的 (code|date) key
+const dirtyKeys = new Set();
+// 排程器
+let flushTimer = null;
+let flushInFlight = false;
+
+const HOLD_DAYS = 5;
+const MAX_PER_STOCK = 90;
+const RECENT_WINDOW = 20;
+const FLUSH_DELAY_MS = 2000;   // record/validate 後 2 秒 debounce flush
+const PAGE_SIZE = 1000;        // Supabase 分頁
 
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
-// ──────────────── record ────────────────
-// 同一天同一檔只記一筆（後面的覆蓋前面的，winRate 以最後一次為準）
+// ───────────── camelCase ↔ snake_case 對映 ─────────────
+function toRow(code, p) {
+  return {
+    code,
+    date: p.date,
+    close: p.close,
+    win_rate: p.winRate ?? null,
+    direction: p.direction ?? null,
+    target1: p.target1 ?? null,
+    stop: p.stop ?? null,
+    expected_return: p.expectedReturn ?? null,
+    recorded_at: p.recordedAt ?? Date.now(),
+    validated: p.validated || false,
+    actual_close: p.actualClose ?? null,
+    actual_date: p.actualDate ?? null,
+    actual_return: p.actualReturn ?? null,
+    direction_hit: p.directionHit ?? null,
+    expected_error: p.expectedError ?? null,
+    abs_error: p.absError ?? null,
+  };
+}
+
+function fromRow(r) {
+  return {
+    date: r.date,
+    close: r.close != null ? +r.close : null,
+    winRate: r.win_rate,
+    direction: r.direction,
+    target1: r.target1 != null ? +r.target1 : null,
+    stop: r.stop != null ? +r.stop : null,
+    expectedReturn: r.expected_return != null ? +r.expected_return : null,
+    recordedAt: r.recorded_at != null ? +r.recorded_at : Date.now(),
+    validated: !!r.validated,
+    actualClose: r.actual_close != null ? +r.actual_close : null,
+    actualDate: r.actual_date,
+    actualReturn: r.actual_return != null ? +r.actual_return : null,
+    directionHit: r.direction_hit,
+    expectedError: r.expected_error != null ? +r.expected_error : null,
+    absError: r.abs_error != null ? +r.abs_error : null,
+  };
+}
+
+// ───────────── dirty queue + 背景 flush ─────────────
+function markDirty(code, date) {
+  if (code && date) dirtyKeys.add(`${code}|${date}`);
+}
+
+function scheduleFlush() {
+  if (!supabase || flushTimer || flushInFlight) return;
+  flushTimer = setTimeout(() => {
+    flushTimer = null;
+    flushDirty().catch((e) => console.warn('[predictions flush]', e.message));
+  }, FLUSH_DELAY_MS);
+}
+
+async function flushDirty() {
+  if (!supabase || !dirtyKeys.size || flushInFlight) return 0;
+  flushInFlight = true;
+
+  // Snapshot dirty set，flush 期間若有新 dirty 也不會丟（會在下次 schedule 處理）
+  const snapshot = [...dirtyKeys];
+  dirtyKeys.clear();
+
+  const rows = [];
+  for (const key of snapshot) {
+    const [code, date] = key.split('|');
+    const arr = store.get(code) || [];
+    const p = arr.find((x) => x.date === date);
+    if (p) rows.push(toRow(code, p));
+  }
+  if (!rows.length) {
+    flushInFlight = false;
+    return 0;
+  }
+
+  try {
+    // 分批 upsert（避免單次 payload 過大）
+    const BATCH = 500;
+    let total = 0;
+    for (let i = 0; i < rows.length; i += BATCH) {
+      const chunk = rows.slice(i, i + BATCH);
+      const { error } = await supabase
+        .from('predictions')
+        .upsert(chunk, { onConflict: 'code,date' });
+      if (error) throw error;
+      total += chunk.length;
+    }
+    flushInFlight = false;
+    return total;
+  } catch (e) {
+    // 失敗：把 key 放回 dirty queue 等下次重試
+    snapshot.forEach((k) => dirtyKeys.add(k));
+    flushInFlight = false;
+    console.warn('[predictions upsert]', e.message);
+    return -1;
+  }
+}
+
+// ───────────── record（同步，立即可讀） ─────────────
 export function record(code, prediction) {
   if (!code || !prediction) return;
   if (prediction.close == null || !Number.isFinite(prediction.close)) return;
@@ -44,26 +177,33 @@ export function record(code, prediction) {
     validated: false,
   };
   if (idx >= 0) {
-    // 保留 validated 結果，只更新預測欄位
-    if (arr[idx].validated) entry.validated = true;
-    Object.assign(arr[idx], entry);
+    // 已驗證的不要被覆蓋為未驗證；其他欄位以最新為準
+    if (arr[idx].validated) {
+      entry.validated = true;
+      entry.actualClose = arr[idx].actualClose;
+      entry.actualDate = arr[idx].actualDate;
+      entry.actualReturn = arr[idx].actualReturn;
+      entry.directionHit = arr[idx].directionHit;
+      entry.expectedError = arr[idx].expectedError;
+      entry.absError = arr[idx].absError;
+    }
+    arr[idx] = entry;
   } else {
     arr.push(entry);
   }
-  // 截斷舊資料
   if (arr.length > MAX_PER_STOCK) arr.splice(0, arr.length - MAX_PER_STOCK);
   store.set(code, arr);
+
+  markDirty(code, today);
+  scheduleFlush();
 }
 
-// ──────────────── validate ────────────────
-// 對未驗證的預測，找 HOLD_DAYS 交易日後的實際收盤
-// kline 必須是依日期升冪排列的 [{date, close}, ...]
+// ───────────── validate（同步，把 hit/miss 寫入 memory，背景 sync 至 DB） ─────────────
 export function validate(code, kline) {
   if (!Array.isArray(kline) || kline.length < HOLD_DAYS + 1) return 0;
   const arr = store.get(code);
   if (!arr || !arr.length) return 0;
 
-  // 索引：date → close（FinMind/Yahoo 都是 ISO 日期）
   const closeByDate = new Map();
   const datesAsc = [];
   kline.forEach((d) => {
@@ -78,11 +218,10 @@ export function validate(code, kline) {
     if (p.validated) continue;
     if (!p.date || !Number.isFinite(p.close)) continue;
 
-    // 找 K 線中第一個「至少在 p.date 後 HOLD_DAYS 個交易日」的 bar
     const startIdx = datesAsc.findIndex((d) => d > p.date);
     if (startIdx < 0) continue;
-    const targetIdx = startIdx + HOLD_DAYS - 1;     // -1 因為 startIdx 已是「至少 1 天後」
-    if (targetIdx >= datesAsc.length) continue;     // 還沒到驗證日
+    const targetIdx = startIdx + HOLD_DAYS - 1;
+    if (targetIdx >= datesAsc.length) continue;
 
     const actualDate = datesAsc[targetIdx];
     const actualClose = closeByDate.get(actualDate);
@@ -102,21 +241,26 @@ export function validate(code, kline) {
       : null;
     p.absError = p.expectedError != null ? Math.abs(p.expectedError) : null;
     validatedCount++;
+    markDirty(code, p.date);
   }
-  if (validatedCount) store.set(code, arr);
+  if (validatedCount) {
+    store.set(code, arr);
+    scheduleFlush();
+  }
   return validatedCount;
 }
 
-// ──────────────── getStats ────────────────
+// ───────────── 統計 / 信心倍率（純記憶體，同步） ─────────────
 export function getStats(code) {
   const arr = store.get(code);
   if (!arr || !arr.length) {
-    return { samples: 0, totalRecorded: 0, recentSampleCount: 0, recentHitRate: null, mae: null, consecutiveBigError: false, last: null };
+    return { samples: 0, totalRecorded: 0, recentSampleCount: 0, recentHitRate: null, mae: null, consecutiveBigError: false, last: null, pending: 0 };
   }
   const validated = arr.filter((p) => p.validated && p.directionHit != null);
   const totalRecorded = arr.length;
+  const pending = arr.filter((p) => !p.validated).length;
   if (!validated.length) {
-    return { samples: 0, totalRecorded, pending: arr.filter((p) => !p.validated).length, recentSampleCount: 0, recentHitRate: null, mae: null, consecutiveBigError: false, last: null };
+    return { samples: 0, totalRecorded, pending, recentSampleCount: 0, recentHitRate: null, mae: null, consecutiveBigError: false, last: null };
   }
 
   const recent = validated.slice(-RECENT_WINDOW);
@@ -125,7 +269,6 @@ export function getStats(code) {
   const errors = recent.map((p) => p.absError).filter((e) => e != null);
   const mae = errors.length ? +(errors.reduce((s, e) => s + e, 0) / errors.length).toFixed(2) : null;
 
-  // 連 3 筆絕對誤差 > 5%（注意是「最近 3 筆已驗證」，不是「3 個自然日」）
   const last3 = validated.slice(-3);
   const consecutiveBigError = last3.length === 3 && last3.every((p) => p.absError != null && p.absError > 5);
 
@@ -143,7 +286,7 @@ export function getStats(code) {
   return {
     samples: validated.length,
     totalRecorded,
-    pending: arr.filter((p) => !p.validated).length,
+    pending,
     recentSampleCount: recent.length,
     recentHitRate,
     mae,
@@ -152,12 +295,6 @@ export function getStats(code) {
   };
 }
 
-// ──────────────── 信心倍率 ────────────────
-// 規則：
-//   命中率 50% → ×1.0；40% → ×0.8；65% → ×1.3；30% → ×0.6（強烈降權）
-//   連續 3 筆 |誤差|>5% → 額外 ×0.7
-//   樣本 < 5 → ×1.0（不夠樣本不調整）
-// 套用到 winRate：adjusted = 50 + (winRate - 50) × multiplier
 export function getConfidenceMultiplier(code) {
   const stats = getStats(code);
   if (!stats || stats.samples < 5) {
@@ -172,25 +309,41 @@ export function getConfidenceMultiplier(code) {
   return { multiplier: +mul.toFixed(2), reason, stats };
 }
 
-// ──────────────── persist / load ────────────────
-export function persist() {
-  try {
-    if (!fs.existsSync(STORE_DIR)) fs.mkdirSync(STORE_DIR, { recursive: true });
-    const data = Object.fromEntries(store);
-    fs.writeFileSync(STORE_FILE, JSON.stringify(data));
-    return store.size;
-  } catch (e) {
-    console.warn('[predictions persist]', e.message);
-    return -1;
+// ───────────── load（啟動時：Supabase → Map） ─────────────
+export async function load() {
+  if (!supabase) {
+    console.warn('[predictions] SUPABASE_URL/SUPABASE_KEY 未設定，純記憶體模式啟動');
+    return 0;
   }
-}
-
-export function load() {
   try {
-    if (!fs.existsSync(STORE_FILE)) return 0;
-    const raw = fs.readFileSync(STORE_FILE, 'utf8');
-    const data = JSON.parse(raw || '{}');
-    Object.entries(data).forEach(([k, v]) => store.set(k, Array.isArray(v) ? v : []));
+    const all = [];
+    let from = 0;
+    while (true) {
+      const { data, error } = await supabase
+        .from('predictions')
+        .select('*')
+        .order('date', { ascending: true })
+        .range(from, from + PAGE_SIZE - 1);
+      if (error) throw error;
+      if (!data || !data.length) break;
+      all.push(...data);
+      if (data.length < PAGE_SIZE) break;
+      from += PAGE_SIZE;
+    }
+
+    // 按 code group + 截斷 + 灌入 store
+    const grouped = new Map();
+    for (const r of all) {
+      const arr = grouped.get(r.code) || [];
+      arr.push(fromRow(r));
+      grouped.set(r.code, arr);
+    }
+    store.clear();
+    for (const [code, arr] of grouped) {
+      arr.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+      if (arr.length > MAX_PER_STOCK) arr.splice(0, arr.length - MAX_PER_STOCK);
+      store.set(code, arr);
+    }
     return store.size;
   } catch (e) {
     console.warn('[predictions load]', e.message);
@@ -198,10 +351,35 @@ export function load() {
   }
 }
 
+// ───────────── persist（強制 flush 待寫 queue） ─────────────
+export async function persist() {
+  if (!supabase) return -1;
+  // 取消排程的 timer，直接強制 flush
+  if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
+  // 等待 in-flight 完成（最多 5 秒）避免重複寫
+  const t0 = Date.now();
+  while (flushInFlight && Date.now() - t0 < 5000) {
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  return await flushDirty();
+}
+
+// ───────────── debug helpers ─────────────
 export function getAll() {
   return Object.fromEntries(store);
 }
 
 export function clear() {
   store.clear();
+  dirtyKeys.clear();
+}
+
+export function status() {
+  return {
+    supabaseConnected: !!supabase,
+    stocksTracked: store.size,
+    totalPredictions: [...store.values()].reduce((s, arr) => s + arr.length, 0),
+    dirtyPending: dirtyKeys.size,
+    flushInFlight,
+  };
 }

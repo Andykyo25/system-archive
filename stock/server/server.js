@@ -798,6 +798,10 @@ async function loadStockDiagnose(code) {
 }
 
 // ───────────────────────── 預測追蹤（自我學習回饋資料） ─────────────────────────
+// Supabase 連線狀態 + memory cache 摘要
+app.get('/api/predictions/status', (_req, res) => {
+  ok(res, predictions.status());
+});
 // 查看單檔歷史預測 + 命中率統計
 app.get('/api/predictions/:code', (req, res) => {
   try {
@@ -960,25 +964,32 @@ app.get('/api/intraday/:code', async (req, res) => {
 
 // ───────────────────────── 啟動 ─────────────────────────
 
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   console.log(`▌ 台股戰情室 backend 啟動 → http://localhost:${PORT}`);
   console.log(`  session=${getSession()}  finmind_token=${process.env.FINMIND_TOKEN ? 'set' : 'missing'}`);
+  console.log(`  supabase=${process.env.SUPABASE_URL ? 'set' : 'missing'}`);
 
-  // 載入預測歷史（自我學習回饋資料）
-  const loaded = predictions.load();
-  console.log(`  predictions loaded: ${loaded} 檔`);
+  // 載入預測歷史（從 Supabase 拉到 in-memory；async，但用戶 API 不會等）
+  predictions.load().then((n) => {
+    console.log(`  predictions loaded from Supabase: ${n} 檔`);
+  }).catch((e) => console.warn('  predictions load failed:', e.message));
 
-  // 每 5 分鐘 persist 一次（Railway redeploy 前能保住資料）
-  setInterval(() => {
-    const n = predictions.persist();
-    if (n >= 0) console.log(`  predictions persisted: ${n} 檔`);
+  // 每 5 分鐘強制 flush 一次（保險用，dirty queue 平常 2 秒 debounce 會自己寫）
+  setInterval(async () => {
+    const n = await predictions.persist();
+    if (n > 0) console.log(`  predictions flushed: ${n} rows`);
   }, 5 * 60 * 1000);
 
-  // graceful shutdown
+  // graceful shutdown：強制把 dirty queue 寫完再退出
   ['SIGTERM', 'SIGINT'].forEach((sig) => {
-    process.on(sig, () => {
-      const n = predictions.persist();
-      console.log(`▌ shutdown: predictions persisted (${n} 檔)`);
+    process.on(sig, async () => {
+      console.log(`▌ shutdown signal: ${sig}, flushing predictions...`);
+      try {
+        const n = await predictions.persist();
+        console.log(`▌ predictions flushed: ${n} rows`);
+      } catch (e) {
+        console.warn('▌ flush on shutdown failed:', e.message);
+      }
       process.exit(0);
     });
   });
