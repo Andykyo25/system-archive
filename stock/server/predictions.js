@@ -377,9 +377,93 @@ export function clear() {
 export function status() {
   return {
     supabaseConnected: !!supabase,
+    supabaseUrl: SUPABASE_URL ? SUPABASE_URL.replace(/^(https?:\/\/[^.]+).+$/, '$1...') : null,
+    keyPresent: !!SUPABASE_KEY,
+    keyType: SUPABASE_KEY ? (SUPABASE_KEY.length > 100 ? 'service_role 或 anon (JWT)' : '可能格式錯誤') : null,
     stocksTracked: store.size,
     totalPredictions: [...store.values()].reduce((s, arr) => s + arr.length, 0),
     dirtyPending: dirtyKeys.size,
     flushInFlight,
   };
+}
+
+// 完整 round-trip 自檢：insert → select → delete，驗證連線、權限、schema 都對
+export async function healthcheck() {
+  if (!supabase) {
+    return { ok: false, stage: 'init', message: 'Supabase client 未初始化（SUPABASE_URL/SUPABASE_KEY 未設）' };
+  }
+  const TEST_CODE = '__healthcheck__';
+  const TEST_DATE = '1970-01-01';
+  const testRow = {
+    code: TEST_CODE,
+    date: TEST_DATE,
+    close: 1,
+    win_rate: 50,
+    direction: 'neutral',
+    recorded_at: Date.now(),
+    validated: false,
+  };
+  try {
+    // 1. 寫入測試
+    const t1 = Date.now();
+    const { error: upErr } = await supabase
+      .from('predictions')
+      .upsert(testRow, { onConflict: 'code,date' });
+    if (upErr) return { ok: false, stage: 'upsert', message: upErr.message, hint: hintFor(upErr) };
+    const upMs = Date.now() - t1;
+
+    // 2. 讀回測試
+    const t2 = Date.now();
+    const { data, error: selErr } = await supabase
+      .from('predictions')
+      .select('code, date, close')
+      .eq('code', TEST_CODE)
+      .eq('date', TEST_DATE)
+      .single();
+    if (selErr) return { ok: false, stage: 'select', message: selErr.message, hint: hintFor(selErr) };
+    const selMs = Date.now() - t2;
+
+    // 3. 刪除測試列
+    const t3 = Date.now();
+    const { error: delErr } = await supabase
+      .from('predictions')
+      .delete()
+      .eq('code', TEST_CODE)
+      .eq('date', TEST_DATE);
+    if (delErr) return { ok: false, stage: 'delete', message: delErr.message, hint: hintFor(delErr) };
+    const delMs = Date.now() - t3;
+
+    return {
+      ok: true,
+      stage: 'all',
+      message: 'Supabase round-trip 成功',
+      timing: { upsert: `${upMs}ms`, select: `${selMs}ms`, delete: `${delMs}ms` },
+      schemaOK: data && data.code === TEST_CODE && +data.close === 1,
+    };
+  } catch (e) {
+    return { ok: false, stage: 'exception', message: e.message, hint: '可能為網路 / DNS 問題' };
+  }
+}
+
+function hintFor(err) {
+  const msg = err.message || '';
+  if (msg.includes('relation') && msg.includes('does not exist')) {
+    return '資料表 predictions 不存在 — 請在 Supabase SQL Editor 執行 CREATE TABLE 語句';
+  }
+  if (msg.includes('JWT') || msg.includes('jwt')) {
+    return 'SUPABASE_KEY 格式錯誤 — 應為 service_role 或 anon key 的完整 JWT';
+  }
+  if (err.code === '42501' || msg.includes('permission denied') || msg.includes('row-level security')) {
+    return 'RLS policy 拒絕 — 請改用 service_role key，或新增 policy "allow all" ON predictions FOR ALL USING (true)';
+  }
+  if (msg.includes('column') && msg.includes('does not exist')) {
+    return '資料表 schema 不符 — 請依建議 schema 重建表';
+  }
+  if (msg.includes('duplicate key') || err.code === '23505') {
+    return '主鍵衝突 — 應該不會發生，請檢查 (code, date) 是否設為 PRIMARY KEY';
+  }
+  if (err.code === '42P10' || msg.includes('there is no unique or exclusion constraint')) {
+    return '(code, date) 沒有 UNIQUE/PRIMARY KEY 約束 — onConflict 無法運作，請確認主鍵設定';
+  }
+  return null;
 }

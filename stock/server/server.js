@@ -802,6 +802,12 @@ async function loadStockDiagnose(code) {
 app.get('/api/predictions/status', (_req, res) => {
   ok(res, predictions.status());
 });
+// Supabase 完整 round-trip 自檢（寫→讀→刪）
+app.get('/api/predictions/healthcheck', async (_req, res) => {
+  const result = await predictions.healthcheck();
+  if (result.ok) ok(res, result);
+  else res.status(503).json({ ok: false, ...result });
+});
 // 查看單檔歷史預測 + 命中率統計
 app.get('/api/predictions/:code', (req, res) => {
   try {
