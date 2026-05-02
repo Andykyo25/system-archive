@@ -904,4 +904,34 @@ app.get('/api/intraday/:code', async (req, res) => {
 app.listen(PORT, () => {
   console.log(`▌ 台股戰情室 backend 啟動 → http://localhost:${PORT}`);
   console.log(`  session=${getSession()}  finmind_token=${process.env.FINMIND_TOKEN ? 'set' : 'missing'}`);
+
+  // 啟動後 3 秒開始預熱「常用快取」— 解 Railway cold start 首次載入慢
+  // 預熱項：indices（大盤）+ 6 大權值股的 diagnose
+  // 用 setTimeout 避開啟動時與 listen() 同時 race；用 Promise.allSettled 任一失敗不影響其他
+  if (process.env.WARM_CACHE !== '0') {
+    setTimeout(async () => {
+      const t0 = Date.now();
+      const WEIGHTED = ['2330', '2317', '2454', '2308', '2891', '2882'];
+      try {
+        await Promise.allSettled([
+          // 大盤指數（前端 boot 必呼叫）
+          memo('indices', 1500, async () => {
+            try {
+              const tw = await twseMis.indices();
+              return {
+                session: getSession(),
+                taiex: tw.taiex && { close: tw.taiex.price, change: tw.taiex.chg, pct: tw.taiex.pct, source: 'twse-mis' },
+                otc: tw.otc && { close: tw.otc.price, change: tw.otc.chg, pct: tw.otc.pct, source: 'twse-mis' },
+              };
+            } catch { return null; }
+          }).catch(() => null),
+          // 權值股 diagnose 預熱
+          ...WEIGHTED.map((c) => memo(`diag:${c}`, 30000, () => loadStockDiagnose(c)).catch(() => null)),
+        ]);
+        console.log(`  warm cache ✓ ${WEIGHTED.length + 1} items in ${Date.now() - t0}ms`);
+      } catch (e) {
+        console.warn('  warm cache failed:', e.message);
+      }
+    }, 3000);
+  }
 });

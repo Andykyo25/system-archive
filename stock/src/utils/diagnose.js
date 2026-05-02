@@ -129,6 +129,131 @@ function quickDirection(kSlice) {
   return sum >= 2 ? 'long' : sum <= -2 ? 'short' : 'neutral';
 }
 
+// 每個策略模組（trend/momentum/volPrice）獨立投票 — 用於 walk-forward 個別命中率
+// chip 模組需要歷史法人資料，FinMind 無法回填過去每天的法人快照，故 walk-forward 不含
+function moduleVotesAtTime(kSlice) {
+  if (!kSlice || kSlice.length < 25) return null;
+  const last = kSlice[kSlice.length - 1];
+  const prev = kSlice[kSlice.length - 2];
+  const closes = kSlice.map((d) => d.close);
+  const vols = kSlice.map((d) => d.vol || 0);
+
+  const ma5_v = avg(closes.slice(-5));
+  const ma20_v = avg(closes.slice(-20));
+  const ma60_v = closes.length >= 60 ? avg(closes.slice(-60)) : null;
+  const above5 = last.close >= ma5_v;
+  const above20 = last.close >= ma20_v;
+  const above60 = ma60_v != null && last.close >= ma60_v;
+  const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+
+  // Trend vote — MA 排列與位置
+  let trendVote = 0;
+  if (above5)  trendVote += 0.2;  else trendVote -= 0.2;
+  if (above20) trendVote += 0.3;  else trendVote -= 0.3;
+  if (above60) trendVote += 0.2;  else trendVote -= 0.2;
+  if (ma60_v != null) {
+    if (ma5_v > ma20_v && ma20_v > ma60_v) trendVote += 0.3;       // 多頭排列
+    else if (ma5_v < ma20_v && ma20_v < ma60_v) trendVote -= 0.3;  // 空頭排列
+  }
+  trendVote = clamp(trendVote, -1, 1);
+
+  // Momentum vote — RSI + 收盤方向
+  const rsi = calcRSI(closes, 14);
+  let momVote = 0;
+  if (rsi != null) {
+    if (rsi > 70) momVote -= 0.3;
+    else if (rsi < 30) momVote += 0.3;
+    else if (rsi > 55) momVote += 0.3;
+    else if (rsi < 45) momVote -= 0.3;
+  }
+  if (last.close > prev.close) momVote += 0.2;
+  else if (last.close < prev.close) momVote -= 0.2;
+  momVote = clamp(momVote, -1, 1);
+
+  // Volume-Price vote — 量比 + 量價配合
+  const todayVol = last.vol || 0;
+  const refVols = vols.slice(-21, -1).filter((v) => v > 0);
+  const avgVol_v = refVols.length >= 5 ? avg(refVols) : null;
+  let vpVote = 0;
+  if (avgVol_v && todayVol > 0) {
+    const ratio = todayVol / avgVol_v;
+    const priceUp = last.close > prev.close;
+    if (ratio > 1.8 && priceUp) vpVote += 0.6;
+    else if (ratio > 1.8 && !priceUp) vpVote -= 0.6;
+    else if (ratio > 1.3 && priceUp) vpVote += 0.3;
+    else if (ratio < 0.7 && priceUp) vpVote -= 0.2;
+    else if (ratio < 0.7 && !priceUp) vpVote += 0.1;  // 量縮止跌
+  }
+  vpVote = clamp(vpVote, -1, 1);
+
+  return { trend: trendVote, momentum: momVote, volPrice: vpVote };
+}
+
+// Per-module walk-forward：對過去 N 日，分別檢查 trend/momentum/volPrice 三個 view
+// 各自的方向預測是否與 N 日後實際漲跌方向一致 → 算個別勝率
+export function perModuleWalkForward(k, { lookback = 60, holdDays = 5, threshold = 0.3 } = {}) {
+  if (!Array.isArray(k) || k.length < 30 + holdDays) return null;
+  const stats = {
+    trend:    { hits: 0, total: 0 },
+    momentum: { hits: 0, total: 0 },
+    volPrice: { hits: 0, total: 0 },
+  };
+  const start = Math.max(25, k.length - lookback - holdDays);
+  for (let i = start; i < k.length - holdDays; i++) {
+    const votes = moduleVotesAtTime(k.slice(0, i + 1));
+    if (!votes) continue;
+    const ret = (k[i + holdDays].close - k[i].close) / k[i].close;
+    if (ret === 0) continue;
+    const expectedSign = ret > 0 ? 1 : -1;
+    Object.entries(votes).forEach(([mod, v]) => {
+      // 只計票「明確意見」的時刻（避免 0 票被算成「答錯」）
+      if (Math.abs(v) >= threshold) {
+        stats[mod].total++;
+        if ((v > 0 ? 1 : -1) === expectedSign) stats[mod].hits++;
+      }
+    });
+  }
+  const out = {};
+  Object.entries(stats).forEach(([mod, s]) => {
+    out[mod] = {
+      hitRate: s.total >= 5 ? +(s.hits / s.total * 100).toFixed(1) : null,
+      samples: s.total,
+    };
+  });
+  return out;
+}
+
+// 依各模組命中率動態調整權重（chip 沒 walk-forward 樣本，用 baseline 不調）
+export function computeDynamicWeights(moduleAccuracy) {
+  const base = { trend: 0.30, momentum: 0.25, volPrice: 0.20, chip: 0.25 };
+  if (!moduleAccuracy) return { weights: base, adjusted: false };
+  // 評分：≥60% × 1.2、50-60% × 1.0、40-50% × 0.8、<40% × 0.6（強烈降權）
+  const factor = (acc) => {
+    const h = acc?.hitRate;
+    if (h == null) return 1.0;
+    if (h >= 60) return 1.2;
+    if (h >= 50) return 1.0;
+    if (h >= 40) return 0.8;
+    return 0.6;
+  };
+  const scaled = {
+    trend:    base.trend    * factor(moduleAccuracy.trend),
+    momentum: base.momentum * factor(moduleAccuracy.momentum),
+    volPrice: base.volPrice * factor(moduleAccuracy.volPrice),
+    chip:     base.chip,  // 無 walk-forward 樣本
+  };
+  const sum = Object.values(scaled).reduce((s, v) => s + v, 0);
+  const weights = Object.fromEntries(Object.entries(scaled).map(([k, v]) => [k, +(v / sum).toFixed(3)]));
+  // 與 base 比較，是否真的有調整
+  const adjusted = Object.keys(base).some((k) => Math.abs(weights[k] - base[k]) > 0.005);
+  return { weights, adjusted, factors: {
+    trend: +factor(moduleAccuracy.trend).toFixed(2),
+    momentum: +factor(moduleAccuracy.momentum).toFixed(2),
+    volPrice: +factor(moduleAccuracy.volPrice).toFixed(2),
+    chip: 1.0,
+  }};
+}
+
 export function walkForwardAccuracy(k, { lookback = 60, holdDays = 5 } = {}) {
   if (!Array.isArray(k) || k.length < 30 + holdDays) return null;
   let correct = 0, total = 0, longHits = 0, longTotal = 0, shortHits = 0, shortTotal = 0;
@@ -469,9 +594,14 @@ export function diagnose(k, inst = [], opts = {}) {
   }
   chipScore = clamp(chipScore, 0, 100);
 
-  // 加權平均（四面）
-  const baseScore = trendScore * 0.30 + momentumScore * 0.25
-                  + volPriceScore * 0.20 + chipScore * 0.25;
+  // ─── 權重汰換：依各模組過去 60 日命中率動態調整四面權重 ───
+  const moduleAccuracy = perModuleWalkForward(k, { lookback: 60, holdDays: 5 });
+  const dynW = computeDynamicWeights(moduleAccuracy);
+  const W = dynW.weights;
+
+  // 加權平均（四面 — 動態權重）
+  const baseScore = trendScore * W.trend + momentumScore * W.momentum
+                  + volPriceScore * W.volPrice + chipScore * W.chip;
 
   // 5. 風險懲罰（罰分上限 30，避免單一情境多重扣分）
   let penalty = 0;
@@ -618,7 +748,9 @@ export function diagnose(k, inst = [], opts = {}) {
     // 過擬合對策衍生指標
     consistency: +(consistency * 100).toFixed(0),       // 0-100：四面共識度
     moduleVotes: { trend: +votes[0].toFixed(2), momentum: +votes[1].toFixed(2), volPrice: +votes[2].toFixed(2), chip: +votes[3].toFixed(2) },
-    historicalAccuracy,                                  // walk-forward 命中率
+    historicalAccuracy,                                  // walk-forward 整體方向命中率
+    moduleAccuracy,                                      // walk-forward 各模組命中率
+    dynamicWeights: { weights: W, adjusted: dynW.adjusted, factors: dynW.factors },
     economic: {
       liquidity: liquidLevel,
       avgTurnover20,                                     // 元

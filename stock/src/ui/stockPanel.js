@@ -478,11 +478,46 @@ function renderValidation(d) {
   const ceEl = document.getElementById('val-cost');
   if (ceEl) {
     const e = d.economic;
-    if (!e) { ceEl.textContent = '--'; return; }
-    const tone = e.costFeasible ? 'var(--up)' : 'var(--down)';
-    const lab = e.costFeasible ? '可覆蓋' : '不足 2x 成本';
-    ceEl.innerHTML = `<span style="color:${tone}">${lab}</span> `
-      + `<span style="color:var(--dim);font-size:10px">目標 +${e.expectedReturn}% / 成本 ${e.txCostPct}%</span>`;
+    if (!e) { ceEl.textContent = '--'; }
+    else {
+      const tone = e.costFeasible ? 'var(--up)' : 'var(--down)';
+      const lab = e.costFeasible ? '可覆蓋' : '不足 2x 成本';
+      ceEl.innerHTML = `<span style="color:${tone}">${lab}</span> `
+        + `<span style="color:var(--dim);font-size:10px">目標 +${e.expectedReturn}% / 成本 ${e.txCostPct}%</span>`;
+    }
+  }
+
+  // 5. 各 view 命中率 / 動態權重
+  const mEl = document.getElementById('val-modules');
+  if (mEl) {
+    const acc = d.moduleAccuracy || {};
+    const dw = d.dynamicWeights?.weights || {};
+    const fac = d.dynamicWeights?.factors || {};
+    const labels = { trend: '趨勢', momentum: '動能', volPrice: '量價', chip: '籌碼' };
+    const cell = (key) => {
+      const a = acc[key];
+      const w = dw[key];
+      const f = fac[key];
+      const hit = a?.hitRate;
+      const sample = a?.samples ?? 0;
+      // 顏色：命中率 + 權重變化
+      let hitColor = 'var(--dim)';
+      if (hit != null) {
+        hitColor = hit >= 60 ? 'var(--up)' : hit >= 50 ? 'var(--gold)' : hit >= 40 ? 'var(--down)' : 'var(--down)';
+      }
+      const arrow = f == null || f === 1 ? '' : (f > 1 ? '↑' : '↓');
+      const arrowColor = f > 1 ? 'var(--up)' : f < 1 ? 'var(--down)' : 'var(--dim)';
+      const hitText = key === 'chip'
+        ? '<span style="color:var(--dim);font-size:9px">無歷史樣本</span>'
+        : (hit != null
+          ? `<span style="color:${hitColor}">${hit}%</span><span style="color:var(--dim);font-size:9px"> (${sample})</span>`
+          : `<span style="color:var(--dim)">--</span>`);
+      return `<div style="background:var(--bg-3);padding:4px 6px;border-radius:3px;display:flex;justify-content:space-between;align-items:center">
+        <span style="color:var(--dim)">${labels[key]}</span>
+        <span>${hitText} <span style="color:${arrowColor};font-weight:700">${arrow}${(w * 100).toFixed(0)}%</span></span>
+      </div>`;
+    };
+    mEl.innerHTML = ['trend', 'momentum', 'volPrice', 'chip'].map(cell).join('');
   }
 }
 
