@@ -487,6 +487,49 @@ function renderValidation(d) {
     }
   }
 
+  // 6. 真實預測追蹤（自我學習回饋）
+  const pEl = document.getElementById('val-personal');
+  if (pEl) {
+    const pa = d.personalAccuracy;
+    if (!pa || pa.samples == null || pa.samples < 1) {
+      pEl.innerHTML = `<span style="color:var(--dim)">尚無已驗證預測（需累積 ≥ 5 筆樣本後啟動準確度修正）${pa?.pending ? `；待驗證 ${pa.pending} 筆` : ''}</span>`;
+    } else {
+      const last = pa.last;
+      const hitRateColor = pa.recentHitRate >= 60 ? 'var(--up)' : pa.recentHitRate >= 50 ? 'var(--gold)' : 'var(--down)';
+      const mulColor = pa.multiplier > 1 ? 'var(--up)' : pa.multiplier < 1 ? 'var(--down)' : 'var(--dim)';
+      const lines = [];
+      lines.push(`<div style="display:flex;justify-content:space-between">
+        <span style="color:var(--dim)">本股近期命中率</span>
+        <span style="font-family:'JetBrains Mono',monospace;font-weight:700"><span style="color:${hitRateColor}">${pa.recentHitRate}%</span> <span style="color:var(--dim);font-size:9px">(${pa.samples} 筆)</span></span>
+      </div>`);
+      if (pa.mae != null) {
+        lines.push(`<div style="display:flex;justify-content:space-between">
+          <span style="color:var(--dim)">平均絕對誤差 (MAE)</span>
+          <span style="font-family:'JetBrains Mono',monospace;font-weight:700">${pa.mae}%</span>
+        </div>`);
+      }
+      lines.push(`<div style="display:flex;justify-content:space-between">
+        <span style="color:var(--dim)">信心倍率（已套用）</span>
+        <span style="font-family:'JetBrains Mono',monospace;font-weight:700;color:${mulColor}">×${pa.multiplier} <span style="color:var(--dim);font-size:9px">(基準勝率 ${pa.baseWinRate}% → 校正後 ${d.winRate}%)</span></span>
+      </div>`);
+      if (last) {
+        const errColor = Math.abs(last.error || 0) <= 2 ? 'var(--up)' : Math.abs(last.error || 0) <= 5 ? 'var(--gold)' : 'var(--down)';
+        lines.push(`<div style="margin-top:4px;padding-top:4px;border-top:1px dashed var(--line);color:var(--dim);font-size:9.5px">
+          上次驗證 [${last.date}→${last.actualDate}]：預測 ${last.direction === 'long' ? '↑' : last.direction === 'short' ? '↓' : '→'} ${last.predictedReturn != null ? (last.predictedReturn > 0 ? '+' : '') + last.predictedReturn + '%' : '--'}
+          / 實際 ${last.actualReturn > 0 ? '+' : ''}${last.actualReturn}%
+          / 誤差 <span style="color:${errColor}">${last.error > 0 ? '+' : ''}${last.error}%</span>
+          / ${last.hit ? '<span style="color:var(--up)">方向命中 ✓</span>' : '<span style="color:var(--down)">方向誤判 ✗</span>'}
+        </div>`);
+      }
+      if (pa.consecutiveBigError) {
+        lines.push(`<div style="margin-top:4px;padding:4px 6px;background:var(--up-soft);border-left:2px solid var(--up);color:var(--up);font-size:10px;border-radius:3px">
+          ⚠ 連 3 筆誤差 > 5% — 此股近期模型不準，建議降低部位或觀望
+        </div>`);
+      }
+      pEl.innerHTML = lines.join('');
+    }
+  }
+
   // 5. 各 view 命中率 / 動態權重
   const mEl = document.getElementById('val-modules');
   if (mEl) {

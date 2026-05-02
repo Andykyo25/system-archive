@@ -8,3 +8,6 @@ node_modules/
 
 # Claude Code 個人本地設定
 .claude/
+
+# 預測追蹤資料（自我學習回饋）— Railway 上每次 redeploy 會清掉，本地保留
+server/data/

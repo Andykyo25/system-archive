@@ -11,6 +11,7 @@ import * as yahoo from './providers/yahoo.js';
 import * as stooq from './providers/stooq.js';
 import * as cnyes from './providers/cnyes.js';
 import { diagnose } from '../src/utils/diagnose.js';
+import * as predictions from './predictions.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -747,6 +748,41 @@ async function loadStockDiagnose(code) {
 
   const close = k[k.length - 1].close;
   const atr = d.atr14 || close * 0.025;
+
+  // ─── 自我學習回饋迴路 ───
+  // 1. 用當前 K 線驗證過去未驗證的預測（標記 hit/miss + 誤差）
+  predictions.validate(code, k);
+
+  // 2. 取個股近期準確度信心倍率，套到 winRate（縮放偏離 50 的幅度）
+  const cm = predictions.getConfidenceMultiplier(code);
+  const baseWinRate = d.winRate;
+  if (cm.multiplier !== 1.0) {
+    d.winRate = Math.round(50 + (baseWinRate - 50) * cm.multiplier);
+    // direction 也要跟著調整（避免 winRate 被拉到 50 附近還說 long）
+    d.direction = d.winRate >= 55 ? 'long' : d.winRate >= 45 ? 'neutral' : 'short';
+  }
+  d.personalAccuracy = {
+    multiplier: cm.multiplier,
+    reason: cm.reason,
+    baseWinRate,
+    samples: cm.stats.samples,
+    recentHitRate: cm.stats.recentHitRate,
+    mae: cm.stats.mae,
+    consecutiveBigError: cm.stats.consecutiveBigError,
+    last: cm.stats.last,
+    pending: cm.stats.pending,
+  };
+
+  // 3. 記錄本次預測（給未來驗證用）
+  predictions.record(code, {
+    close,
+    winRate: d.winRate,
+    direction: d.direction,
+    target1: d.levels?.target1,
+    stop: d.levels?.stop,
+    expectedReturn: d.economic?.expectedReturn,
+  });
+
   return {
     ...d,
     code,
@@ -760,6 +796,29 @@ async function loadStockDiagnose(code) {
     costPerLot: Math.round(close * 1000),
   };
 }
+
+// ───────────────────────── 預測追蹤（自我學習回饋資料） ─────────────────────────
+// 查看單檔歷史預測 + 命中率統計
+app.get('/api/predictions/:code', (req, res) => {
+  try {
+    const code = req.params.code;
+    const all = predictions.getAll()[code] || [];
+    const stats = predictions.getStats(code);
+    ok(res, { code, stats, history: all.slice(-30) });
+  } catch (e) { fail(res, e); }
+});
+app.get('/api/predictions', (_req, res) => {
+  // 各檔摘要
+  const all = predictions.getAll();
+  const summary = Object.entries(all).map(([code, arr]) => ({
+    code,
+    total: arr.length,
+    validated: arr.filter((p) => p.validated).length,
+    pending: arr.filter((p) => !p.validated).length,
+    recentHitRate: predictions.getStats(code)?.recentHitRate ?? null,
+  })).sort((a, b) => b.total - a.total);
+  ok(res, summary);
+});
 
 // ───────────────────────── 個股診斷（單檔） ─────────────────────────
 app.get('/api/diagnose/:code', async (req, res) => {
@@ -904,6 +963,25 @@ app.get('/api/intraday/:code', async (req, res) => {
 app.listen(PORT, () => {
   console.log(`▌ 台股戰情室 backend 啟動 → http://localhost:${PORT}`);
   console.log(`  session=${getSession()}  finmind_token=${process.env.FINMIND_TOKEN ? 'set' : 'missing'}`);
+
+  // 載入預測歷史（自我學習回饋資料）
+  const loaded = predictions.load();
+  console.log(`  predictions loaded: ${loaded} 檔`);
+
+  // 每 5 分鐘 persist 一次（Railway redeploy 前能保住資料）
+  setInterval(() => {
+    const n = predictions.persist();
+    if (n >= 0) console.log(`  predictions persisted: ${n} 檔`);
+  }, 5 * 60 * 1000);
+
+  // graceful shutdown
+  ['SIGTERM', 'SIGINT'].forEach((sig) => {
+    process.on(sig, () => {
+      const n = predictions.persist();
+      console.log(`▌ shutdown: predictions persisted (${n} 檔)`);
+      process.exit(0);
+    });
+  });
 
   // 啟動後 3 秒開始預熱「常用快取」— 解 Railway cold start 首次載入慢
   // 預熱項：indices（大盤）+ 6 大權值股的 diagnose
