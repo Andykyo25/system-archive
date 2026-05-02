@@ -530,6 +530,83 @@ function renderValidation(d) {
     }
   }
 
+  // 7. 進階訊號（多時間框架/相對強度/新聞情緒/回測）
+  const advEl = document.getElementById('val-advanced');
+  if (advEl) {
+    const lines = [];
+
+    // 多時間框架共振
+    if (d.multiTimeframe) {
+      const m = d.multiTimeframe;
+      let label, color;
+      if (m.consonant) { label = '✓ 日週共振'; color = 'var(--up)'; }
+      else if (m.divergent) { label = '⚠ 日週背離'; color = 'var(--down)'; }
+      else { label = '中性'; color = 'var(--dim)'; }
+      const trendText = m.weeklyTrend === 'up' ? '週線↑' : m.weeklyTrend === 'down' ? '週線↓' : '週線→';
+      const mulText = m.multiplier !== 1 ? ` (×${m.multiplier})` : '';
+      lines.push(`<div style="display:flex;justify-content:space-between">
+        <span style="color:var(--dim)">多時間框架</span>
+        <span style="font-family:'JetBrains Mono',monospace;font-weight:700"><span style="color:${color}">${label}</span> <span style="color:var(--dim);font-size:9px">${trendText}${mulText}</span></span>
+      </div>`);
+    }
+
+    // 截面相對強度
+    if (d.relativeStrength) {
+      const rs = d.relativeStrength;
+      const tone = rs.rs > 5 ? 'var(--up)' : rs.rs < -5 ? 'var(--down)' : 'var(--dim)';
+      const arrow = rs.rs > 5 ? '↑' : rs.rs < -5 ? '↓' : '→';
+      lines.push(`<div style="display:flex;justify-content:space-between">
+        <span style="color:var(--dim)">RS vs 大盤 ${rs.period}日</span>
+        <span style="font-family:'JetBrains Mono',monospace;font-weight:700"><span style="color:${tone}">${arrow} ${rs.rs >= 0 ? '+' : ''}${rs.rs}%</span> <span style="color:var(--dim);font-size:9px">(本股 ${rs.stockReturn >= 0 ? '+' : ''}${rs.stockReturn}% / TAIEX ${rs.benchReturn >= 0 ? '+' : ''}${rs.benchReturn}%)</span></span>
+      </div>`);
+    }
+
+    // 新聞情緒
+    if (d.newsSentiment) {
+      const ns = d.newsSentiment;
+      if (ns.score == null || ns.total < 2) {
+        lines.push(`<div style="display:flex;justify-content:space-between">
+          <span style="color:var(--dim)">新聞情緒</span>
+          <span style="color:var(--dim);font-size:10px">${ns.samples ? ns.samples + ' 則無關鍵詞命中' : '無新聞'}</span>
+        </div>`);
+      } else {
+        const tone = ns.score >= 0.3 ? 'var(--up)' : ns.score <= -0.3 ? 'var(--down)' : 'var(--gold)';
+        const kw = (ns.topKeywords?.pos?.length ? ' +' + ns.topKeywords.pos.join(',') : '') +
+                   (ns.topKeywords?.neg?.length ? ' -' + ns.topKeywords.neg.join(',') : '');
+        lines.push(`<div style="display:flex;justify-content:space-between">
+          <span style="color:var(--dim)">新聞情緒</span>
+          <span style="font-family:'JetBrains Mono',monospace;font-weight:700"><span style="color:${tone}">${ns.label}</span> <span style="color:var(--dim);font-size:9px">${ns.score >= 0 ? '+' : ''}${ns.score} (${ns.pos}↑ / ${ns.neg}↓ / ${ns.samples} 則)</span></span>
+        </div>`);
+        if (kw) {
+          lines.push(`<div style="color:var(--dim);font-size:9.5px;padding-left:4px">關鍵詞:${kw}</div>`);
+        }
+      }
+    }
+
+    // 輕量回測
+    if (d.backtest) {
+      const bt = d.backtest;
+      const winColor = bt.winRate >= 55 ? 'var(--up)' : bt.winRate >= 45 ? 'var(--gold)' : 'var(--down)';
+      const cumColor = bt.cumulativeReturn > 0 ? 'var(--up)' : 'var(--down)';
+      const sharpeColor = (bt.sharpe ?? 0) > 1 ? 'var(--up)' : (bt.sharpe ?? 0) > 0 ? 'var(--gold)' : 'var(--down)';
+      lines.push(`<div style="margin-top:6px;padding-top:6px;border-top:1px dashed var(--line);font-size:9.5px;color:var(--dim)">
+        過去 ${bt.holdDays === 5 ? '60' : ''} 日訊號回測（已扣 ${bt.txCostPct}% 雙趟成本）：</div>`);
+      lines.push(`<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:4px;font-size:10px">
+        <div style="background:var(--bg-3);padding:4px 6px;border-radius:3px;display:flex;justify-content:space-between">
+          <span style="color:var(--dim)">勝率</span><span style="color:${winColor};font-weight:700">${bt.winRate}%</span></div>
+        <div style="background:var(--bg-3);padding:4px 6px;border-radius:3px;display:flex;justify-content:space-between">
+          <span style="color:var(--dim)">累積</span><span style="color:${cumColor};font-weight:700">${bt.cumulativeReturn >= 0 ? '+' : ''}${bt.cumulativeReturn}%</span></div>
+        <div style="background:var(--bg-3);padding:4px 6px;border-radius:3px;display:flex;justify-content:space-between">
+          <span style="color:var(--dim)">最大回撤</span><span style="color:var(--down);font-weight:700">-${bt.maxDrawdown}%</span></div>
+        <div style="background:var(--bg-3);padding:4px 6px;border-radius:3px;display:flex;justify-content:space-between">
+          <span style="color:var(--dim)">Sharpe</span><span style="color:${sharpeColor};font-weight:700">${bt.sharpe ?? 'n/a'}</span></div>
+      </div>`);
+      lines.push(`<div style="color:var(--dim);font-size:9px;margin-top:2px">${bt.trades} 筆訊號、平均 ${bt.avgPerTrade >= 0 ? '+' : ''}${bt.avgPerTrade}%/trade</div>`);
+    }
+
+    advEl.innerHTML = lines.join('') || '<span style="color:var(--dim);font-size:10px">資料不足</span>';
+  }
+
   // 5. 各 view 命中率 / 動態權重
   const mEl = document.getElementById('val-modules');
   if (mEl) {

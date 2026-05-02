@@ -11,6 +11,7 @@ import * as yahoo from './providers/yahoo.js';
 import * as stooq from './providers/stooq.js';
 import * as cnyes from './providers/cnyes.js';
 import { diagnose } from '../src/utils/diagnose.js';
+import { newsSentiment } from '../src/utils/sentiment.js';
 import * as predictions from './predictions.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -666,17 +667,41 @@ async function loadStockDiagnose(code) {
   const start = new Date(Date.now() - 90 * 86400e3).toISOString().slice(0, 10);
   const today = todayIso();
 
-  // 4 個資料源全部包 catch，避免一個壞掉拖死全部
+  // 6 個資料源全部包 catch，避免一個壞掉拖死全部
   const safeCall = (label, fn) => fn().catch((e) => {
     console.warn(`[diag ${code}] ${label} failed:`, e.message);
     return null;
   });
 
-  const [klineRaw, instRaw, shInfo, misArr] = await Promise.all([
+  const [klineRaw, instRaw, shInfo, misArr, taiexCloses, newsList] = await Promise.all([
     safeCall('kline:finmind', () => memo(`kline:${code}:90`, 60000, () => finmind.stockPrice(code, start))),
     safeCall('inst', () => memo(`inst:${code}`, TTL_HIST / 24, () => finmind.institutional(code, start))),
     safeCall('shares', () => memo(`shares:${code}`, TTL_HIST, () => finmind.sharesOutstanding(code))),
     safeCall('mis', () => memo(`mis:${code}`, 1000, () => twseMis.quotes([code], 'tse'))),
+    // TAIEX 收盤陣列（截面相對強度用）— 全機共用 1 天 cache
+    safeCall('taiex:closes', () => memo('taiex:closes:90', 86400000, async () => {
+      try {
+        const data = await yahoo.chart('^TWII', '3mo', '1d');
+        return (data || []).map((d) => +d.close).filter(Number.isFinite);
+      } catch { return []; }
+    })),
+    // 個股相關新聞（情緒分析用）— 5 分鐘 cache
+    safeCall('news', () => memo(`stockNews:${code}`, 5 * 60 * 1000, async () => {
+      try {
+        const list = await cnyes.newsSearch(code, 25);
+        // 退到多分類聚合做關鍵字過濾（補充樣本）
+        if (!list || list.length < 5) {
+          const agg = await cnyes.newsAggregate(['tw_stock', 'headline'], 60);
+          const codeRe = new RegExp(`(?<!\\d)${code}(?!\\d)`);
+          const filtered = agg.filter((n) => {
+            const t = `${n.title || ''} ${n.summary || ''}`;
+            return codeRe.test(t);
+          });
+          return [...(list || []), ...filtered].slice(0, 25);
+        }
+        return list;
+      } catch { return []; }
+    })),
   ]);
 
   // K 線 fallback：FinMind 失敗或太少 → 試 Yahoo chart
@@ -743,7 +768,14 @@ async function loadStockDiagnose(code) {
     return { ...r, trustPctOfCap: (net / cap) * 100 };
   });
 
-  const d = diagnose(k, instEnriched, { sharesOutstanding: cap });
+  // 計算新聞情緒（純函式，無網路）
+  const sentiment = newsSentiment(newsList || []);
+
+  const d = diagnose(k, instEnriched, {
+    sharesOutstanding: cap,
+    benchmarkCloses: taiexCloses || [],   // 截面相對強度用
+    newsSentiment: sentiment,             // 情緒整合進 chipScore
+  });
   if (!d) return null;
 
   const close = k[k.length - 1].close;

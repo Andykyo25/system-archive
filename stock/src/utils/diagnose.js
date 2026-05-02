@@ -111,6 +111,106 @@ function ma(k, n) {
   return avg(k.slice(-n).map((d) => d.close));
 }
 
+// ─────────────── 多時間框架：日線 → 週線 resample ───────────────
+// 用現有 90 日 K 線壓成 ~18 週，不另外打 API
+export function resampleWeekly(k) {
+  if (!Array.isArray(k) || k.length < 5) return [];
+  const weeks = [];
+  let bucket = null;
+  for (const d of k) {
+    if (!d.date || !Number.isFinite(d.close)) continue;
+    const date = new Date(d.date);
+    if (Number.isNaN(date.getTime())) continue;
+    // 用 ISO 週 key（同週的 Monday 為 anchor）
+    const day = date.getDay() === 0 ? 7 : date.getDay();
+    const monday = new Date(date);
+    monday.setDate(date.getDate() - day + 1);
+    const wkKey = monday.toISOString().slice(0, 10);
+    if (!bucket || bucket.weekKey !== wkKey) {
+      if (bucket) weeks.push(bucket);
+      bucket = { weekKey: wkKey, open: d.open, high: d.high, low: d.low, close: d.close, vol: d.vol || 0 };
+    } else {
+      if (d.high > bucket.high) bucket.high = d.high;
+      if (d.low < bucket.low) bucket.low = d.low;
+      bucket.close = d.close;
+      bucket.vol += d.vol || 0;
+    }
+  }
+  if (bucket) weeks.push(bucket);
+  return weeks;
+}
+
+// ─────────────── 截面相對強度（vs 大盤） ───────────────
+// 個股 N 日漲跌 - 大盤 N 日漲跌 = 超額報酬（%）
+// benchmarkCloses 由 server 傳入（TAIEX 收盤陣列），daily-aligned
+export function relativeStrength(closes, benchmarkCloses, period = 60) {
+  if (!Array.isArray(closes) || closes.length < period) return null;
+  if (!Array.isArray(benchmarkCloses) || benchmarkCloses.length < period) return null;
+  const stockNow = closes[closes.length - 1];
+  const stockThen = closes[closes.length - period];
+  const benchNow = benchmarkCloses[benchmarkCloses.length - 1];
+  const benchThen = benchmarkCloses[benchmarkCloses.length - period];
+  if (!stockThen || !benchThen) return null;
+  const stockRet = ((stockNow - stockThen) / stockThen) * 100;
+  const benchRet = ((benchNow - benchThen) / benchThen) * 100;
+  return {
+    stockReturn: +stockRet.toFixed(2),
+    benchReturn: +benchRet.toFixed(2),
+    rs: +(stockRet - benchRet).toFixed(2),  // 正 = 強過大盤
+    period,
+  };
+}
+
+// ─────────────── 輕量回測：sub-strategy 累積績效 ───────────────
+// 假設「按系統訊號方向進場、HOLD 5 日後平倉」，扣除交易成本
+// 不考慮滑價、不考慮資金管理（只看純訊號績效）
+export function liteBacktest(k, { holdDays = 5, txCostPct = 1.17, lookback = 60 } = {}) {
+  if (!Array.isArray(k) || k.length < 30 + holdDays) return null;
+  const trades = [];
+  const start = Math.max(25, k.length - lookback - holdDays);
+  for (let i = start; i < k.length - holdDays; i++) {
+    const dir = quickDirection(k.slice(0, i + 1));
+    if (!dir || dir === 'neutral') continue;
+    const entryPrice = k[i].close;
+    const exitPrice = k[i + holdDays].close;
+    if (!entryPrice || !exitPrice) continue;
+    let ret = ((exitPrice - entryPrice) / entryPrice) * 100;
+    if (dir === 'short') ret = -ret;
+    ret -= txCostPct;  // 扣除雙趟成本（手續費 + 證交稅 + 滑價）
+    trades.push({ ret });
+  }
+  if (trades.length < 5) return null;
+  const wins = trades.filter((t) => t.ret > 0).length;
+  const winRate = +((wins / trades.length) * 100).toFixed(1);
+  const sumRet = trades.reduce((s, t) => s + t.ret, 0);
+  const avgRet = sumRet / trades.length;
+  // 累積報酬率（複利）
+  let equity = 100;
+  let peak = 100;
+  let maxDD = 0;
+  for (const t of trades) {
+    equity *= 1 + t.ret / 100;
+    if (equity > peak) peak = equity;
+    const dd = ((peak - equity) / peak) * 100;
+    if (dd > maxDD) maxDD = dd;
+  }
+  const cumulativeReturn = +(equity - 100).toFixed(2);
+  // 簡易 Sharpe：假設 5 日 1 trade，一年 ~50 trades；無風險利率 0
+  const variance = trades.reduce((s, t) => s + (t.ret - avgRet) ** 2, 0) / trades.length;
+  const std = Math.sqrt(variance);
+  const sharpe = std > 0 ? +(avgRet / std * Math.sqrt(50)).toFixed(2) : null;
+  return {
+    trades: trades.length,
+    winRate,
+    cumulativeReturn,
+    avgPerTrade: +avgRet.toFixed(2),
+    maxDrawdown: +maxDD.toFixed(2),
+    sharpe,
+    holdDays,
+    txCostPct,
+  };
+}
+
 // ─────────────── Walk-forward 歷史驗證 ───────────────
 // 設計：給定 K 線，從 lookback 天前每日跑一次「簡化方向判讀」，
 // 對比 holdDays 後實際漲跌，計算命中率。等同 cross-validation。
@@ -323,6 +423,20 @@ export function diagnose(k, inst = [], opts = {}) {
   const rsi14 = calcRSI(closes, 14);
   const rsiPrev = calcRSI(closes.slice(0, -1), 14);
 
+  // ── 多時間框架（週線）：用同一份 K 線壓成週線，無額外網路 ──
+  const weekly = resampleWeekly(k);
+  const weeklyMa4 = weekly.length >= 4 ? avg(weekly.slice(-4).map((w) => w.close)) : null;
+  const weeklyClose = weekly.length ? weekly[weekly.length - 1].close : null;
+  const weeklyTrend = (weeklyClose != null && weeklyMa4 != null)
+    ? (weeklyClose > weeklyMa4 ? 'up' : weeklyClose < weeklyMa4 ? 'down' : 'flat')
+    : null;
+
+  // ── 截面相對強度：vs benchmarkCloses（TAIEX，由 server 傳入）──
+  const rs = relativeStrength(closes, opts.benchmarkCloses, 60);
+
+  // ── 輕量回測：用過去 60 日訊號模擬累積績效 ──
+  const backtest = liteBacktest(k, { holdDays: 5, lookback: 60 });
+
   // 趨勢判讀
   let trend, trendNote;
   if (aboveMa5 && aboveMa20 && aboveMa60 && ma5 > ma20 && ma20 > ma60) {
@@ -523,6 +637,16 @@ export function diagnose(k, inst = [], opts = {}) {
     else if (bias20 < -10) trendScore += 12;  // 超跌反彈（對稱）
     else if (bias20 < -5) trendScore += 4;
   }
+  // ── 截面相對強度（vs TAIEX 60 日）──
+  if (rs && rs.rs != null) {
+    if (rs.rs > 15) trendScore += 10;        // 強勢領漲
+    else if (rs.rs > 5) trendScore += 5;
+    else if (rs.rs < -15) trendScore -= 10;  // 弱勢落後
+    else if (rs.rs < -5) trendScore -= 5;
+  }
+  // ── 週線趨勢加分（同向加 8、反向不加減）— 真正的扣分留給後面共振檢查 ──
+  if (weeklyTrend === 'up') trendScore += 6;
+  else if (weeklyTrend === 'down') trendScore -= 6;
   trendScore = clamp(trendScore, 0, 100);
 
   // 2. 動能面 (0-100)：KD 事件 + MACD 趨勢 + RSI（多空對稱）
@@ -592,6 +716,14 @@ export function diagnose(k, inst = [], opts = {}) {
     else if (trustPctOfCap > 0.2) chipScore += 6;
     else if (trustPctOfCap < -0.3) chipScore -= 10;
   }
+  // ── 新聞情緒（輔助訊號，最多 ±8 分，避免噪音主導）──
+  const ns = opts.newsSentiment;
+  if (ns && ns.score != null && ns.total >= 3) {
+    if (ns.score >= 0.5) chipScore += 8;
+    else if (ns.score >= 0.2) chipScore += 4;
+    else if (ns.score <= -0.5) chipScore -= 8;
+    else if (ns.score <= -0.2) chipScore -= 4;
+  }
   chipScore = clamp(chipScore, 0, 100);
 
   // ─── 權重汰換：依各模組過去 60 日命中率動態調整四面權重 ───
@@ -638,7 +770,19 @@ export function diagnose(k, inst = [], opts = {}) {
   const consistency = clamp(1 - mad, 0, 1);                    // 0=分歧 1=共識
   // shrinkFactor：一致性高才允許大幅偏離 50（保留至少 40% 收縮）
   const shrinkFactor = 0.4 + 0.6 * consistency;
-  const regularizedBase = 50 + (baseScore - 50) * shrinkFactor;
+  let regularizedBase = 50 + (baseScore - 50) * shrinkFactor;
+
+  // ── 多時間框架共振：日線方向 vs 週線方向 ──
+  // 共振（+10% 信心放大）/ 背離（-25% 信心打折，避免在週線空頭中追日線多單）
+  const dailyLeaning = regularizedBase > 55 ? 'long' : regularizedBase < 45 ? 'short' : 'neutral';
+  const mtfConsonant = (dailyLeaning === 'long' && weeklyTrend === 'up') ||
+                       (dailyLeaning === 'short' && weeklyTrend === 'down');
+  const mtfDivergent = (dailyLeaning === 'long' && weeklyTrend === 'down') ||
+                       (dailyLeaning === 'short' && weeklyTrend === 'up');
+  let mtfMultiplier = 1.0;
+  if (mtfConsonant) mtfMultiplier = 1.10;
+  else if (mtfDivergent) mtfMultiplier = 0.75;
+  regularizedBase = 50 + (regularizedBase - 50) * mtfMultiplier;
 
   // 7. 經濟限制（Economic Constraints）
   // 流動性：近 20 日均「成交額（萬元）」< 5000 萬視為低流動性，訊號不可靠
@@ -751,6 +895,18 @@ export function diagnose(k, inst = [], opts = {}) {
     historicalAccuracy,                                  // walk-forward 整體方向命中率
     moduleAccuracy,                                      // walk-forward 各模組命中率
     dynamicWeights: { weights: W, adjusted: dynW.adjusted, factors: dynW.factors },
+    // 短期路線圖實作
+    multiTimeframe: {
+      weeklyTrend,
+      weeklyClose: weeklyClose != null ? +weeklyClose.toFixed(2) : null,
+      weeklyMa4: weeklyMa4 != null ? +weeklyMa4.toFixed(2) : null,
+      consonant: mtfConsonant,
+      divergent: mtfDivergent,
+      multiplier: mtfMultiplier,
+    },
+    relativeStrength: rs,                                // vs TAIEX 60 日超額報酬
+    newsSentiment: opts.newsSentiment || null,           // 新聞情緒（由 server 算好傳入）
+    backtest,                                            // 60 日輕量回測：勝率/累積報酬/Sharpe/MaxDD
     economic: {
       liquidity: liquidLevel,
       avgTurnover20,                                     // 元
