@@ -15,6 +15,8 @@ import { newsSentiment } from '../src/utils/sentiment.js';
 import * as predictions from './predictions.js';
 import * as portfolio from './portfolio.js';
 import { getMarketContext } from './marketContext.js';
+import { getIndustryStatsFor } from './industryContext.js';
+import { runBacktest } from './backtest.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -773,14 +775,31 @@ async function loadStockDiagnose(code) {
   // 計算新聞情緒（純函式，無網路）
   const sentiment = newsSentiment(newsList || []);
 
-  // ★ Feature engineering：注入大盤 regime / RS / 波動度
-  const marketContext = await getMarketContext().catch(() => null);
+  // ★ Feature engineering：注入大盤 regime / RS / 波動度 + 產業 RS + 基本面
+  const [marketContext, industryStats, fundamentalsData] = await Promise.all([
+    getMarketContext().catch(() => null),
+    getIndustryStatsFor(code).catch(() => null),
+    memo(`fund:${code}`, TTL_HIST / 24, async () => {
+      // 重用 fundamentals endpoint 的核心邏輯（簡化版：只取我們要用的幾個欄位）
+      try {
+        const all = await memo('bwibbu:all', TTL_HIST / 24, () => twse.bwibbu());
+        const r = all.find((x) => x.Code === code);
+        return r ? {
+          pe: +r.PEratio || null,
+          pb: +r.PBratio || null,
+          divYield: +r.DividendYield || null,
+        } : null;
+      } catch { return null; }
+    }).catch(() => null),
+  ]);
 
   const d = diagnose(k, instEnriched, {
     sharesOutstanding: cap,
-    benchmarkCloses: taiexCloses || [],   // 截面相對強度用
-    newsSentiment: sentiment,             // 情緒整合進 chipScore
-    marketContext,                        // ★ feature engineering（regime / RS / vol）
+    benchmarkCloses: taiexCloses || [],
+    newsSentiment: sentiment,
+    marketContext,
+    industryStats,
+    fundamentals: fundamentalsData,
   });
   if (!d) return null;
 
@@ -1043,6 +1062,31 @@ app.get('/api/reports/weekly', async (_req, res) => {
       closedThisWeek,
     });
   } catch (e) { fail(res, e); }
+});
+
+// ───────────────────────── Backtest 框架 ─────────────────────────
+// 結果 cache 24 小時（耗時操作）
+let backtestRunning = false;
+app.get('/api/backtest/latest', async (_req, res) => {
+  try {
+    const data = await memo('backtest:latest', 24 * 60 * 60 * 1000, async () => null);
+    if (!data) return ok(res, { status: 'no_data', message: '尚無 backtest 結果，POST /api/backtest/run 啟動' });
+    ok(res, data);
+  } catch (e) { fail(res, e); }
+});
+app.post('/api/backtest/run', async (_req, res) => {
+  if (backtestRunning) return res.status(429).json({ ok: false, error: 'backtest 正在跑，請稍候' });
+  backtestRunning = true;
+  try {
+    const t0 = Date.now();
+    const data = await runBacktest({ lookbackDays: 252 });
+    data.elapsedMs = Date.now() - t0;
+    // 寫進 cache 給 /latest 拿
+    const { set } = await import('./cache.js');
+    set('backtest:latest', data, 24 * 60 * 60 * 1000);
+    ok(res, data);
+  } catch (e) { fail(res, e); }
+  finally { backtestRunning = false; }
 });
 
 // ───────────────────────── 預測追蹤（自我學習回饋資料） ─────────────────────────

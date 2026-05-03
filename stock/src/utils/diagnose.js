@@ -420,13 +420,15 @@ export function walkForwardAccuracy(k, { lookback = 60, holdDays = 5, taiexClose
 // 統一輸出 ML-ready feature vector。給 diagnose 評分增強用，也給未來 ML 直接訓練。
 export function extractFeatures(args) {
   const {
-    closes = [], vols = [],
+    closes = [], vols = [], k = [],
     ma5, ma20, ma60,
-    last, atr14, bias20, rsi14,
+    last, prev = null, atr14, bias20, rsi14,
     kdK, kdD,
     foreign, trust, dealer,
     distToHigh, distToLow,
     marketContext = null,
+    industryStats = null,
+    fundamentals = null,
   } = args;
   if (!last || !closes.length) return null;
 
@@ -480,6 +482,76 @@ export function extractFeatures(args) {
     rs_vs_taiex_5d = +(return_5d - marketContext.taiex_return_5d).toFixed(2);
   }
 
+  // ★ 產業 RS rank — 個股在自己產業中的 60 日報酬百分位
+  let industry_rs_rank = null;     // 0-1，越高越強
+  let industry_rs_diff = null;     // 個股 60d ret - 產業均值
+  let industry_label = null;
+  if (industryStats?.peers && industryStats.peers.length >= 3 && return_60d != null) {
+    const peerRets = industryStats.peers.map((p) => p.ret60d);
+    const mean = peerRets.reduce((s, x) => s + x, 0) / peerRets.length;
+    industry_rs_diff = +(return_60d - mean).toFixed(2);
+    const lowerCount = peerRets.filter((r) => r < return_60d).length;
+    industry_rs_rank = +(lowerCount / (peerRets.length - 1 || 1)).toFixed(2);
+    industry_label = industryStats.industry;
+  }
+
+  // ★ 量能異常（今日量 vs 60 日均量）
+  let turnover_spike_60d = null;
+  if (vols.length >= 60) {
+    const recent60 = vols.slice(-60).filter((v) => v > 0);
+    if (recent60.length >= 30) {
+      const a = recent60.reduce((s, v) => s + v, 0) / recent60.length;
+      if (a > 0 && (last.vol || 0) > 0) turnover_spike_60d = +((last.vol || 0) / a).toFixed(2);
+    }
+  }
+
+  // ★ Gap 分析（開盤跳空 + 實體比例）
+  let gap_open_pct = null;
+  let body_ratio = null;
+  let upper_wick_pct = null;
+  let lower_wick_pct = null;
+  if (prev?.close > 0 && last.open != null) {
+    gap_open_pct = +(((last.open - prev.close) / prev.close) * 100).toFixed(2);
+  }
+  const range = last.high - last.low;
+  if (range > 0) {
+    const body = Math.abs(last.close - last.open);
+    body_ratio = +(body / range).toFixed(2);
+    const top = Math.max(last.close, last.open);
+    const bot = Math.min(last.close, last.open);
+    upper_wick_pct = +(((last.high - top) / range) * 100).toFixed(1);
+    lower_wick_pct = +(((bot - last.low) / range) * 100).toFixed(1);
+  }
+
+  // ★ 52 週相對位置
+  let price_52w_position = null;
+  let dist_to_52w_high_pct = null;
+  let dist_to_52w_low_pct = null;
+  if (closes.length >= 252) {
+    const w52 = closes.slice(-252);
+    const max252 = Math.max(...w52);
+    const min252 = Math.min(...w52);
+    if (max252 > min252) {
+      price_52w_position = +((last.close - min252) / (max252 - min252)).toFixed(3);
+      dist_to_52w_high_pct = +(((max252 - last.close) / last.close) * 100).toFixed(2);
+      dist_to_52w_low_pct = +(((last.close - min252) / last.close) * 100).toFixed(2);
+    }
+  } else if (closes.length >= 60) {
+    // 樣本不足 52 週時 fallback：用全部歷史當分母
+    const all = closes;
+    const maxA = Math.max(...all);
+    const minA = Math.min(...all);
+    if (maxA > minA) price_52w_position = +((last.close - minA) / (maxA - minA)).toFixed(3);
+  }
+
+  // ★ 基本面 features
+  const fund_pe = fundamentals?.pe ?? null;
+  const fund_pb = fundamentals?.pb ?? null;
+  const fund_roe = fundamentals?.roe ?? null;
+  const fund_div_yield = fundamentals?.divYield ?? null;
+  const fund_eps_ttm = fundamentals?.epsTTM ?? null;
+  const fund_gpm = fundamentals?.gpm ?? null;
+
   return {
     // 既有
     bias20: bias20 != null ? +bias20.toFixed(2) : null,
@@ -502,6 +574,16 @@ export function extractFeatures(args) {
     vol_trend_5d,
     // 截面
     rs_vs_taiex_60d, rs_vs_taiex_5d,
+    // ★ 產業 RS
+    industry_rs_rank, industry_rs_diff, industry_label,
+    // ★ 量能異常
+    turnover_spike_60d,
+    // ★ Gap / 微結構
+    gap_open_pct, body_ratio, upper_wick_pct, lower_wick_pct,
+    // ★ 52 週位置
+    price_52w_position, dist_to_52w_high_pct, dist_to_52w_low_pct,
+    // ★ 基本面
+    fund_pe, fund_pb, fund_roe, fund_div_yield, fund_eps_ttm, fund_gpm,
     // 大盤狀態
     taiex_trend: marketContext?.taiex_trend ?? null,
     taiex_vol_20d: marketContext?.taiex_vol_20d ?? null,
@@ -559,6 +641,44 @@ export function applyFeatureContributions(features) {
     }
   }
 
+  // ★ 6. 產業 RS rank（最重要：在強勢產業挑落後股是大坑）
+  if (features.industry_rs_rank != null) {
+    let v = 0;
+    if (features.industry_rs_rank > 0.85) v = 5;       // 產業前 15%
+    else if (features.industry_rs_rank > 0.65) v = 3;
+    else if (features.industry_rs_rank < 0.15) v = -5; // 產業後 15%
+    else if (features.industry_rs_rank < 0.35) v = -3;
+    if (v !== 0) { c.industry_rs_rank = v; adj += v; }
+  }
+
+  // ★ 7. 量能異常（爆量帶價漲）
+  if (features.turnover_spike_60d != null) {
+    const spike = features.turnover_spike_60d;
+    const priceUp = features.return_1d != null && features.return_1d > 0;
+    if (spike > 3 && priceUp) { c.turnover_spike = 4; adj += 4; }      // 爆量大漲
+    else if (spike > 3 && !priceUp) { c.turnover_spike = -3; adj -= 3; } // 爆量收黑
+    else if (spike > 2 && priceUp) { c.turnover_spike = 2; adj += 2; }
+  }
+
+  // ★ 8. Gap 分析
+  if (features.gap_open_pct != null) {
+    const gap = features.gap_open_pct;
+    if (gap > 2 && features.body_ratio > 0.5 && features.return_1d > 0) {
+      c.gap_strong = 3; adj += 3;     // 跳空帶量收實體大紅
+    } else if (gap < -2 && features.return_1d < 0) {
+      c.gap_weak = -3; adj -= 3;      // 跳空殺低收黑
+    }
+  }
+
+  // ★ 9. 52 週位置（接近高點 + RS 強 = momentum 經典訊號）
+  if (features.price_52w_position != null) {
+    if (features.price_52w_position > 0.9 && features.industry_rs_rank > 0.7) {
+      c.position_52w = 3; adj += 3;   // 52 週高 + 產業領頭
+    } else if (features.price_52w_position < 0.1) {
+      c.position_52w = -2; adj -= 2;  // 52 週低，弱
+    }
+  }
+
   return { adjustment: adj, contributions: c };
 }
 
@@ -588,7 +708,7 @@ export function diagnose(k, inst = [], opts = {}) {
   if (!k || k.length < 5) return null;
   const last = k[k.length - 1];
   const prev = k[k.length - 2];
-  const { sharesOutstanding, marketContext = null } = opts;
+  const { sharesOutstanding, marketContext = null, industryStats = null, fundamentals = null } = opts;
 
   const ma5  = ma(k, 5);
   const ma20 = ma(k, 20);
@@ -922,11 +1042,11 @@ export function diagnose(k, inst = [], opts = {}) {
 
   // ─── Feature Engineering：抽出 ML-ready feature vector + 給 baseScore 加分 ───
   const features = extractFeatures({
-    closes, vols, ma5, ma20, ma60, last, atr14, bias20, rsi14,
+    closes, vols, k, ma5, ma20, ma60, last, prev, atr14, bias20, rsi14,
     kdK: cur.k, kdD: cur.d,
     foreign, trust, dealer,
     distToHigh, distToLow,
-    marketContext,
+    marketContext, industryStats, fundamentals,
   });
   const featureContrib = applyFeatureContributions(features);
   const baseScoreEnhanced = clamp(baseScore + featureContrib.adjustment, 0, 100);
