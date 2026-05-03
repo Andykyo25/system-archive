@@ -215,23 +215,33 @@ export function liteBacktest(k, { holdDays = 5, txCostPct = 1.17, lookback = 60 
 // 設計：給定 K 線，從 lookback 天前每日跑一次「簡化方向判讀」，
 // 對比 holdDays 後實際漲跌，計算命中率。等同 cross-validation。
 // 簡化判讀：MA 排列 + RSI 區間 + 收盤站上/跌破 MA20 → 投票決定方向
-function quickDirection(kSlice) {
+function quickDirection(kSlice, taiexAlignedCloses = null) {
   if (!kSlice || kSlice.length < 25) return null;
   const last = kSlice[kSlice.length - 1];
   const closes = kSlice.map((d) => d.close);
   const ma5_v = avg(closes.slice(-5));
   const ma20_v = avg(closes.slice(-20));
   const rsi = calcRSI(closes, 14);
-  const trendV = ma5_v > ma20_v ? 1 : -1;
+  let trendV = ma5_v > ma20_v ? 1 : -1;
   const priceV = last.close > ma20_v ? 1 : -1;
   const momV = rsi == null ? 0 : (rsi > 55 ? 1 : rsi < 45 ? -1 : 0);
+  // ★ Cross-sectional RS：個股 60 日報酬 vs TAIEX 60 日報酬，差距明顯時 override trend 投票
+  if (taiexAlignedCloses && taiexAlignedCloses.length >= 61 && closes.length >= 61) {
+    const sRet = (last.close - closes[closes.length - 61]) / closes[closes.length - 61] * 100;
+    const tRet = (taiexAlignedCloses[taiexAlignedCloses.length - 1] - taiexAlignedCloses[taiexAlignedCloses.length - 61])
+                 / taiexAlignedCloses[taiexAlignedCloses.length - 61] * 100;
+    const rs = sRet - tRet;
+    if (rs > 7) trendV = 1;          // RS 強烈 → 趨勢必偏多
+    else if (rs < -7) trendV = -1;   // RS 弱 → 趨勢必偏空
+  }
   const sum = trendV + priceV + momV;
   return sum >= 2 ? 'long' : sum <= -2 ? 'short' : 'neutral';
 }
 
 // 每個策略模組（trend/momentum/volPrice）獨立投票 — 用於 walk-forward 個別命中率
 // chip 模組需要歷史法人資料，FinMind 無法回填過去每天的法人快照，故 walk-forward 不含
-function moduleVotesAtTime(kSlice) {
+// ★ 第二參數 taiexCloses 對齊到 kSlice 同 index → 計算當下 RS 並加進 trend vote（feature 升級）
+function moduleVotesAtTime(kSlice, taiexAlignedCloses = null) {
   if (!kSlice || kSlice.length < 25) return null;
   const last = kSlice[kSlice.length - 1];
   const prev = kSlice[kSlice.length - 2];
@@ -246,14 +256,25 @@ function moduleVotesAtTime(kSlice) {
   const above60 = ma60_v != null && last.close >= ma60_v;
   const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
-  // Trend vote — MA 排列與位置
+  // Trend vote — MA 排列與位置 + ★ 截面相對強度（vs TAIEX）
   let trendVote = 0;
   if (above5)  trendVote += 0.2;  else trendVote -= 0.2;
   if (above20) trendVote += 0.3;  else trendVote -= 0.3;
   if (above60) trendVote += 0.2;  else trendVote -= 0.2;
   if (ma60_v != null) {
-    if (ma5_v > ma20_v && ma20_v > ma60_v) trendVote += 0.3;       // 多頭排列
-    else if (ma5_v < ma20_v && ma20_v < ma60_v) trendVote -= 0.3;  // 空頭排列
+    if (ma5_v > ma20_v && ma20_v > ma60_v) trendVote += 0.3;
+    else if (ma5_v < ma20_v && ma20_v < ma60_v) trendVote -= 0.3;
+  }
+  // ★ Cross-sectional：個股 60 日報酬 - TAIEX 60 日報酬
+  if (taiexAlignedCloses && taiexAlignedCloses.length >= 61 && closes.length >= 61) {
+    const stockRet60 = (last.close - closes[closes.length - 61]) / closes[closes.length - 61] * 100;
+    const taiexRet60 = (taiexAlignedCloses[taiexAlignedCloses.length - 1] - taiexAlignedCloses[taiexAlignedCloses.length - 61])
+                       / taiexAlignedCloses[taiexAlignedCloses.length - 61] * 100;
+    const rs = stockRet60 - taiexRet60;
+    if (rs > 7) trendVote += 0.25;
+    else if (rs > 3) trendVote += 0.12;
+    else if (rs < -7) trendVote -= 0.25;
+    else if (rs < -3) trendVote -= 0.12;
   }
   trendVote = clamp(trendVote, -1, 1);
 
@@ -291,7 +312,7 @@ function moduleVotesAtTime(kSlice) {
 
 // Per-module walk-forward：對過去 N 日，分別檢查 trend/momentum/volPrice 三個 view
 // 各自的方向預測是否與 N 日後實際漲跌方向一致 → 算個別勝率
-export function perModuleWalkForward(k, { lookback = 60, holdDays = 5, threshold = 0.3 } = {}) {
+export function perModuleWalkForward(k, { lookback = 60, holdDays = 5, threshold = 0.3, taiexCloses = null } = {}) {
   if (!Array.isArray(k) || k.length < 30 + holdDays) return null;
   const stats = {
     trend:    { hits: 0, total: 0 },
@@ -299,8 +320,16 @@ export function perModuleWalkForward(k, { lookback = 60, holdDays = 5, threshold
     volPrice: { hits: 0, total: 0 },
   };
   const start = Math.max(25, k.length - lookback - holdDays);
+  // 對齊 taiex 與 k 的「最後一筆 = 同一天」假設下，前 i+1 筆與前 i+1 筆 TAIEX 對應
+  // 若 taiex 長度不同，截到最近的同長度
+  const taiexAligned = taiexCloses && taiexCloses.length >= k.length
+    ? taiexCloses.slice(taiexCloses.length - k.length)
+    : null;
   for (let i = start; i < k.length - holdDays; i++) {
-    const votes = moduleVotesAtTime(k.slice(0, i + 1));
+    const votes = moduleVotesAtTime(
+      k.slice(0, i + 1),
+      taiexAligned ? taiexAligned.slice(0, i + 1) : null,
+    );
     if (!votes) continue;
     const ret = (k[i + holdDays].close - k[i].close) / k[i].close;
     if (ret === 0) continue;
@@ -354,12 +383,20 @@ export function computeDynamicWeights(moduleAccuracy) {
   }};
 }
 
-export function walkForwardAccuracy(k, { lookback = 60, holdDays = 5 } = {}) {
+// ★ taiexCloses 可選：傳入時跑 feature-augmented quickDirection；不傳則跑 legacy 邏輯
+// 若只想要 ROI 對照：呼叫兩次（含/不含 taiexCloses）即可比較 feature 升級的命中率差距
+export function walkForwardAccuracy(k, { lookback = 60, holdDays = 5, taiexCloses = null } = {}) {
   if (!Array.isArray(k) || k.length < 30 + holdDays) return null;
   let correct = 0, total = 0, longHits = 0, longTotal = 0, shortHits = 0, shortTotal = 0;
   const start = Math.max(25, k.length - lookback - holdDays);
+  const taiexAligned = taiexCloses && taiexCloses.length >= k.length
+    ? taiexCloses.slice(taiexCloses.length - k.length)
+    : null;
   for (let i = start; i < k.length - holdDays; i++) {
-    const dir = quickDirection(k.slice(0, i + 1));
+    const dir = quickDirection(
+      k.slice(0, i + 1),
+      taiexAligned ? taiexAligned.slice(0, i + 1) : null,
+    );
     if (!dir || dir === 'neutral') continue;
     const ret = (k[i + holdDays].close - k[i].close) / k[i].close;
     const hit = (dir === 'long' && ret > 0) || (dir === 'short' && ret < 0);
@@ -368,14 +405,161 @@ export function walkForwardAccuracy(k, { lookback = 60, holdDays = 5 } = {}) {
     if (dir === 'long') { longTotal++; if (hit) longHits++; }
     else { shortTotal++; if (hit) shortHits++; }
   }
-  if (total < 5) return null; // 樣本太少
+  if (total < 5) return null;
   return {
     hitRate: +(correct / total * 100).toFixed(1),
     samples: total,
     longHitRate: longTotal ? +(longHits / longTotal * 100).toFixed(1) : null,
     shortHitRate: shortTotal ? +(shortHits / shortTotal * 100).toFixed(1) : null,
     holdDays,
+    featureAugmented: !!taiexAligned,
   };
+}
+
+// ─────────────── Feature Engineering ───────────────
+// 統一輸出 ML-ready feature vector。給 diagnose 評分增強用，也給未來 ML 直接訓練。
+export function extractFeatures(args) {
+  const {
+    closes = [], vols = [],
+    ma5, ma20, ma60,
+    last, atr14, bias20, rsi14,
+    kdK, kdD,
+    foreign, trust, dealer,
+    distToHigh, distToLow,
+    marketContext = null,
+  } = args;
+  if (!last || !closes.length) return null;
+
+  // ─ Lag / delta ─
+  const rsiLag5 = closes.length >= 19 ? calcRSI(closes.slice(0, -5), 14) : null;
+  const rsiChange5d = rsi14 != null && rsiLag5 != null ? +(rsi14 - rsiLag5).toFixed(1) : null;
+
+  // ─ 報酬 ─
+  const ret = (n) => closes.length >= n + 1 && closes[closes.length - 1 - n] > 0
+    ? +(((last.close - closes[closes.length - 1 - n]) / closes[closes.length - 1 - n]) * 100).toFixed(2)
+    : null;
+  const return_1d = ret(1);
+  const return_5d = ret(5);
+  const return_20d = ret(20);
+  const return_60d = ret(60);
+
+  // ─ 波動度 ─
+  const atr_pct = atr14 != null && last.close > 0 ? +((atr14 / last.close) * 100).toFixed(2) : null;
+  let realized_vol_20d = null;
+  if (closes.length >= 21) {
+    const rets = [];
+    for (let i = closes.length - 20; i < closes.length; i++) {
+      if (closes[i] > 0 && closes[i - 1] > 0) rets.push(Math.log(closes[i] / closes[i - 1]));
+    }
+    if (rets.length >= 10) {
+      const m = avg(rets);
+      const v = avg(rets.map((x) => (x - m) ** 2));
+      realized_vol_20d = +(Math.sqrt(v) * Math.sqrt(252) * 100).toFixed(1);
+    }
+  }
+
+  // ─ 量能趨勢 ─
+  let vol_trend_5d = null;
+  if (vols.length >= 11) {
+    const recent5 = vols.slice(-5).filter((v) => v > 0);
+    const prior5 = vols.slice(-10, -5).filter((v) => v > 0);
+    if (recent5.length && prior5.length) {
+      const r = avg(recent5);
+      const p = avg(prior5);
+      vol_trend_5d = p > 0 ? +(r / p).toFixed(2) : null;
+    }
+  }
+
+  // ─ 截面（vs TAIEX）─
+  let rs_vs_taiex_60d = null;
+  if (return_60d != null && marketContext?.taiex_return_60d != null) {
+    rs_vs_taiex_60d = +(return_60d - marketContext.taiex_return_60d).toFixed(2);
+  }
+  let rs_vs_taiex_5d = null;
+  if (return_5d != null && marketContext?.taiex_return_5d != null) {
+    rs_vs_taiex_5d = +(return_5d - marketContext.taiex_return_5d).toFixed(2);
+  }
+
+  return {
+    // 既有
+    bias20: bias20 != null ? +bias20.toFixed(2) : null,
+    rsi14: rsi14 != null ? +rsi14.toFixed(1) : null,
+    kd_k: kdK != null ? +kdK.toFixed(1) : null,
+    kd_d: kdD != null ? +kdD.toFixed(1) : null,
+    kd_diff: kdK != null && kdD != null ? +(kdK - kdD).toFixed(1) : null,
+    ma5_above_ma20: ma5 != null && ma20 != null ? (ma5 > ma20 ? 1 : 0) : null,
+    ma20_above_ma60: ma20 != null && ma60 != null ? (ma20 > ma60 ? 1 : 0) : null,
+    foreign_3d: foreign,
+    trust_3d: trust,
+    dealer_3d: dealer,
+    dist_to_high_pct: distToHigh != null ? +distToHigh.toFixed(2) : null,
+    dist_to_low_pct: distToLow != null ? +distToLow.toFixed(2) : null,
+    // 新增
+    return_1d, return_5d, return_20d, return_60d,
+    rsi_lag5: rsiLag5 != null ? +rsiLag5.toFixed(1) : null,
+    rsi_change_5d: rsiChange5d,
+    atr_pct, realized_vol_20d,
+    vol_trend_5d,
+    // 截面
+    rs_vs_taiex_60d, rs_vs_taiex_5d,
+    // 大盤狀態
+    taiex_trend: marketContext?.taiex_trend ?? null,
+    taiex_vol_20d: marketContext?.taiex_vol_20d ?? null,
+    taiex_ma20_above_ma60: marketContext?.taiex_ma20_above_ma60 ?? null,
+    taiex_return_60d: marketContext?.taiex_return_60d ?? null,
+    regime_label: marketContext?.regime_label ?? null,
+  };
+}
+
+// 把 feature 轉成 baseScore 的調整量（contribution 透明化，便於追蹤）
+// 回傳：{ adjustment: 累計分數調整, contributions: { rs_vs_taiex: +4, regime: -5, ... } }
+export function applyFeatureContributions(features) {
+  if (!features) return { adjustment: 0, contributions: {} };
+  const c = {};
+  let adj = 0;
+
+  // 1. 截面相對強度（vs 大盤）— 60 日 RS
+  if (features.rs_vs_taiex_60d != null) {
+    let v = 0;
+    if (features.rs_vs_taiex_60d > 15)      v = 6;   // 強勢領漲股
+    else if (features.rs_vs_taiex_60d > 7)  v = 4;
+    else if (features.rs_vs_taiex_60d > 3)  v = 2;
+    else if (features.rs_vs_taiex_60d < -15) v = -6; // 弱勢領跌
+    else if (features.rs_vs_taiex_60d < -7)  v = -4;
+    else if (features.rs_vs_taiex_60d < -3)  v = -2;
+    if (v !== 0) { c.rs_vs_taiex_60d = v; adj += v; }
+  }
+
+  // 2. 大盤 regime（多頭加分、空頭重扣，不對稱因為熊市殺力強）
+  if (features.taiex_trend === 1) {
+    c.regime = 3;  adj += 3;
+  } else if (features.taiex_trend === -1) {
+    c.regime = -5; adj -= 5;
+  }
+
+  // 3. RSI 動能（5 日 delta）— 健康上行/下行
+  if (features.rsi_change_5d != null && features.rsi14 != null) {
+    if (features.rsi_change_5d > 15 && features.rsi14 < 65 && features.rsi14 > 35) {
+      c.rsi_momentum = 3; adj += 3;
+    } else if (features.rsi_change_5d < -15 && features.rsi14 < 65 && features.rsi14 > 35) {
+      c.rsi_momentum = -3; adj -= 3;
+    }
+  }
+
+  // 4. 量能趨勢
+  if (features.vol_trend_5d != null) {
+    if (features.vol_trend_5d > 1.5)      { c.vol_trend = 2;  adj += 2; }
+    else if (features.vol_trend_5d < 0.5) { c.vol_trend = -2; adj -= 2; }
+  }
+
+  // 5. RS 短期反轉（5 日 RS 突然轉強，大盤跌但個股強）
+  if (features.rs_vs_taiex_5d != null) {
+    if (features.rs_vs_taiex_5d > 4 && features.taiex_trend !== 1) {
+      c.rs_short_reversal = 2; adj += 2;
+    }
+  }
+
+  return { adjustment: adj, contributions: c };
 }
 
 // Wilder RSI(14)：股票圈標準算法
@@ -404,7 +588,7 @@ export function diagnose(k, inst = [], opts = {}) {
   if (!k || k.length < 5) return null;
   const last = k[k.length - 1];
   const prev = k[k.length - 2];
-  const { sharesOutstanding } = opts;
+  const { sharesOutstanding, marketContext = null } = opts;
 
   const ma5  = ma(k, 5);
   const ma20 = ma(k, 20);
@@ -727,13 +911,25 @@ export function diagnose(k, inst = [], opts = {}) {
   chipScore = clamp(chipScore, 0, 100);
 
   // ─── 權重汰換：依各模組過去 60 日命中率動態調整四面權重 ───
-  const moduleAccuracy = perModuleWalkForward(k, { lookback: 60, holdDays: 5 });
+  const taiexHist = marketContext?.taiex_closes || null;
+  const moduleAccuracy = perModuleWalkForward(k, { lookback: 60, holdDays: 5, taiexCloses: taiexHist });
   const dynW = computeDynamicWeights(moduleAccuracy);
   const W = dynW.weights;
 
   // 加權平均（四面 — 動態權重）
   const baseScore = trendScore * W.trend + momentumScore * W.momentum
                   + volPriceScore * W.volPrice + chipScore * W.chip;
+
+  // ─── Feature Engineering：抽出 ML-ready feature vector + 給 baseScore 加分 ───
+  const features = extractFeatures({
+    closes, vols, ma5, ma20, ma60, last, atr14, bias20, rsi14,
+    kdK: cur.k, kdD: cur.d,
+    foreign, trust, dealer,
+    distToHigh, distToLow,
+    marketContext,
+  });
+  const featureContrib = applyFeatureContributions(features);
+  const baseScoreEnhanced = clamp(baseScore + featureContrib.adjustment, 0, 100);
 
   // 5. 風險懲罰（罰分上限 30，避免單一情境多重扣分）
   let penalty = 0;
@@ -770,19 +966,14 @@ export function diagnose(k, inst = [], opts = {}) {
   const consistency = clamp(1 - mad, 0, 1);                    // 0=分歧 1=共識
   // shrinkFactor：一致性高才允許大幅偏離 50（保留至少 40% 收縮）
   const shrinkFactor = 0.4 + 0.6 * consistency;
-  let regularizedBase = 50 + (baseScore - 50) * shrinkFactor;
 
-  // ── 多時間框架共振：日線方向 vs 週線方向 ──
-  // 共振（+10% 信心放大）/ 背離（-25% 信心打折，避免在週線空頭中追日線多單）
-  const dailyLeaning = regularizedBase > 55 ? 'long' : regularizedBase < 45 ? 'short' : 'neutral';
-  const mtfConsonant = (dailyLeaning === 'long' && weeklyTrend === 'up') ||
-                       (dailyLeaning === 'short' && weeklyTrend === 'down');
-  const mtfDivergent = (dailyLeaning === 'long' && weeklyTrend === 'down') ||
-                       (dailyLeaning === 'short' && weeklyTrend === 'up');
-  let mtfMultiplier = 1.0;
-  if (mtfConsonant) mtfMultiplier = 1.10;
-  else if (mtfDivergent) mtfMultiplier = 0.75;
-  regularizedBase = 50 + (regularizedBase - 50) * mtfMultiplier;
+  // ★ Volatility-aware shrinkage：高波動環境降低信心
+  let volShrink = 1.0;
+  if (features?.realized_vol_20d != null) {
+    if (features.realized_vol_20d > 45)      volShrink = 0.80;
+    else if (features.realized_vol_20d > 35) volShrink = 0.88;
+    else if (features.realized_vol_20d > 28) volShrink = 0.94;
+  }
 
   // 7. 經濟限制（Economic Constraints）
   // 流動性：近 20 日均「成交額（萬元）」< 5000 萬視為低流動性，訊號不可靠
@@ -800,15 +991,38 @@ export function diagnose(k, inst = [], opts = {}) {
   const expectedRetTarget1 = ((target1 != null ? target1 : close) - close) / close * 100;
   const costFeasible = expectedRetTarget1 >= TX_COST_PCT * 2;  // ≥ 2.34%
 
-  // 整合：經濟限制做最後一道收縮（low liquidity / 不夠賺交易成本 → 信心壓低）
-  const economicShrink = liquidityShrink * (costFeasible ? 1.0 : 0.85);
-  const finalScore = 50 + (regularizedBase - 50) * economicShrink - penalty;
+  const economicShrink = liquidityShrink * (costFeasible ? 1.0 : 0.85) * volShrink;
 
-  // 最終勝率：clamp 到 [15, 78]，黑天鵝不可預測
+  // ─── 雙路線最終勝率（提供 ROI 對照）───
+  // 1) Legacy（feature 升級前）：使用 baseScore（無 feature 加分）
+  let regularizedBaseLegacy = 50 + (baseScore - 50) * shrinkFactor;
+  const dailyLeaningL = regularizedBaseLegacy > 55 ? 'long' : regularizedBaseLegacy < 45 ? 'short' : 'neutral';
+  const mtfConsonantL = (dailyLeaningL === 'long' && weeklyTrend === 'up') || (dailyLeaningL === 'short' && weeklyTrend === 'down');
+  const mtfDivergentL = (dailyLeaningL === 'long' && weeklyTrend === 'down') || (dailyLeaningL === 'short' && weeklyTrend === 'up');
+  let mtfMulL = 1.0;
+  if (mtfConsonantL) mtfMulL = 1.10;
+  else if (mtfDivergentL) mtfMulL = 0.75;
+  regularizedBaseLegacy = 50 + (regularizedBaseLegacy - 50) * mtfMulL;
+  // legacy 不套 volShrink（feature 升級之前根本沒有 realized_vol）
+  const economicShrinkLegacy = liquidityShrink * (costFeasible ? 1.0 : 0.85);
+  const finalScoreLegacy = 50 + (regularizedBaseLegacy - 50) * economicShrinkLegacy - penalty;
+  const legacyWinRate = Math.round(clamp(finalScoreLegacy, 15, 78));
+
+  // 2) Enhanced（feature 升級後）：使用 baseScoreEnhanced
+  let regularizedBase = 50 + (baseScoreEnhanced - 50) * shrinkFactor;
+  const dailyLeaning = regularizedBase > 55 ? 'long' : regularizedBase < 45 ? 'short' : 'neutral';
+  const mtfConsonant = (dailyLeaning === 'long' && weeklyTrend === 'up') || (dailyLeaning === 'short' && weeklyTrend === 'down');
+  const mtfDivergent = (dailyLeaning === 'long' && weeklyTrend === 'down') || (dailyLeaning === 'short' && weeklyTrend === 'up');
+  let mtfMultiplier = 1.0;
+  if (mtfConsonant) mtfMultiplier = 1.10;
+  else if (mtfDivergent) mtfMultiplier = 0.75;
+  regularizedBase = 50 + (regularizedBase - 50) * mtfMultiplier;
+  const finalScore = 50 + (regularizedBase - 50) * economicShrink - penalty;
   const winRate = Math.round(clamp(finalScore, 15, 78));
 
-  // 8. Walk-forward 歷史驗證 — 用簡化版 quickDirection 對過去 60 日做 5 日 forward 命中率
-  const historicalAccuracy = walkForwardAccuracy(k, { lookback: 60, holdDays: 5 });
+  // 8. Walk-forward 歷史驗證 — 跑兩次（feature-augmented + legacy）取得 ROI 對照
+  const historicalAccuracy = walkForwardAccuracy(k, { lookback: 60, holdDays: 5, taiexCloses: taiexHist });
+  const historicalAccuracyLegacy = walkForwardAccuracy(k, { lookback: 60, holdDays: 5, taiexCloses: null });
 
   // ─────── 進場 / 停損 / 目標價已於前面計算（close/atr/support10/support20/stopPrice/target1/target2） ───────
 
@@ -885,6 +1099,14 @@ export function diagnose(k, inst = [], opts = {}) {
     bias20, atr14, maDeduct20, volZ, turnoverRate,
     signals,
     score, winRate,
+    legacyWinRate,                                       // ★ ROI 對照：feature 升級前的勝率
+    featureUpgrade: {                                    // ★ Feature engineering 貢獻明細
+      delta: winRate - legacyWinRate,
+      adjustment: featureContrib.adjustment,             // baseScore 加分 (+/-)
+      contributions: featureContrib.contributions,       // 各 feature 貢獻拆解
+      volShrink: +volShrink.toFixed(2),                  // 高波動降信心
+    },
+    features,                                            // ★ ML-ready 特徵向量（25+ 項）
     subScores,
     overall, action, playbook,
     direction: winRate >= 55 ? 'long' : winRate >= 45 ? 'neutral' : 'short',
@@ -892,7 +1114,8 @@ export function diagnose(k, inst = [], opts = {}) {
     // 過擬合對策衍生指標
     consistency: +(consistency * 100).toFixed(0),       // 0-100：四面共識度
     moduleVotes: { trend: +votes[0].toFixed(2), momentum: +votes[1].toFixed(2), volPrice: +votes[2].toFixed(2), chip: +votes[3].toFixed(2) },
-    historicalAccuracy,                                  // walk-forward 整體方向命中率
+    historicalAccuracy,                                  // walk-forward（已含 feature 升級）
+    historicalAccuracyLegacy,                            // walk-forward（feature 升級前對照）
     moduleAccuracy,                                      // walk-forward 各模組命中率
     dynamicWeights: { weights: W, adjusted: dynW.adjusted, factors: dynW.factors },
     // 短期路線圖實作

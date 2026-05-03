@@ -79,6 +79,7 @@ function toRow(code, p) {
     direction_hit: p.directionHit ?? null,
     expected_error: p.expectedError ?? null,
     abs_error: p.absError ?? null,
+    features: p.features ?? null,    // ★ feature vector (jsonb) 給未來 ML 訓練
   };
 }
 
@@ -99,6 +100,7 @@ function fromRow(r) {
     directionHit: r.direction_hit,
     expectedError: r.expected_error != null ? +r.expected_error : null,
     absError: r.abs_error != null ? +r.abs_error : null,
+    features: r.features ?? null,
   };
 }
 

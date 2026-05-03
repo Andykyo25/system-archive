@@ -848,7 +848,48 @@ function buildAdvisor(d, stockMeta) {
     trust.push(`<span class="item">訊號一致度：<b>${consensus}%</b> ${lvl}</span>`);
   }
   if (histAcc != null && histSamples) {
-    trust.push(`<span class="item">歷史命中率：<b>${histAcc}%</b>（${histSamples} 筆樣本）</span>`);
+    let histText = `<b>${histAcc}%</b>（${histSamples} 筆樣本）`;
+    // ★ feature 升級 ROI delta（命中率對照）
+    const histLegacy = d.historicalAccuracyLegacy;
+    if (histLegacy?.hitRate != null && histLegacy.hitRate !== histAcc) {
+      const delta = +(histAcc - histLegacy.hitRate).toFixed(1);
+      const sign = delta > 0 ? '+' : '';
+      const tone = delta > 0 ? 'var(--up)' : 'var(--down)';
+      histText += ` <span style="color:${tone};font-size:10px">(${sign}${delta}% vs 升級前 ${histLegacy.hitRate}%)</span>`;
+    }
+    trust.push(`<span class="item">歷史命中率：${histText}</span>`);
+  }
+  // ★ Feature 升級貢獻明細
+  if (d.featureUpgrade?.contributions && Object.keys(d.featureUpgrade.contributions).length) {
+    const labels = {
+      rs_vs_taiex_60d: '截面相對強度',
+      regime: '大盤狀態',
+      rsi_momentum: 'RSI 動能',
+      vol_trend: '量能趨勢',
+      rs_short_reversal: 'RS 反轉',
+    };
+    const items = Object.entries(d.featureUpgrade.contributions)
+      .map(([k, v]) => `${labels[k] || k} ${v > 0 ? '+' : ''}${v}`)
+      .join('、');
+    trust.push(`<span class="item" style="color:var(--gold)">特徵升級貢獻：${items}</span>`);
+  }
+  // ★ Regime 顯示
+  if (d.features?.regime_label) {
+    const regime = d.features.regime_label;
+    const regimeColor = regime === '多頭' ? 'var(--up)' : regime === '空頭' ? 'var(--down)' : 'var(--gold)';
+    trust.push(`<span class="item">大盤狀態：<b style="color:${regimeColor}">${regime}</b>${d.features.taiex_return_60d != null ? `（TAIEX 60 日 ${d.features.taiex_return_60d >= 0 ? '+' : ''}${d.features.taiex_return_60d}%）` : ''}</span>`);
+  }
+  // ★ RS vs TAIEX
+  if (d.features?.rs_vs_taiex_60d != null) {
+    const rs = d.features.rs_vs_taiex_60d;
+    const rsColor = rs > 5 ? 'var(--up)' : rs < -5 ? 'var(--down)' : 'var(--dim)';
+    trust.push(`<span class="item">vs 大盤 60 日：<b style="color:${rsColor}">${rs >= 0 ? '+' : ''}${rs}%</b></span>`);
+  }
+  // ★ Realized vol
+  if (d.features?.realized_vol_20d != null) {
+    const vol = d.features.realized_vol_20d;
+    const volColor = vol > 35 ? 'var(--down)' : vol < 18 ? 'var(--up)' : 'var(--dim)';
+    trust.push(`<span class="item">年化波動度：<b style="color:${volColor}">${vol}%</b></span>`);
   }
   if (personalHit != null) {
     trust.push(`<span class="item">本股實測命中率：<b>${personalHit}%</b></span>`);
@@ -872,7 +913,16 @@ function renderAdvisor(d, stockMeta) {
   document.getElementById('advisor-emoji').textContent = a.emoji;
   document.getElementById('advisor-headline').textContent = a.headline;
   document.getElementById('advisor-pill').textContent = a.pill;
-  document.getElementById('advisor-winrate').textContent = `勝率 ${a.winRate}%`;
+  // ROI delta：顯示 feature 升級對勝率的影響
+  const fu = d.featureUpgrade;
+  const wrEl = document.getElementById('advisor-winrate');
+  if (fu && d.legacyWinRate != null && fu.delta !== 0) {
+    const sign = fu.delta > 0 ? '+' : '';
+    const tone = fu.delta > 0 ? '#1ed760' : '#ff3b4e';
+    wrEl.innerHTML = `勝率 ${a.winRate}% <span style="color:${tone};font-size:11px;font-weight:700">(${sign}${fu.delta} vs 升級前 ${d.legacyWinRate}%)</span>`;
+  } else {
+    wrEl.textContent = `勝率 ${a.winRate}%`;
+  }
   document.getElementById('advisor-summary').innerHTML = a.summary;
 
   document.getElementById('advisor-positives').innerHTML =
@@ -907,6 +957,27 @@ function renderAdvisor(d, stockMeta) {
     if (d.dynamicWeights?.weights) {
       const w = d.dynamicWeights.weights;
       items.push(`<div class="item"><span class="l">動態權重</span><span class="v">趨${(w.trend*100).toFixed(0)}/動${(w.momentum*100).toFixed(0)}/量${(w.volPrice*100).toFixed(0)}/籌${(w.chip*100).toFixed(0)}</span></div>`);
+    }
+    // ★ Feature engineering 詳情
+    if (d.features) {
+      items.push(`<div class="item" style="background:var(--bg-2);margin-top:8px;padding:6px;border-radius:4px"><span class="l" style="color:var(--gold)">─ Feature Engineering ─</span><span class="v"></span></div>`);
+      const f = d.features;
+      const addF = (lab, val, unit = '') => {
+        if (val == null) return;
+        items.push(`<div class="item"><span class="l">${lab}</span><span class="v">${val}${unit}</span></div>`);
+      };
+      addF('rs_vs_taiex_60d（截面）', f.rs_vs_taiex_60d, '%');
+      addF('rs_vs_taiex_5d（短期 RS）', f.rs_vs_taiex_5d, '%');
+      addF('return_5d / 20d / 60d', `${f.return_5d ?? '--'}/${f.return_20d ?? '--'}/${f.return_60d ?? '--'}`, '%');
+      addF('rsi_change_5d', f.rsi_change_5d);
+      addF('vol_trend_5d', f.vol_trend_5d, 'x');
+      addF('atr_pct（波動度）', f.atr_pct, '%');
+      addF('realized_vol_20d（年化）', f.realized_vol_20d, '%');
+      addF('taiex_trend', f.taiex_trend != null ? (f.taiex_trend === 1 ? '多頭(1)' : f.taiex_trend === -1 ? '空頭(-1)' : '盤整(0)') : null);
+      addF('taiex_vol_20d', f.taiex_vol_20d, '%');
+    }
+    if (d.featureUpgrade) {
+      items.push(`<div class="item" style="background:rgba(246,196,82,.1);padding:6px;border-radius:4px"><span class="l">特徵升級總調整</span><span class="v" style="color:var(--gold)">${d.featureUpgrade.adjustment >= 0 ? '+' : ''}${d.featureUpgrade.adjustment} 分 → 勝率 ${d.featureUpgrade.delta >= 0 ? '+' : ''}${d.featureUpgrade.delta}%</span></div>`);
     }
     det.innerHTML = items.join('');
   }

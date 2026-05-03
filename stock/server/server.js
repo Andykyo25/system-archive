@@ -14,6 +14,7 @@ import { diagnose } from '../src/utils/diagnose.js';
 import { newsSentiment } from '../src/utils/sentiment.js';
 import * as predictions from './predictions.js';
 import * as portfolio from './portfolio.js';
+import { getMarketContext } from './marketContext.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -772,10 +773,14 @@ async function loadStockDiagnose(code) {
   // 計算新聞情緒（純函式，無網路）
   const sentiment = newsSentiment(newsList || []);
 
+  // ★ Feature engineering：注入大盤 regime / RS / 波動度
+  const marketContext = await getMarketContext().catch(() => null);
+
   const d = diagnose(k, instEnriched, {
     sharesOutstanding: cap,
     benchmarkCloses: taiexCloses || [],   // 截面相對強度用
     newsSentiment: sentiment,             // 情緒整合進 chipScore
+    marketContext,                        // ★ feature engineering（regime / RS / vol）
   });
   if (!d) return null;
 
@@ -806,7 +811,7 @@ async function loadStockDiagnose(code) {
     pending: cm.stats.pending,
   };
 
-  // 3. 記錄本次預測（給未來驗證用）
+  // 3. 記錄本次預測（給未來驗證用）+ 順手存 feature vector 為將來 ML pipeline 鋪路
   predictions.record(code, {
     close,
     winRate: d.winRate,
@@ -814,6 +819,7 @@ async function loadStockDiagnose(code) {
     target1: d.levels?.target1,
     stop: d.levels?.stop,
     expectedReturn: d.economic?.expectedReturn,
+    features: d.features || null,   // ★ ML-ready feature vector
   });
 
   return {
