@@ -38,6 +38,12 @@
 <!-- Mobile drawer 遮罩 -->
 <div class="drawer-overlay" id="drawer-overlay"></div>
 
+<!-- 主畫面 / 系統評估 切換 -->
+<div class="view-tabs" id="view-tabs">
+  <button class="view-tab active" data-view="main">📊 個股 / 持股 / 大盤</button>
+  <button class="view-tab" data-view="backtest">🧪 系統評估（Backtest）</button>
+</div>
+
 <div class="shell">
 
   <aside class="sidebar">
@@ -353,8 +359,8 @@
       <div id="report-area"></div>
     </div>
 
-    <!-- ▼ Backtest 結果 + Ablation Study -->
-    <div class="panel" id="backtest-panel">
+    <!-- ▼ Backtest 結果 + Ablation Study（獨立 tab） -->
+    <div class="panel view-only-backtest" id="backtest-panel">
       <div class="panel-head">
         <h2>系統 Backtest · Ablation
           <span style="color:var(--dim);font-size:11px;font-weight:400;margin-left:8px">過去 1 年、5 路線對照、扣 1.17% 雙趟成本</span>

@@ -192,36 +192,47 @@ function aggregate(trades) {
   if (!trades.length) {
     return { trades: 0, winRate: 0, cumulativeReturn: 0, avgReturn: 0, sharpe: 0, maxDrawdown: 0, equity: [] };
   }
+  // 修正：按進場日期分組，每日取「跨股等權平均報酬」當作當日組合報酬
+  // （等同「把當天所有訊號平分資金」），再以日報酬複利成 equity curve
   trades.sort((a, b) => a.date.localeCompare(b.date));
-  // 等權配置 — 每筆獨立帳戶複利，最後再平均
-  // 簡化：把所有 trades 串成一條 equity（單一資金池每次全押）
-  let eq = 1, peak = 1, maxDD = 0;
-  const eqByDate = new Map();
+  const byDate = new Map();
   for (const t of trades) {
-    eq *= (1 + t.ret);
-    eqByDate.set(t.date, eq);
+    if (!byDate.has(t.date)) byDate.set(t.date, []);
+    byDate.get(t.date).push(t.ret);
+  }
+  const dailyReturns = [];
+  let eq = 1, peak = 1, maxDD = 0;
+  const equity = [];
+  for (const [date, rets] of [...byDate.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
+    const dayRet = avg(rets);
+    dailyReturns.push(dayRet);
+    eq *= (1 + dayRet);
+    equity.push({ date, eq: +eq.toFixed(4) });
     if (eq > peak) peak = eq;
     const dd = (eq - peak) / peak;
     if (dd < maxDD) maxDD = dd;
   }
+
   const wins = trades.filter((t) => t.ret > 0).length;
   const winRate = +((wins / trades.length) * 100).toFixed(1);
-  const rets = trades.map((t) => t.ret);
-  const m = avg(rets);
-  const s = std(rets);
-  // Sharpe annualized：5 日持有，一年約 50 筆，sqrt(50) 換算
-  const sharpe = s > 0 ? +((m / s) * Math.sqrt(50)).toFixed(2) : 0;
-  // Equity curve thinned to monthly points
-  const equity = [...eqByDate.entries()].filter((_, i, a) => i === a.length - 1 || i % Math.max(1, Math.floor(a.length / 60)) === 0)
-    .map(([date, eq]) => ({ date, eq: +eq.toFixed(4) }));
+  const m = avg(dailyReturns);
+  const s = std(dailyReturns);
+  // Sharpe：用「日組合報酬」年化（252 交易日）
+  const sharpe = s > 0 ? +((m / s) * Math.sqrt(252)).toFixed(2) : 0;
+  const avgPerTrade = avg(trades.map((t) => t.ret));
+
+  // Equity 取樣：保留首尾 + 等距 60 點
+  const step = Math.max(1, Math.floor(equity.length / 60));
+  const thinned = equity.filter((_, i) => i === 0 || i === equity.length - 1 || i % step === 0);
 
   return {
     trades: trades.length,
+    tradingDays: dailyReturns.length,
     winRate,
     cumulativeReturn: +((eq - 1) * 100).toFixed(2),
-    avgReturn: +(m * 100).toFixed(3),
+    avgReturn: +(avgPerTrade * 100).toFixed(3),
     sharpe,
     maxDrawdown: +(maxDD * 100).toFixed(1),
-    equity,
+    equity: thinned,
   };
 }

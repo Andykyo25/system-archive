@@ -541,6 +541,25 @@ button{font-family:inherit;color:inherit;background:none;border:0;cursor:pointer
 @keyframes flashUp{0%{background:rgba(255,59,78,.25)}100%{background:transparent}}
 @keyframes flashDown{0%{background:rgba(30,215,96,.25)}100%{background:transparent}}
 
+/* ───── View Tabs（主畫面 / 系統評估）───── */
+.view-tabs{display:flex;gap:6px;padding:10px 22px 0;background:linear-gradient(180deg,#0a1019,#06080d);border-bottom:1px solid var(--line)}
+.view-tab{padding:8px 16px;font-size:12px;font-weight:700;color:var(--dim);background:var(--bg-3);border:1px solid var(--line);border-bottom:0;border-radius:6px 6px 0 0;cursor:pointer;letter-spacing:1px}
+.view-tab:hover{color:var(--gold);background:#1a2332}
+.view-tab.active{background:var(--bg-2);color:var(--gold);border-color:var(--gold)}
+/* 主畫面模式：隱藏 backtest panel；其他都顯示 */
+body:not(.view-backtest) #backtest-panel{display:none}
+/* Backtest 模式：隱藏 sidebar / aside / 主畫面所有 panels，只顯示 backtest 與 indices */
+body.view-backtest .sidebar,
+body.view-backtest .aside,
+body.view-backtest #stock-panel,
+body.view-backtest #holdings-panel,
+body.view-backtest #ai-pick-panel,
+body.view-backtest #post-panel,
+body.view-backtest .panel:not(#backtest-panel){display:none}
+body.view-backtest .shell{grid-template-columns:1fr}
+body.view-backtest .main{padding:24px 80px}
+body.view-backtest #backtest-panel{margin-top:0}
+
 /* ───── AI 顧問建議卡片（白話文整合）───── */
 .advisor-card{
   background:linear-gradient(135deg,rgba(246,196,82,.08),rgba(122,92,255,.04));

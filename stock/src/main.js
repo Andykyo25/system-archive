@@ -32,6 +32,17 @@ function boot() {
   holdings.mount();     // 我的持股 + 每日報告 + 每週復盤
   backtest.mount();     // Backtest 結果 + Ablation Study
 
+  // 主畫面 / Backtest tab 切換
+  document.querySelectorAll('.view-tab').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.view-tab').forEach((x) => x.classList.remove('active'));
+      btn.classList.add('active');
+      const v = btn.dataset.view;
+      document.body.classList.toggle('view-backtest', v === 'backtest');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+  });
+
   // select 事件 → stock:selected
   on('select', (code) => emit('stock:selected', code));
 
