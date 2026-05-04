@@ -48,6 +48,35 @@ const DISPLAY_NAME = {
   '^DJI':  'Dow Jones',
 };
 
+// 個股日線歷史 — 給 K 線備援用（FinMind/Yahoo 都掛時）
+// Stooq 台股 symbol 格式：2330.tw（小寫）
+// CSV：Date,Open,High,Low,Close,Volume
+export async function chart(symbol, days = 365) {
+  const fmt = (d) => `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
+  const start = new Date(Date.now() - days * 86400e3);
+  const url = `https://stooq.com/q/d/l/?s=${encodeURIComponent(symbol.toLowerCase())}&i=d&d1=${fmt(start)}&d2=${fmt(new Date())}`;
+  const res = await fetch(url, {
+    headers: { 'User-Agent': 'Mozilla/5.0 TWSE-WarRoom/1.0', Accept: 'text/csv' },
+  });
+  if (!res.ok) throw new Error(`stooq HTTP ${res.status}`);
+  const text = await res.text();
+  const lines = text.trim().split('\n');
+  if (lines.length < 2) return [];
+  const headers = lines[0].split(',').map((h) => h.trim());
+  return lines.slice(1).map((line) => {
+    const cells = line.split(',').map((c) => c.trim());
+    const row = Object.fromEntries(headers.map((h, i) => [h, cells[i]]));
+    return {
+      date: row.Date,
+      open: +row.Open || null,
+      high: +row.High || null,
+      low: +row.Low || null,
+      close: +row.Close || null,
+      volume: +row.Volume || null,
+    };
+  }).filter((d) => Number.isFinite(d.close) && d.date);
+}
+
 export async function quotes(symbols) {
   if (!Array.isArray(symbols) || !symbols.length) return [];
   const out = await Promise.all(symbols.map(async (sym) => {

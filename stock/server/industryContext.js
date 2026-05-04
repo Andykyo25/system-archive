@@ -3,6 +3,7 @@
 import { memo } from './cache.js';
 import * as finmind from './providers/finmind.js';
 import * as yahoo from './providers/yahoo.js';
+import * as stooq from './providers/stooq.js';
 
 const TTL = 24 * 60 * 60 * 1000;
 
@@ -36,6 +37,12 @@ export async function getAllIndustryStats() {
         try {
           const yh = await memo(`yhKline:${code}:90`, 5 * 60 * 1000, () => yahoo.chart(`${code}.TW`, '3mo', '1d'));
           if (yh && yh.length >= 61) closes = yh.map((d) => +d.close).filter(Number.isFinite);
+        } catch { /* try stooq */ }
+      }
+      if (closes.length < 61) {
+        try {
+          const sq = await memo(`sqKline:${code}:90`, 30 * 60 * 1000, () => stooq.chart(`${code}.tw`, 100));
+          if (sq && sq.length >= 61) closes = sq.map((d) => +d.close).filter(Number.isFinite);
         } catch { /* skip */ }
       }
       if (closes.length < 61) return null;

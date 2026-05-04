@@ -11,6 +11,7 @@
 import { memo } from './cache.js';
 import * as finmind from './providers/finmind.js';
 import * as yahoo from './providers/yahoo.js';
+import * as stooq from './providers/stooq.js';
 import { calcRSI } from '../src/utils/diagnose.js';
 import { getAllIndustryStats } from './industryContext.js';
 
@@ -139,8 +140,20 @@ export async function runBacktest({ codes = PEERS, lookbackDays = 252 } = {}) {
         const yh = await memo(`bt:yh:${code}`, 60 * 60 * 1000, () => yahoo.chart(`${code}.TW`, '1y', '1d'));
         if (yh && yh.length >= 90) {
           raw = yh.map((d) => ({
-            date: d.date,
-            open: d.open, close: d.close,
+            date: d.date, open: d.open, close: d.close,
+            max: d.high, min: d.low,
+            Trading_Volume: Math.round((d.volume || 0) / 1000),
+          }));
+        }
+      } catch { /* skip */ }
+    }
+    // 備援 Stooq（無 quota）
+    if (!raw) {
+      try {
+        const sq = await memo(`bt:sq:${code}`, 60 * 60 * 1000, () => stooq.chart(`${code}.tw`, 365));
+        if (sq && sq.length >= 90) {
+          raw = sq.map((d) => ({
+            date: d.date, open: d.open, close: d.close,
             max: d.high, min: d.low,
             Trading_Volume: Math.round((d.volume || 0) / 1000),
           }));
@@ -156,12 +169,18 @@ export async function runBacktest({ codes = PEERS, lookbackDays = 252 } = {}) {
     })).filter((d) => Number.isFinite(d.close));
   }));
 
-  // 2. TAIEX 歷史
+  // 2. TAIEX 歷史（Yahoo → Stooq fallback）
   let taiexCloses = [];
   try {
     const t = await memo('bt:taiex', 24 * 60 * 60 * 1000, () => yahoo.chart('^TWII', '1y', '1d'));
     taiexCloses = (t || []).map((d) => +d.close).filter(Number.isFinite);
-  } catch { /* skip */ }
+  } catch { /* try stooq */ }
+  if (taiexCloses.length < 60) {
+    try {
+      const sq = await memo('bt:taiex:sq', 24 * 60 * 60 * 1000, () => stooq.chart('^twi', 365));
+      taiexCloses = (sq || []).map((d) => +d.close).filter(Number.isFinite);
+    } catch { /* skip */ }
+  }
 
   // 3. 產業對照表
   let industryMap = {};

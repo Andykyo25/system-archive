@@ -288,20 +288,31 @@ app.get('/api/kline/:code', async (req, res) => {
     } catch (e) {
       console.warn(`[kline ${code}] finmind:`, e.message);
     }
-    // 備援：Yahoo chart（轉成 FinMind 同 schema）
+    // 備援 1：Yahoo chart
     if (!data) {
       try {
         const yh = await memo(`yhKline:${code}:${days}`, 5 * 60 * 1000, () => yahoo.chart(`${code}.TW`, '3mo', '1d'));
         if (yh && yh.length >= 30) {
           data = yh.map((d) => ({
-            date: d.date,
-            open: d.open, max: d.high, min: d.low, close: d.close,
+            date: d.date, open: d.open, max: d.high, min: d.low, close: d.close,
             Trading_Volume: Math.round((d.volume || 0) / 1000),
           }));
         }
       } catch (e) { console.warn(`[kline ${code}] yahoo:`, e.message); }
     }
-    if (!data) throw new Error('K 線資料不可用（FinMind 與 Yahoo 都失敗）');
+    // 備援 2：Stooq CSV（無 quota，最後防線）
+    if (!data) {
+      try {
+        const sq = await memo(`sqKline:${code}:${days}`, 30 * 60 * 1000, () => stooq.chart(`${code}.tw`, Math.max(days, 100)));
+        if (sq && sq.length >= 30) {
+          data = sq.map((d) => ({
+            date: d.date, open: d.open, max: d.high, min: d.low, close: d.close,
+            Trading_Volume: Math.round((d.volume || 0) / 1000),
+          }));
+        }
+      } catch (e) { console.warn(`[kline ${code}] stooq:`, e.message); }
+    }
+    if (!data) throw new Error('K 線資料不可用（FinMind / Yahoo / Stooq 全失敗）');
     ok(res, data);
   } catch (e) { fail(res, e); }
 });
