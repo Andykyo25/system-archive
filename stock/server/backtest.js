@@ -124,19 +124,36 @@ function industryRsAt(code, dateStr, kAtIdx, klines, industryMap) {
 export async function runBacktest({ codes = PEERS, lookbackDays = 252 } = {}) {
   const start = new Date(Date.now() - (lookbackDays + 90) * 86400e3).toISOString().slice(0, 10);
 
-  // 1. 拉所有股票 K 線（並行 + 各自 cache）
+  // 1. 拉所有股票 K 線（並行 + 各自 cache，FinMind → Yahoo fallback）
   const klines = {};
   await Promise.all([...new Set(codes)].map(async (code) => {
+    let raw = null;
+    // 主源 FinMind
     try {
-      const k = await memo(`bt:kline:${code}`, 60 * 60 * 1000, () => finmind.stockPrice(code, start));
-      if (!k || k.length < 90) return;
-      klines[code] = k.map((r) => ({
-        date: r.date,
-        open: +r.open, close: +r.close,
-        high: +(r.max ?? r.high), low: +(r.min ?? r.low),
-        vol: +(r.Trading_Volume ?? r.volume ?? 0),
-      })).filter((d) => Number.isFinite(d.close));
-    } catch { /* skip */ }
+      raw = await memo(`bt:kline:${code}`, 60 * 60 * 1000, () => finmind.stockPrice(code, start));
+      if (!raw || raw.length < 90) raw = null;
+    } catch { raw = null; }
+    // 備援 Yahoo
+    if (!raw) {
+      try {
+        const yh = await memo(`bt:yh:${code}`, 60 * 60 * 1000, () => yahoo.chart(`${code}.TW`, '1y', '1d'));
+        if (yh && yh.length >= 90) {
+          raw = yh.map((d) => ({
+            date: d.date,
+            open: d.open, close: d.close,
+            max: d.high, min: d.low,
+            Trading_Volume: Math.round((d.volume || 0) / 1000),
+          }));
+        }
+      } catch { /* skip */ }
+    }
+    if (!raw) return;
+    klines[code] = raw.map((r) => ({
+      date: r.date,
+      open: +r.open, close: +r.close,
+      high: +(r.max ?? r.high), low: +(r.min ?? r.low),
+      vol: +(r.Trading_Volume ?? r.volume ?? 0),
+    })).filter((d) => Number.isFinite(d.close));
   }));
 
   // 2. TAIEX 歷史

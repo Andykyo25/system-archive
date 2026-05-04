@@ -2,6 +2,7 @@
 // 一天計算一次（產業變動慢），cache 24h
 import { memo } from './cache.js';
 import * as finmind from './providers/finmind.js';
+import * as yahoo from './providers/yahoo.js';
 
 const TTL = 24 * 60 * 60 * 1000;
 
@@ -25,20 +26,27 @@ export async function getAllIndustryStats() {
 
     const start = new Date(Date.now() - 90 * 86400e3).toISOString().slice(0, 10);
     const tasks = [...new Set(PEERS)].map(async (code) => {
+      // FinMind → Yahoo fallback
+      let closes = [];
       try {
         const k = await memo(`kline:${code}:90`, 60000, () => finmind.stockPrice(code, start));
-        if (!k || k.length < 61) return null;
-        const closes = k.map((r) => +r.close).filter(Number.isFinite);
-        if (closes.length < 61) return null;
-        const last = closes[closes.length - 1];
-        const back60 = closes[closes.length - 61];
-        if (!(back60 > 0)) return null;
-        return {
-          code,
-          industry: codeToIndustry[code] || '其他',
-          ret60d: +(((last - back60) / back60) * 100).toFixed(2),
-        };
-      } catch { return null; }
+        if (k && k.length >= 61) closes = k.map((r) => +r.close).filter(Number.isFinite);
+      } catch { /* try Yahoo */ }
+      if (closes.length < 61) {
+        try {
+          const yh = await memo(`yhKline:${code}:90`, 5 * 60 * 1000, () => yahoo.chart(`${code}.TW`, '3mo', '1d'));
+          if (yh && yh.length >= 61) closes = yh.map((d) => +d.close).filter(Number.isFinite);
+        } catch { /* skip */ }
+      }
+      if (closes.length < 61) return null;
+      const last = closes[closes.length - 1];
+      const back60 = closes[closes.length - 61];
+      if (!(back60 > 0)) return null;
+      return {
+        code,
+        industry: codeToIndustry[code] || '其他',
+        ret60d: +(((last - back60) / back60) * 100).toFixed(2),
+      };
     });
     const peers = (await Promise.all(tasks)).filter(Boolean);
 
