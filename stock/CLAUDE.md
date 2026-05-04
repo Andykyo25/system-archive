@@ -185,6 +185,20 @@ server `applyQuoteGuard()` 與前端 `format.js fmtTick()` 都有。
 ### K. lastGoodQuotes 鎖死
 `lastGoodQuotes` 在 server 記憶體中，重啟才清。如果舊邏輯把錯值寫進去，**重啟才會解**。
 
+### L. state.stocks[code] 多源覆寫衝突
+`state.stocks[code].price` 是 header 顯示的 single source of truth，但有多處在寫：
+- `scheduler.bootstrapQuotes`（`/api/quotes/batch` → MIS 即時，**正確來源**）
+- `scheduler.loadMovers`（`/api/movers` → TWSE STOCK_DAY_ALL **盤後資料**）
+- `search.js pick`（建立新 entry）
+
+**踩過**：2408 漲停日，bootstrapQuotes 寫對了 237.0，但 loadMovers 緊接著拿 movers 的
+昨日收盤 215.50 覆寫，結果 header 顯示 215.50（diagnose 路徑直接呼叫 MIS 沒被影響）。
+
+**規則**：
+- bootstrapQuotes 是唯一可以**覆寫** price 的地方（MIS 是 SSOT）
+- loadMovers 只能**建立**新 entry，**不可覆寫**已存在的
+- 所有新加的 update path 必須遵守這個 invariant
+
 ---
 
 ## 7. Supabase Schema
@@ -339,4 +353,4 @@ postPanel → holdings
 7. **Yahoo 永遠 429** → circuit breaker 開啟中，等 10 分鐘或重啟
 8. **K 線每次不同** → 確認沒退回 mock fallback（已移除應不會發生）
 9. **diagnose 拋錯** → TDZ 又中招，看變數宣告順序
-10. **2408 / 漲停股顯示前一日價** → 先看 §6.B
+10. **2408 / 漲停股 header 顯示前一日價（但 diagnose 對的）** → §6.L 多源覆寫衝突；MIS parseRow 看 §6.B

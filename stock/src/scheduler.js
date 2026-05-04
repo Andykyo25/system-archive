@@ -127,15 +127,12 @@ async function loadMovers() {
   try {
     const d = await api.movers();
     state.movers = d;
-    // 將 movers 的價格回灌到 state.stocks 對應 code
+    // ★ movers 來源是 TWSE STOCK_DAY_ALL（盤後彙整），盤中 = 昨日收盤資料
+    // 不可覆寫 state.stocks 已存在的 live quote（會被昨日收盤蓋過漲停價）
+    // 只在「該 code 尚未存在」時建立新 entry，提供 movers list 顯示用
     let dirty = false;
     [...(d.gainers || []), ...(d.losers || [])].forEach((s) => {
-      if (state.stocks[s.code]) {
-        state.stocks[s.code].price = s.close ?? s.price;
-        state.stocks[s.code].pct = s.pct;
-        state.stocks[s.code].chg = (s.close && s.open) ? (s.close - s.open) : state.stocks[s.code].chg;
-        dirty = true;
-      } else {
+      if (!state.stocks[s.code]) {
         state.stocks[s.code] = {
           name: s.name, industry: '-', theme: [],
           price: s.close, chg: (s.close - s.open) || 0, pct: s.pct,
@@ -143,6 +140,7 @@ async function loadMovers() {
         };
         dirty = true;
       }
+      // 已存在 → 信任 bootstrapQuotes 的 MIS 即時價，跳過
     });
     if (dirty) emit('stocks:changed');
     emit('movers:changed');
