@@ -12,6 +12,7 @@ import { memo } from './cache.js';
 import * as finmind from './providers/finmind.js';
 import * as yahoo from './providers/yahoo.js';
 import * as stooq from './providers/stooq.js';
+import * as twse from './providers/twse.js';
 import { calcRSI } from '../src/utils/diagnose.js';
 import { getAllIndustryStats } from './industryContext.js';
 
@@ -147,7 +148,20 @@ export async function runBacktest({ codes = PEERS, lookbackDays = 252 } = {}) {
         }
       } catch { /* skip */ }
     }
-    // 備援 Stooq（無 quota）
+    // 備援 TWSE（穩定但慢）
+    if (!raw) {
+      try {
+        const tw = await memo(`bt:tw:${code}`, 24 * 60 * 60 * 1000, () => twse.stockDayHistory(code, 365));
+        if (tw && tw.length >= 90) {
+          raw = tw.map((d) => ({
+            date: d.date, open: d.open, close: d.close,
+            max: d.high, min: d.low,
+            Trading_Volume: d.volume,
+          }));
+        }
+      } catch { /* skip */ }
+    }
+    // 備援 Stooq（最後防線）
     if (!raw) {
       try {
         const sq = await memo(`bt:sq:${code}`, 60 * 60 * 1000, () => stooq.chart(`${code}.tw`, 365));

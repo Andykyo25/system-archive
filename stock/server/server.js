@@ -300,7 +300,19 @@ app.get('/api/kline/:code', async (req, res) => {
         }
       } catch (e) { console.warn(`[kline ${code}] yahoo:`, e.message); }
     }
-    // 備援 2：Stooq CSV（無 quota，最後防線）
+    // 備援 2：TWSE STOCK_DAY（用戶 diag 顯示 TWSE 穩定 — 主要 TW backup）
+    if (!data) {
+      try {
+        const tw = await memo(`twseDay:${code}:${days}`, 24 * 60 * 60 * 1000, () => twse.stockDayHistory(code, days));
+        if (tw && tw.length >= 30) {
+          data = tw.map((d) => ({
+            date: d.date, open: d.open, max: d.high, min: d.low, close: d.close,
+            Trading_Volume: d.volume,
+          }));
+        }
+      } catch (e) { console.warn(`[kline ${code}] twse:`, e.message); }
+    }
+    // 備援 3：Stooq CSV（最後防線）
     if (!data) {
       try {
         const sq = await memo(`sqKline:${code}:${days}`, 30 * 60 * 1000, () => stooq.chart(`${code}.tw`, Math.max(days, 100)));
@@ -312,7 +324,7 @@ app.get('/api/kline/:code', async (req, res) => {
         }
       } catch (e) { console.warn(`[kline ${code}] stooq:`, e.message); }
     }
-    if (!data) throw new Error('K 線資料不可用（FinMind / Yahoo / Stooq 全失敗）');
+    if (!data) throw new Error('K 線資料不可用（FinMind / Yahoo / TWSE / Stooq 全失敗）');
     ok(res, data);
   } catch (e) { fail(res, e); }
 });
