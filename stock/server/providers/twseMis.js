@@ -45,13 +45,30 @@ function parseRow(r) {
   const z = num(r.z);
   const y = num(r.y);
   const o = num(r.o);
+  const high = num(r.h);
+  const low = num(r.l);
+  const limitUp = num(r.u);
+  const limitDown = num(r.w);
   // 五檔最佳買賣
   const bid = fives(r.b);   // 買盤五檔（高 → 低）
   const ask = fives(r.a);   // 賣盤五檔（低 → 高）
   const bestBid = bid[0] ?? null;
   const bestAsk = ask[0] ?? null;
-  // 即時成交價：z 為主，無成交時取最佳買賣均價，再無就用開盤
-  const price = z ?? (bestBid && bestAsk ? (bestBid + bestAsk) / 2 : o);
+  // ★ 改進 price 來源優先序（修復漲停／跌停鎖死取不到價的 bug）：
+  //   1. z（即時成交價）— 正常成交時最準
+  //   2. 漲停鎖死（bestBid 存在但 bestAsk 不存在 = 沒人賣）→ 取 bestBid（漲停價）
+  //   3. 跌停鎖死（bestAsk 存在但 bestBid 不存在 = 沒人買）→ 取 bestAsk（跌停價）
+  //   4. 兩邊都有 → 取中間價
+  //   5. 都沒 → 用 high（盤中最高，比 open 接近現況）
+  //   6. 最後才退到 open
+  let price;
+  if (z != null) price = z;
+  else if (bestBid != null && bestAsk == null) price = bestBid;            // 漲停鎖死
+  else if (bestAsk != null && bestBid == null) price = bestAsk;            // 跌停鎖死
+  else if (bestBid != null && bestAsk != null) price = (bestBid + bestAsk) / 2;
+  else if (high != null && limitUp != null && high >= limitUp) price = limitUp;   // 漲停但缺五檔
+  else if (low != null && limitDown != null && low <= limitDown) price = limitDown;
+  else price = high ?? o;
   return {
     code: r.c,
     name: r.n,
@@ -60,11 +77,11 @@ function parseRow(r) {
     price,
     last: z,                // 真實最後成交（可能 -）
     open: o,
-    high: num(r.h),
-    low: num(r.l),
+    high,
+    low,
     prevClose: y,
-    limitUp: num(r.u),
-    limitDown: num(r.w),
+    limitUp,
+    limitDown,
     volume: num(r.v),       // 累計成交張數
     bestBid,
     bestAsk,

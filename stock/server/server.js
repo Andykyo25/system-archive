@@ -1373,17 +1373,6 @@ app.get('/api/news', async (req, res) => {
   } catch (e) { fail(res, e); }
 });
 
-// ───────────────────────── 個股盤中分時資料 ─────────────────────────
-// Yahoo intraday：1 分線、當日 → 給「即時走勢圖」用
-app.get('/api/intraday/:code', async (req, res) => {
-  const code = req.params.code;
-  const interval = req.query.interval || '1m';
-  try {
-    const data = await memo(`intraday:${code}:${interval}`, 30000, () => yahoo.intraday(`${code}.TW`, { interval, range: '1d' }));
-    ok(res, data);
-  } catch (e) { fail(res, e); }
-});
-
 // ───────────────────────── 啟動 ─────────────────────────
 
 app.listen(PORT, async () => {

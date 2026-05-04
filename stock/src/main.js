@@ -5,7 +5,6 @@ import * as search from './ui/search.js';
 import * as drawer from './ui/drawer.js';
 import * as sidebar from './ui/sidebar.js';
 import * as indices from './ui/indices.js';
-import * as heatmap from './ui/heatmap.js';
 import * as movers from './ui/movers.js';
 import * as aside from './ui/aside.js';
 import * as stockPanel from './ui/stockPanel.js';
@@ -21,7 +20,6 @@ function boot() {
   drawer.mount();
   sidebar.mount();
   indices.mount();
-  heatmap.mount();
   movers.mount();
   aside.mount();
   stockPanel.mount();

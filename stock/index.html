@@ -114,15 +114,6 @@
           <div class="kpi"><div class="lab">布林上 / 下軌 (20,2σ)</div><div class="val" id="bbBand" style="font-size:13px">--</div></div>
         </div>
 
-        <!-- 盤中即時走勢 (1 分線) -->
-        <div class="intraday-wrap" style="margin-bottom:14px">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-            <div class="aside-title" style="margin:0">▲ 盤中即時走勢（1 分 K · 當日）</div>
-            <div id="intraday-stat" style="font-size:11px;color:var(--dim);font-family:'JetBrains Mono',monospace">--</div>
-          </div>
-          <div class="chart-wrap" style="height:160px;background:var(--bg-3);border-radius:6px;padding:6px"><canvas id="chartIntraday"></canvas></div>
-        </div>
-
         <div class="chart-row">
           <div class="chart-wrap" style="height:260px"><canvas id="chartK"></canvas></div>
           <div class="chart-wrap" style="height:90px"><canvas id="chartVol"></canvas></div>
@@ -484,29 +475,6 @@
           <div class="aside-title" style="color:var(--down)">▼ 跌幅榜 TOP</div>
           <div class="movers-list" id="losers"></div>
         </div>
-      </div>
-    </div>
-
-    <div class="panel">
-      <div class="panel-head">
-        <h2>市場熱力圖</h2>
-        <div class="actions">
-          <button class="tab active" data-heat="all">全市場</button>
-          <button class="tab" data-heat="weight">權值股</button>
-          <button class="tab" data-heat="ai">AI 鏈</button>
-          <button class="tab" data-heat="leo">低軌衛星</button>
-          <button class="tab" data-heat="robot">機器人</button>
-        </div>
-      </div>
-      <div class="heatmap" id="heatmap"></div>
-      <div class="legend" style="margin-top:10px;justify-content:center">
-        <span>＜-7%</span>
-        <span><span class="sw" style="background:#0f6e3c"></span></span>
-        <span><span class="sw" style="background:#1ed760"></span></span>
-        <span><span class="sw" style="background:#3a4252"></span>0%</span>
-        <span><span class="sw" style="background:#ff3b4e"></span></span>
-        <span><span class="sw" style="background:#a01528"></span></span>
-        <span>＞+7%</span>
       </div>
     </div>
 

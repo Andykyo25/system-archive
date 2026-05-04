@@ -316,9 +316,6 @@ async function renderTech(code, s) {
     options: { plugins: { legend: { labels: { color: '#aab2c0', font: { size: 9 } } } }, scales: { x: { display: false }, y: { ticks: theme.axis, grid: theme.grid } }, maintainAspectRatio: false, animation: false },
   });
 
-  // 盤中即時走勢（不阻塞主流程）
-  renderIntraday(code).catch(() => {});
-
   // 技術診斷 — 統一向後端拿（與 AI 智選共用同一份 diagnose 結果，避免雙路徑差異）
   let d = null;
   let diagError = null;
@@ -383,71 +380,6 @@ function renderDiagError(msg) {
   if (pbText) pbText.textContent = '資料完整度不足，暫不提供操作劇本';
   const pbLevels = document.getElementById('diag-levels');
   if (pbLevels) pbLevels.innerHTML = '';
-}
-
-// 盤中分時即時走勢圖（1 分 K，當日）
-async function renderIntraday(code) {
-  const statEl = document.getElementById('intraday-stat');
-  const canvas = document.getElementById('chartIntraday');
-  if (!canvas) return;
-
-  let resp;
-  try {
-    resp = await api.intraday(code, '1m');
-  } catch (e) {
-    if (statEl) statEl.textContent = '盤中資料載入失敗';
-    return;
-  }
-  const points = resp?.points || [];
-  if (!points.length) {
-    if (statEl) statEl.textContent = '今日尚未開盤 / 無分時資料';
-    mountChart('chartIntraday', {
-      type: 'line',
-      data: { labels: [], datasets: [] },
-      options: { plugins: { legend: { display: false } }, maintainAspectRatio: false, animation: false },
-    });
-    return;
-  }
-
-  const prevClose = resp?.meta?.prevClose;
-  const labels = points.map((p) => p.time);
-  const closes = points.map((p) => p.close);
-  const last = closes[closes.length - 1];
-  const high = Math.max(...closes);
-  const low  = Math.min(...closes);
-  const totalVol = points.reduce((s, p) => s + (p.volume || 0), 0);
-  const pct = prevClose ? ((last - prevClose) / prevClose) * 100 : 0;
-  const upColor = pct >= 0 ? '#ff3b4e' : '#1ed760';
-
-  if (statEl) {
-    statEl.innerHTML = `現價 <b style="color:${upColor}">${fmt(last, 2)}</b> · `
-      + `${pct >= 0 ? '+' : ''}${pct.toFixed(2)}% · `
-      + `日高 ${fmt(high, 2)} / 日低 ${fmt(low, 2)} · `
-      + `成交 ${fmt(totalVol, 0)}`;
-  }
-
-  // 平盤線：用昨收
-  const flatLine = prevClose != null ? closes.map(() => prevClose) : null;
-
-  const datasets = [
-    { label: '當日走勢', data: closes, borderColor: upColor, backgroundColor: pct >= 0 ? 'rgba(255,59,78,.10)' : 'rgba(30,215,96,.10)', borderWidth: 1.6, pointRadius: 0, tension: .15, fill: true },
-  ];
-  if (flatLine) {
-    datasets.push({ label: '昨收', data: flatLine, borderColor: 'rgba(170,178,192,.5)', borderDash: [4, 4], borderWidth: 1, pointRadius: 0 });
-  }
-
-  mountChart('chartIntraday', {
-    type: 'line',
-    data: { labels, datasets },
-    options: {
-      plugins: { legend: { display: false }, tooltip: { mode: 'index', intersect: false } },
-      scales: {
-        x: { ticks: { ...theme.axis, maxTicksLimit: 8 }, grid: theme.grid },
-        y: { ticks: theme.axis, grid: theme.grid },
-      },
-      maintainAspectRatio: false, animation: false,
-    },
-  });
 }
 
 // 過擬合對策面板：共識度、歷史命中率、流動性、成本可行性

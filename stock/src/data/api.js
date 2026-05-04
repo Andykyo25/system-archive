@@ -29,7 +29,6 @@ export const api = {
   movers: () => call('/movers'),
   news: (category = 'tw_stock', limit = 20, keyword = '') =>
     call(`/news?category=${category}&limit=${limit}${keyword ? `&keyword=${encodeURIComponent(keyword)}` : ''}`),
-  intraday: (code, interval = '1m') => lcMemo(`intra:${code}:${interval}`, 30e3, () => call(`/intraday/${code}?interval=${interval}`)),
   diagnose: (code) => lcMemo(`diag:${code}`, 30e3, () => call(`/diagnose/${code}`)),
   // 持股追蹤 + 報告
   portfolioList: () => call('/portfolio'),

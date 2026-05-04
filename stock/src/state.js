@@ -13,7 +13,6 @@ export const state = {
   session: 'closed',         // pre / live / after / closed
   serverOnline: false,       // 後端是否回應
   currentCode: initialCode,
-  heatFilter: 'all',
   indices: null,             // { taiex, otc, sox, ... }
   stocks: {},                // code -> meta（初始來自 mock，盤中價以快照覆寫）
   movers: { gainers: [], losers: [] },
