@@ -186,7 +186,7 @@ function MACDseries(arr) {
 
 async function renderTech(code, s) {
   // 並行抓 90 天 K 線（FinMind 日線）與當前即時報價（state 中由 Yahoo 灌入）
-  let k;
+  let k = [];
   let realData = false;
   try {
     const raw = await api.kline(code, 90);
@@ -198,9 +198,15 @@ async function renderTech(code, s) {
       vol: +(r.Trading_Volume ?? r.volume ?? 0),
       date: r.date,
     })).filter((d) => Number.isFinite(d.close));
-    realData = k.length > 0;
-  } catch { k = []; }
-  if (!k.length) k = genMockK(s.price || 100, 60);
+    realData = k.length >= 30;
+  } catch (err) {
+    console.warn('[kline] fetch failed:', err.message);
+  }
+  // 不再退回 mock 假資料 — 沒真實 K 線就直接顯示 empty state，避免每次刷新看到不同隨機線
+  if (!realData) {
+    renderDiagError('K 線資料載入失敗（FinMind/Yahoo 暫不可用），技術圖暫無真實資料');
+    return;
+  }
 
   // 關鍵：FinMind 日線盤中延遲 5-15 分鐘，用 state.stocks (Yahoo 即時) 覆蓋最後一筆
   const realtimePrice = state.stocks[code]?.price;

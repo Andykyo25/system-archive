@@ -145,19 +145,21 @@ export async function runBacktest({ codes = PEERS, lookbackDays = 252 } = {}) {
   const variants = ['baseline', 'legacy', 'current', 'no-industry', 'no-regime'];
   const results = {};
 
+  // ── Baseline: 真正的 Buy-and-Hold（單筆持有到底，扣 1 次 TX）──
+  results.baseline = simulateBuyAndHold(klines);
+
+  // ── 其他 4 個：訊號型策略 ──
   for (const variant of variants) {
+    if (variant === 'baseline') continue;
     const trades = [];
     for (const code of Object.keys(klines)) {
       const k = klines[code];
-      // TAIEX 對齊（截到 k.length）
       const taiexAligned = taiexCloses.length >= k.length
         ? taiexCloses.slice(taiexCloses.length - k.length)
         : null;
-      // 從 60 起算（讓 MA60 / 60 日報酬有資料）；最後 5 天因 hold 期外不計
       for (let i = 60; i < k.length - HOLD_DAYS; i++) {
         const slice = k.slice(0, i + 1);
         const taiexSlice = taiexAligned ? taiexAligned.slice(0, i + 1) : null;
-        // industry RS only if needed by variant
         let indRank = null;
         if (variant === 'current') {
           indRank = industryRsAt(code, k[i].date, i, klines, industryMap);
@@ -165,7 +167,6 @@ export async function runBacktest({ codes = PEERS, lookbackDays = 252 } = {}) {
         const taiexTr = taiexSlice ? taiexTrendAt(taiexSlice, taiexSlice.length - 1) : 0;
         const dir = scoreAt(slice, taiexSlice, indRank, taiexTr, variant);
         if (!dir || dir === 'neutral') continue;
-        // 模擬交易
         const entry = k[i].close;
         const exit = k[i + HOLD_DAYS].close;
         if (!(entry > 0)) continue;
@@ -185,6 +186,57 @@ export async function runBacktest({ codes = PEERS, lookbackDays = 252 } = {}) {
     holdDays: HOLD_DAYS,
     txCost: TX_COST,
     results,
+  };
+}
+
+// 真正的 Buy-and-Hold 模擬：每檔股票第 60 天進場 → 持有到最後一天 → 收一次 1.17% 雙趟成本
+// daily portfolio return = 各股當日 mark-to-market 報酬的等權平均
+function simulateBuyAndHold(klines) {
+  const codes = Object.keys(klines).filter((c) => klines[c].length >= 90);
+  if (!codes.length) {
+    return { trades: 0, tradingDays: 0, winRate: null, cumulativeReturn: 0, avgReturn: null, sharpe: 0, maxDrawdown: 0, equity: [] };
+  }
+  const byDate = new Map();
+  for (const code of codes) {
+    const k = klines[code];
+    const startIdx = 60;
+    for (let i = startIdx + 1; i < k.length; i++) {
+      if (k[i - 1].close > 0) {
+        const r = (k[i].close - k[i - 1].close) / k[i - 1].close;
+        if (!byDate.has(k[i].date)) byDate.set(k[i].date, []);
+        byDate.get(k[i].date).push(r);
+      }
+    }
+  }
+  const dailyReturns = [];
+  let eq = 1, peak = 1, maxDD = 0;
+  const equity = [];
+  for (const [date, rets] of [...byDate.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
+    const dayRet = avg(rets);
+    dailyReturns.push(dayRet);
+    eq *= (1 + dayRet);
+    equity.push({ date, eq: +eq.toFixed(4) });
+    if (eq > peak) peak = eq;
+    const dd = (eq - peak) / peak;
+    if (dd < maxDD) maxDD = dd;
+  }
+  // 收尾扣 1 次雙趟成本
+  eq *= (1 - TX_COST);
+  if (equity.length) equity[equity.length - 1].eq = +eq.toFixed(4);
+  const m = avg(dailyReturns);
+  const s = std(dailyReturns);
+  const sharpe = s > 0 ? +((m / s) * Math.sqrt(252)).toFixed(2) : 0;
+  const step = Math.max(1, Math.floor(equity.length / 60));
+  const thinned = equity.filter((_, i) => i === 0 || i === equity.length - 1 || i % step === 0);
+  return {
+    trades: codes.length,
+    tradingDays: dailyReturns.length,
+    winRate: null,
+    cumulativeReturn: +((eq - 1) * 100).toFixed(2),
+    avgReturn: null,
+    sharpe,
+    maxDrawdown: +(maxDD * 100).toFixed(1),
+    equity: thinned,
   };
 }
 

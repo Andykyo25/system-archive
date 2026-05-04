@@ -280,7 +280,28 @@ app.get('/api/kline/:code', async (req, res) => {
   const end = todayIso();
   const start = new Date(Date.now() - days * 86400e3).toISOString().slice(0, 10);
   try {
-    const data = await memo(`kline:${code}:${days}`, TTL_LIVE * 60, () => finmind.stockPrice(code, start, end));
+    let data = null;
+    // 主源：FinMind
+    try {
+      data = await memo(`kline:${code}:${days}`, TTL_LIVE * 60, () => finmind.stockPrice(code, start, end));
+      if (!data || data.length < 30) data = null;
+    } catch (e) {
+      console.warn(`[kline ${code}] finmind:`, e.message);
+    }
+    // 備援：Yahoo chart（轉成 FinMind 同 schema）
+    if (!data) {
+      try {
+        const yh = await memo(`yhKline:${code}:${days}`, 5 * 60 * 1000, () => yahoo.chart(`${code}.TW`, '3mo', '1d'));
+        if (yh && yh.length >= 30) {
+          data = yh.map((d) => ({
+            date: d.date,
+            open: d.open, max: d.high, min: d.low, close: d.close,
+            Trading_Volume: Math.round((d.volume || 0) / 1000),
+          }));
+        }
+      } catch (e) { console.warn(`[kline ${code}] yahoo:`, e.message); }
+    }
+    if (!data) throw new Error('K 線資料不可用（FinMind 與 Yahoo 都失敗）');
     ok(res, data);
   } catch (e) { fail(res, e); }
 });

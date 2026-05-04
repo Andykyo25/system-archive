@@ -66,12 +66,15 @@ function render(r) {
     const cumColor = d.cumulativeReturn > 0 ? 'var(--up)' : 'var(--down)';
     const sharpeColor = d.sharpe > 1 ? 'var(--up)' : d.sharpe > 0 ? 'var(--gold)' : 'var(--down)';
     const winColor = d.winRate >= 55 ? 'var(--up)' : d.winRate >= 50 ? 'var(--gold)' : 'var(--down)';
+    const winText = d.winRate == null ? '<span style="color:var(--dim)">—</span>' : `<span style="color:${winColor}">${d.winRate}%</span>`;
+    const avgText = d.avgReturn == null ? '<span style="color:var(--dim)">—</span>' : `${d.avgReturn >= 0 ? '+' : ''}${d.avgReturn}%`;
+    const tradeLabel = v === 'baseline' ? `${d.trades} 檔` : d.trades;
     return `<tr ${v === 'current' ? 'style="background:rgba(246,196,82,.08)"' : ''}>
       <td style="text-align:left"><span style="display:inline-block;width:10px;height:10px;background:${color};border-radius:2px;margin-right:6px"></span><b>${label}</b>${v === 'current' ? ' ⭐' : ''}</td>
-      <td>${d.trades}</td>
-      <td style="color:${winColor}">${d.winRate}%</td>
+      <td>${tradeLabel}</td>
+      <td>${winText}</td>
       <td style="color:${cumColor};font-weight:700">${d.cumulativeReturn >= 0 ? '+' : ''}${d.cumulativeReturn}%</td>
-      <td>${d.avgReturn >= 0 ? '+' : ''}${d.avgReturn}%</td>
+      <td>${avgText}</td>
       <td style="color:${sharpeColor};font-weight:700">${d.sharpe}</td>
       <td style="color:var(--down)">${d.maxDrawdown}%</td>
     </tr>`;
