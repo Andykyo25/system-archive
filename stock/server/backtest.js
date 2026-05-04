@@ -32,7 +32,11 @@ const std = (arr) => {
   return Math.sqrt(arr.reduce((s, x) => s + (x - m) ** 2, 0) / arr.length);
 };
 
-// ─── 評分函式（5 個 variants 共用，差別在 flag）───
+// ─── 評分函式 v2：Long-only + 反轉進場 + 強度門檻 ───
+// 三大優化：
+//   1. Long-only — 牛市做空必死，全面拿掉 short
+//   2. 反轉進場 — 跳過 RSI > 75（追高過熱）與 < 40（接刀），偏好拉回（40-55）或溫和突破（60-70）
+//   3. 強度門檻 — score >= 3 才進場（legacy 因無 RS/industry 加分機會放寬到 2）
 function scoreAt(slice, taiexSlice, industryRank, taiexTrendAtT, variant) {
   if (variant === 'baseline') return 'long';
   const last = slice[slice.length - 1];
@@ -42,34 +46,42 @@ function scoreAt(slice, taiexSlice, industryRank, taiexTrendAtT, variant) {
   const ma5 = avg(closes.slice(-5));
   const ma20 = avg(closes.slice(-20));
   const rsi = calcRSI(closes, 14);
-  let trendV = ma5 > ma20 ? 1 : -1;
-  const priceV = last.close > ma20 ? 1 : -1;
-  const momV = rsi == null ? 0 : (rsi > 55 ? 1 : rsi < 45 ? -1 : 0);
+  if (rsi == null) return 'neutral';
 
-  // RS vs TAIEX（legacy 不用）
+  // ─ 必要條件 ─
+  if (ma5 <= ma20 || last.close <= ma20) return 'neutral';  // 必須在上升趨勢中
+  if (rsi > 75 || rsi < 40) return 'neutral';               // 過熱/太弱直接跳過
+
+  // 大盤 regime guard（legacy / no-regime 不用）
+  if (variant !== 'legacy' && variant !== 'no-regime' && taiexTrendAtT === -1) return 'neutral';
+
+  // ─ 評分 ─
+  let score = 0;
+
+  // 1. 進場型態（拉回 40-55 或溫和突破 60-70 較佳；55-60 中性）
+  if ((rsi >= 40 && rsi <= 55) || (rsi >= 60 && rsi <= 70)) score += 2;
+  else score += 1;
+
+  // 2. RS vs TAIEX（legacy 不用）
   if (variant !== 'legacy' && taiexSlice && taiexSlice.length >= 61 && closes.length >= 61) {
     const sRet = (last.close - closes[closes.length - 61]) / closes[closes.length - 61];
     const tRet = (taiexSlice[taiexSlice.length - 1] - taiexSlice[taiexSlice.length - 61]) / taiexSlice[taiexSlice.length - 61];
     const rs = (sRet - tRet) * 100;
-    if (rs > 7) trendV = 1;
-    else if (rs < -7) trendV = -1;
+    if (rs > 7) score += 2;
+    else if (rs > 3) score += 1;
+    else if (rs < -3) score -= 1;
   }
 
-  // Industry RS（legacy / no-industry 不用）
-  let industryV = 0;
+  // 3. 產業 RS（legacy / no-industry 不用）
   if (variant !== 'legacy' && variant !== 'no-industry' && industryRank != null) {
-    if (industryRank > 0.7) industryV = 1;
-    else if (industryRank < 0.3) industryV = -1;
+    if (industryRank > 0.7) score += 2;
+    else if (industryRank > 0.5) score += 1;
+    else if (industryRank < 0.3) return 'neutral';  // 產業後段直接淘汰
   }
 
-  // Regime（legacy / no-regime 不用）
-  let regimeV = 0;
-  if (variant !== 'legacy' && variant !== 'no-regime' && taiexTrendAtT === -1) {
-    regimeV = -1; // 大盤空頭整體偏空
-  }
-
-  const sum = trendV + priceV + momV + industryV + regimeV;
-  return sum >= 2 ? 'long' : sum <= -2 ? 'short' : 'neutral';
+  // 門檻：legacy 因無 RS/industry 加分機會 → 放寬到 2
+  const threshold = variant === 'legacy' ? 2 : 3;
+  return score >= threshold ? 'long' : 'neutral';
 }
 
 function taiexTrendAt(taiexCloses, idx) {
