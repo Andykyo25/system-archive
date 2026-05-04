@@ -5,6 +5,7 @@
 
 import { memo } from './cache.js';
 import * as yahoo from './providers/yahoo.js';
+import * as stooq from './providers/stooq.js';
 
 const CTX_TTL = 5 * 60 * 1000;
 const TAIEX_KLINE_TTL = 24 * 60 * 60 * 1000;
@@ -18,12 +19,17 @@ function stdDev(arr) {
 
 export async function getMarketContext() {
   return memo('market:context', CTX_TTL, async () => {
+    // TAIEX 歷史：Stooq 為主（無 quota），Yahoo 為備（429 多）
     let taiexCloses = [];
     try {
-      const data = await memo('taiex:kline:90', TAIEX_KLINE_TTL, () => yahoo.chart('^TWII', '3mo', '1d'));
+      const data = await memo('taiex:stooq:90', TAIEX_KLINE_TTL, () => stooq.chart('^twi', 120));
       taiexCloses = (data || []).map((d) => +d.close).filter(Number.isFinite);
-    } catch (e) {
-      console.warn('[marketContext] TAIEX kline failed:', e.message);
+    } catch (e) { console.warn('[marketContext] stooq TAIEX:', e.message); }
+    if (taiexCloses.length < 60) {
+      try {
+        const data = await memo('taiex:yh:90', TAIEX_KLINE_TTL, () => yahoo.chart('^TWII', '3mo', '1d'));
+        taiexCloses = (data || []).map((d) => +d.close).filter(Number.isFinite);
+      } catch (e) { console.warn('[marketContext] yahoo TAIEX:', e.message); }
     }
 
     const ctx = {

@@ -483,10 +483,17 @@ app.get('/api/institutional/:code', async (req, res) => {
   const code = req.params.code;
   const start = new Date(Date.now() - 30 * 86400e3).toISOString().slice(0, 10);
   try {
-    const [rawInst, sh] = await Promise.all([
-      memo(`inst:${code}`, TTL_HIST / 24, () => finmind.institutional(code, start)),
-      memo(`shares:${code}`, TTL_HIST, () => finmind.sharesOutstanding(code).catch(() => null)),
-    ]);
+    // FinMind 失敗 → TWSE T86 fallback
+    let rawInst = null;
+    try {
+      rawInst = await memo(`inst:${code}`, TTL_HIST / 24, () => finmind.institutional(code, start));
+    } catch (e) { console.warn(`[inst ${code}] finmind:`, e.message); }
+    if (!rawInst || !rawInst.length) {
+      try {
+        rawInst = await memo(`twseInst:${code}:30`, 60 * 60 * 1000, () => twse.institutionalRecentForCode(code, 30));
+      } catch (e) { console.warn(`[inst ${code}] twse T86:`, e.message); }
+    }
+    const sh = await memo(`shares:${code}`, TTL_HIST, () => finmind.sharesOutstanding(code).catch(() => null)).catch(() => null);
     const cap = sh && sh.sharesOutstanding ? +sh.sharesOutstanding : null;
     const data = (rawInst || []).map((r) => {
       if (!cap || !r.name?.includes('投信')) return r;
@@ -782,22 +789,10 @@ async function loadStockDiagnose(code) {
     })),
   ]);
 
-  // K 線 4 層 fallback：FinMind → Yahoo → TWSE STOCK_DAY → Stooq
+  // K 線 4 層 fallback（順序已重排：TWSE 為主，因 FinMind 402 / Yahoo 429 都靠不住）
+  // FinMind → TWSE STOCK_DAY → Stooq → Yahoo
   let kSource = 'finmind';
   let rawKline = klineRaw;
-  if (!rawKline || rawKline.length < 30) {
-    try {
-      const yhK = await memo(`yhKline:${code}:90`, 300000, () => yahoo.chart(`${code}.TW`, '3mo', '1d'));
-      if (yhK && yhK.length >= 30) {
-        rawKline = yhK.map((d) => ({
-          open: d.open, high: d.high, low: d.low, close: d.close,
-          Trading_Volume: Math.round((d.volume || 0) / 1000),
-          date: d.date,
-        }));
-        kSource = 'yahoo';
-      }
-    } catch (e) { console.warn(`[diag ${code}] yahoo:`, e.message); }
-  }
   if (!rawKline || rawKline.length < 30) {
     try {
       const tw = await memo(`twseDay:${code}:90`, 24 * 60 * 60 * 1000, () => twse.stockDayHistory(code, 90));
@@ -824,9 +819,31 @@ async function loadStockDiagnose(code) {
       }
     } catch (e) { console.warn(`[diag ${code}] stooq:`, e.message); }
   }
+  if (!rawKline || rawKline.length < 30) {
+    try {
+      const yhK = await memo(`yhKline:${code}:90`, 300000, () => yahoo.chart(`${code}.TW`, '3mo', '1d'));
+      if (yhK && yhK.length >= 30) {
+        rawKline = yhK.map((d) => ({
+          open: d.open, high: d.high, low: d.low, close: d.close,
+          Trading_Volume: Math.round((d.volume || 0) / 1000),
+          date: d.date,
+        }));
+        kSource = 'yahoo';
+      }
+    } catch (e) { console.warn(`[diag ${code}] yahoo:`, e.message); }
+  }
 
   if (!rawKline || rawKline.length < 20) {
     throw new Error(`K 線資料不足（FinMind/Yahoo/TWSE/Stooq 全失敗）`);
+  }
+
+  // 法人 fallback：FinMind 失敗 → 改打 TWSE T86（免 quota）
+  let instUsed = instRaw && instRaw.length ? instRaw : null;
+  if (!instUsed) {
+    try {
+      const tw = await memo(`twseInst:${code}:5`, 60 * 60 * 1000, () => twse.institutionalRecentForCode(code, 5));
+      if (tw && tw.length) instUsed = tw;
+    } catch (e) { console.warn(`[diag ${code}] twse T86:`, e.message); }
   }
 
   const k = rawKline.map((r) => ({
@@ -863,7 +880,7 @@ async function loadStockDiagnose(code) {
 
   // ── 法人資料 enrich：補 trustPctOfCap（與 /api/institutional/:code 同邏輯）──
   const cap = shInfo?.sharesOutstanding ? +shInfo.sharesOutstanding : null;
-  const instEnriched = (instRaw || []).map((r) => {
+  const instEnriched = (instUsed || []).map((r) => {
     if (!cap || !r.name?.includes('投信')) return r;
     const net = (+r.buy || 0) - (+r.sell || 0);
     return { ...r, trustPctOfCap: (net / cap) * 100 };
@@ -1399,10 +1416,9 @@ app.listen(PORT, async () => {
     });
   });
 
-  // 啟動後 3 秒開始預熱「常用快取」— 解 Railway cold start 首次載入慢
-  // 預熱項：indices（大盤）+ 6 大權值股的 diagnose
-  // 用 setTimeout 避開啟動時與 listen() 同時 race；用 Promise.allSettled 任一失敗不影響其他
-  if (process.env.WARM_CACHE !== '0') {
+  // 啟動預熱（預設關閉，避免 FinMind/Yahoo 在啟動 30 秒內被打爆 quota）
+  // 要開：環境變數 WARM_CACHE=1
+  if (process.env.WARM_CACHE === '1') {
     setTimeout(async () => {
       const t0 = Date.now();
       const WEIGHTED = ['2330', '2317', '2454', '2308', '2891', '2882'];

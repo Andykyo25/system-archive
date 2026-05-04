@@ -51,6 +51,43 @@ export async function stockDay(stockNo, yyyymmFirst) {
   }).filter((d) => d && Number.isFinite(d.close));
 }
 
+// 三大法人單日全市場買賣超（T86）— 免 quota 官方來源
+// URL: /fund/T86?response=json&date=YYYYMMDD&selectType=ALL
+export async function institutionalByDay(yyyymmdd) {
+  const url = `https://www.twse.com.tw/fund/T86?response=json&date=${yyyymmdd}&selectType=ALL`;
+  const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0 TWSE-WarRoom/1.0', Accept: 'application/json' } });
+  if (!res.ok) throw new Error(`twse T86 HTTP ${res.status}`);
+  const j = await res.json();
+  if (j.stat !== 'OK') throw new Error(`twse T86 ${j.stat || 'no data'}`);
+  const fields = j.fields || [];
+  const idx = (kw) => fields.findIndex((f) => f && f.replace(/\s/g, '').includes(kw));
+  const codeI = idx('證券代號');
+  const nameI = idx('證券名稱');
+  // 欄位名歷年略有差，做寬鬆比對
+  const foreignI = fields.findIndex((f) => /外陸資.*買賣超.*不含/.test(f) || f === '外資買賣超股數');
+  const trustI = fields.findIndex((f) => /^投信買賣超/.test(f));
+  const totalI = fields.findIndex((f) => /三大法人.*買賣超/.test(f));
+  if (codeI < 0 || foreignI < 0 || trustI < 0 || totalI < 0) {
+    throw new Error('twse T86 欄位解析失敗');
+  }
+  const num = (s) => +String(s ?? '0').replace(/,/g, '') || 0;
+  return (j.data || []).map((row) => {
+    const code = String(row[codeI] || '').trim();
+    if (!/^\d{4,6}$/.test(code)) return null;
+    const foreign = num(row[foreignI]);
+    const trust = num(row[trustI]);
+    const total = num(row[totalI]);
+    return {
+      code,
+      name: String(row[nameI] || '').trim(),
+      foreign_net: Math.round(foreign / 1000),
+      trust_net: Math.round(trust / 1000),
+      dealer_net: Math.round((total - foreign - trust) / 1000),
+      total_net: Math.round(total / 1000),
+    };
+  }).filter(Boolean);
+}
+
 // 拉 N 天日線歷史（內部分月撈 + 速率限制）— 給 K 線 fallback 用
 export async function stockDayHistory(stockNo, days = 90) {
   const today = new Date();
@@ -68,6 +105,42 @@ export async function stockDayHistory(stockNo, days = 90) {
   const byDate = new Map();
   all.forEach((r) => byDate.set(r.date, r));
   return [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));
+}
+
+// 拉某檔近 N 個交易日的三大法人（會跳過週末 + 沒資料的日期）
+// 回傳 FinMind 相容格式：每天每法人各一列，含 buy/sell/name
+export async function institutionalRecentForCode(stockNo, daysWanted = 5) {
+  const out = [];
+  const today = new Date();
+  let collected = 0;
+  let attempts = 0;
+  while (collected < daysWanted && attempts < daysWanted * 3) {
+    const d = new Date(today.getFullYear(), today.getMonth(), today.getDate() - attempts);
+    attempts++;
+    const dow = d.getDay();
+    if (dow === 0 || dow === 6) continue;
+    const yyyymmdd = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
+    const isoDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    try {
+      const all = await institutionalByDay(yyyymmdd);
+      const r = all.find((x) => x.code === stockNo);
+      if (r) {
+        // 轉成 FinMind 相容（每法人一列、買賣分開）
+        const expand = (label, net) => ({
+          date: isoDate,
+          name: label,
+          buy: net > 0 ? net : 0,
+          sell: net < 0 ? -net : 0,
+        });
+        out.push(expand('外資', r.foreign_net));
+        out.push(expand('投信', r.trust_net));
+        out.push(expand('自營商', r.dealer_net));
+        collected++;
+      }
+    } catch { /* skip */ }
+    if (collected < daysWanted) await new Promise((r) => setTimeout(r, 200));
+  }
+  return out;
 }
 
 // 上市個股收盤行情（含成交量、開高低收）— 全部上市股

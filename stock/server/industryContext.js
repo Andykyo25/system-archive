@@ -27,22 +27,22 @@ export async function getAllIndustryStats() {
 
     const start = new Date(Date.now() - 90 * 86400e3).toISOString().slice(0, 10);
     const tasks = [...new Set(PEERS)].map(async (code) => {
-      // FinMind → Yahoo fallback
+      // 順序調整：Stooq 為主（無 quota）→ FinMind → Yahoo（最容易 429）
       let closes = [];
       try {
-        const k = await memo(`kline:${code}:90`, 60000, () => finmind.stockPrice(code, start));
-        if (k && k.length >= 61) closes = k.map((r) => +r.close).filter(Number.isFinite);
-      } catch { /* try Yahoo */ }
+        const sq = await memo(`sqKline:${code}:90`, 30 * 60 * 1000, () => stooq.chart(`${code}.tw`, 100));
+        if (sq && sq.length >= 61) closes = sq.map((d) => +d.close).filter(Number.isFinite);
+      } catch { /* skip */ }
+      if (closes.length < 61) {
+        try {
+          const k = await memo(`kline:${code}:90`, 60000, () => finmind.stockPrice(code, start));
+          if (k && k.length >= 61) closes = k.map((r) => +r.close).filter(Number.isFinite);
+        } catch { /* skip */ }
+      }
       if (closes.length < 61) {
         try {
           const yh = await memo(`yhKline:${code}:90`, 5 * 60 * 1000, () => yahoo.chart(`${code}.TW`, '3mo', '1d'));
           if (yh && yh.length >= 61) closes = yh.map((d) => +d.close).filter(Number.isFinite);
-        } catch { /* try stooq */ }
-      }
-      if (closes.length < 61) {
-        try {
-          const sq = await memo(`sqKline:${code}:90`, 30 * 60 * 1000, () => stooq.chart(`${code}.tw`, 100));
-          if (sq && sq.length >= 61) closes = sq.map((d) => +d.close).filter(Number.isFinite);
         } catch { /* skip */ }
       }
       if (closes.length < 61) return null;

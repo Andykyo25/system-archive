@@ -4,12 +4,23 @@
 const BASE = 'https://query1.finance.yahoo.com';
 const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36';
 
+// Circuit breaker：連續 429 後冷卻 10 分鐘，避免無謂呼叫拖慢回應
+let circuitOpenUntil = 0;
+const CIRCUIT_COOLDOWN_MS = 10 * 60 * 1000;
+
 async function fetchJson(url, { retries = 1, backoffMs = 800 } = {}) {
+  if (Date.now() < circuitOpenUntil) {
+    throw new Error(`yahoo circuit open (cooldown until ${new Date(circuitOpenUntil).toISOString().slice(11, 19)})`);
+  }
   for (let attempt = 0; attempt <= retries; attempt++) {
     const res = await fetch(url, { headers: { 'User-Agent': UA, Accept: 'application/json' } });
     if (res.ok) return res.json();
-    // 429 rate limit：退避一次再試
-    if (res.status === 429 && attempt < retries) {
+    if (res.status === 429) {
+      // 第二次仍 429 → 開啟 circuit
+      if (attempt >= retries) {
+        circuitOpenUntil = Date.now() + CIRCUIT_COOLDOWN_MS;
+        throw new Error(`yahoo HTTP 429 ${url} — circuit opened ${CIRCUIT_COOLDOWN_MS / 60000} 分鐘`);
+      }
       await new Promise((r) => setTimeout(r, backoffMs * (attempt + 1)));
       continue;
     }
