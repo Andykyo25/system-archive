@@ -15,6 +15,61 @@
 
 ---
 
+## 1.5 決策分析流程（白話版）
+
+從原始資料變成「該不該買」的完整路徑：
+
+```
+① 5 個免費資料源（無付費）：
+   TWSE MIS（即時）/ TWSE OpenAPI / 鉅亨網 Cnyes / Stooq / Yahoo
+                          ↓
+② 5 層 fallback 拉 K 線（任一活著就成功）：
+   FinMind → Cnyes → TWSE STOCK_DAY → Stooq → Yahoo
+                          ↓
+③ 4 維獨立評分（diagnose.js）：
+   ┌───────┬───────┬───────┬───────┐
+   │ 趨勢  │ 動能  │ 量價  │ 籌碼  │  各自 0-100 分
+   │  30%  │  25%  │  20%  │  25%  │  動態權重（依命中率調整）
+   └───────┴───────┴───────┴───────┘
+                          ↓
+④ Ensemble 集成投票 + 一致性收縮：
+   四面意見一致 → 信心高，winRate 偏離 50 多
+   四面意見打架 → 信心低，winRate 拉回 50 附近
+                          ↓
+⑤ Feature Engineering 加分：
+   產業 RS / 大盤 regime / 漲停突破 / RSI 反轉 / 量能突破
+                          ↓
+⑥ 經濟限制收縮：
+   流動性低 ×0.7、波動高 ×0.85、目標獲利 < 2× 交易成本 ×0.85
+                          ↓
+⑦ 自我學習修正（個股實證命中率）：
+   過去類似訊號命中率 < 50% → ×0.6 ~ ×0.8
+   連 3 筆誤差 > 5% → 額外 ×0.7
+                          ↓
+⑧ 最終 winRate（clamp 15-78%）→ 對應劇本：
+   ≥ 60: 🟢 分批進場
+   ≥ 50: 🟢 等回測進場
+   ≥ 42: 🟡 觀望優先
+   ≥ 30: 🟠 減碼或不進場
+   < 30: 🔴 不適合進場
+   ─ 強勢突破日（漲停帶量）→ 🚀 順勢進場（override）
+                          ↓
+⑨ AI 顧問白話卡片：
+   • 系統怎麼想（白話 ✓ 正面 / ⚠ 負面）
+   • 該怎麼做（具體價位 — 進場區、停損、停利）
+   • 系統可信度（共識度、命中率、流動性、樣本數）
+                          ↓
+⑩ 自動寫進 Supabase predictions（含 features）→
+   5 個交易日後自動驗證 → 反饋給 ⑦
+```
+
+**設計核心：透明 + 不確定性顯示**
+- 不允許 100% 信心（上限 78%）
+- 顯示樣本數、命中率、共識度，讓用戶判斷可信度
+- 每個 feature 的加分都拆解透明（`featureUpgrade.contributions`）
+
+---
+
 ## 2. 高層架構
 
 ```
@@ -93,32 +148,47 @@ playbook 門檻：65→60、55→50、45→42（更積極）。
 
 ### K 線（loadStockDiagnose 與 /api/kline 都用此順序）
 ```
-FinMind  →  TWSE STOCK_DAY  →  Stooq CSV  →  Yahoo
-（402 quota 死）（穩定但慢）（無 quota）（限流嚴重）
+FinMind  →  Cnyes ⭐  →  TWSE STOCK_DAY  →  Stooq CSV  →  Yahoo
+（403/quota）（最穩主備援）（穩定但慢）（無 quota）（429 多）
 ```
-**注意**：FinMind 推到第一位是因為它最快（單次取所有資料），但 quota 用完就靠 TWSE 撐。
-Yahoo 排最後因為 429 太頻繁，且已加 circuit breaker（連續 429 → 冷卻 10 分鐘）。
+**目前實際運作**：FinMind 已死（403/402），**主要靠 Cnyes 鉅亨網 chart API 撐**。
+- Cnyes：個股 `TWS:XXXX:STOCK`、TAIEX `TWS:IX0001:INDEX`，免 quota、穩定、回應快
+- Cnyes URL：`ws.api.cnyes.com/ws/api/v1/charting/history`（有試 3 個 URL 變體）
+- Yahoo：connecting circuit breaker（連續 429 → 冷卻 10 分鐘）
 
 ### 即時報價（/api/quotes/batch）
 ```
 TWSE MIS（主，無 quota）→ Yahoo（備）→ FinMind cache → lastGoodQuotes
 ```
+**MIS 加固**：
+- batch 漏 code 自動單獨重試（解決 50 檔批次偶爾漏一兩個）
+- fetchJson 加 5 秒 AbortController timeout（防單次連線 hang 死）
+- parseRow 漲停／跌停鎖死時優先取 bestBid/bestAsk（解 2408 卡昨收問題）
 
 ### 三大法人
 ```
-FinMind institutional → TWSE T86（/fund/T86，免 quota 官方）
+FinMind institutional → TWSE T86（www.twse.com.tw/fund/T86，免 quota 官方）
 ```
 T86 一次回全市場，cache 1 小時。
 
 ### 大盤指數歷史（marketContext）
 ```
-Stooq ^twi  →  Yahoo ^TWII
+Cnyes IX0001 ⭐  →  Stooq ^twii / ^twi  →  Yahoo ^TWII
+```
+
+### 產業 RS 同業（industryContext）
+```
+Cnyes ⭐  →  Stooq  →  FinMind  →  Yahoo
 ```
 
 ### 國際指數
 ```
 Stooq（主，免 quota）→ Yahoo
 ```
+
+### Cache 加固（cache.js）
+- `memo` 加 **inflight 鎖**：同 key 的 concurrent 請求共享 promise，不會各跑一遍 fn
+- `memoFailsafe`：失敗也 cache 短時間 sentinel（例如 marketContext 60 秒、industryContext 5 分鐘），避免上游持續不可用時被狂打
 
 ---
 
@@ -206,8 +276,27 @@ loadMovers 建立時的昨日數據。
 
 **規則**：
 - bootstrapQuotes 是唯一可以**覆寫** price 的地方（MIS 是 SSOT）
+- diagnose 完成後 `state.stocks[code].price = d.close` 做最終同步（解 MIS batch 漏 code 時的 stale 問題）
 - loadMovers 只能**建立**新 entry，**不可覆寫**已存在的
 - 所有新加的 update path 必須遵守這個 invariant
+
+### N. /api/ranking 不要 fan-out 太多檔
+**踩過**：早期版本對 35-57 檔股票用 `Promise.all(tasks)` 並發跑 `loadStockDiagnose` →
+每檔打 4-5 個 provider → **200+ 並發 HTTP 請求** → FinMind 從 402 升級成 403 IP ban、
+Yahoo 429 持續、Stooq 也擋。
+
+**修法**：
+- ranking endpoint 強制並發 **3** 而非全並發
+- ranking.js（前端）改 lazy 模式：**啟動不自動觸發**，等使用者按「重新配置」按鈕才打
+- 背景 cron 從 5 分鐘 → 10 分鐘
+- warm cache 永久關（`if (false)`），避免啟動就把 quota 燒光
+
+### O. predictions 表缺 features 欄位
+寫入會自動偵測並剝除 `features` 重試（log 印一條提醒）。完整修法：
+```sql
+ALTER TABLE predictions ADD COLUMN IF NOT EXISTS features JSONB;
+```
+不修也能跑，但 ML 訓練資料就累積不出來。
 
 ---
 

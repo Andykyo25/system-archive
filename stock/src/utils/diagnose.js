@@ -1078,6 +1078,8 @@ export function diagnose(k, inst = [], opts = {}) {
   penalty = Math.min(penalty, 30);                                     // 罰分天花板
 
   // ─── 預先計算 close/ATR/levels（避免後面 TDZ 引用） ───
+  // ATR ratio 設計：target +2 ATR / stop -1.5 ATR → R/R = 1.33（前次 0.75，結構性負 EV）
+  // 這個比例下，winRate >= 50% 即可達正 EV
   const close = last.close;
   const atr = atr14 || close * 0.025;
   const fmt2 = (n) => n != null ? +n.toFixed(2) : null;
@@ -1085,10 +1087,11 @@ export function diagnose(k, inst = [], opts = {}) {
   const entryHigh = fmt2(close + atr * 0.3);
   const support10 = ma5 != null ? fmt2(ma5) : fmt2(close - atr);
   const support20 = ma20 != null ? fmt2(ma20) : fmt2(close - atr * 2);
-  const stopCandidates = [close - atr * 2, support10, support20].filter((v) => v != null && v < close);
-  const stopPrice = fmt2(stopCandidates.length ? Math.max(...stopCandidates) : close - atr * 2);
-  const target1 = fmt2(close + atr * 1.5);
-  const target2 = fmt2(close + atr * 3);
+  // 停損候選：close - 1.5 ATR、5MA、20MA — 取 < close 中最高（最緊）
+  const stopCandidates = [close - atr * 1.5, support10, support20].filter((v) => v != null && v < close);
+  const stopPrice = fmt2(stopCandidates.length ? Math.max(...stopCandidates) : close - atr * 1.5);
+  const target1 = fmt2(close + atr * 2);     // 1.5 → 2
+  const target2 = fmt2(close + atr * 3.5);   // 3 → 3.5
 
   // ──────────────────────────────────────────────
   // 6. 集成投票（Ensemble）+ 信心收縮（Regularization）
@@ -1157,6 +1160,25 @@ export function diagnose(k, inst = [], opts = {}) {
   regularizedBase = 50 + (regularizedBase - 50) * mtfMultiplier;
   const finalScore = 50 + (regularizedBase - 50) * economicShrink - penalty;
   const winRate = Math.round(clamp(finalScore, 15, 78));
+
+  // ─── 期望值 (Expected Value) — 加入賠率思維 ───
+  // EV = 勝率 × 上漲空間 − (1−勝率) × 下跌空間
+  // 同樣勝率，盈虧比差的 EV 可能為負（不該進場）；勝率不高但盈虧比好的 EV 可能正（該進）
+  const upsidePct = target1 != null ? +(((target1 - close) / close) * 100).toFixed(2) : null;
+  const downsidePct = stopPrice != null ? +(((close - stopPrice) / close) * 100).toFixed(2) : null;
+  const upsideTarget2Pct = target2 != null ? +(((target2 - close) / close) * 100).toFixed(2) : null;
+  const rrRatio = (upsidePct != null && downsidePct != null && downsidePct > 0)
+    ? +(upsidePct / downsidePct).toFixed(2) : null;
+  const winProb = winRate / 100;
+  const evTarget1 = (upsidePct != null && downsidePct != null)
+    ? +(winProb * upsidePct - (1 - winProb) * downsidePct).toFixed(2) : null;
+  const evTarget2 = (upsideTarget2Pct != null && downsidePct != null)
+    ? +(winProb * upsideTarget2Pct - (1 - winProb) * downsidePct).toFixed(2) : null;
+  const evCategory = evTarget1 == null ? 'unknown'
+    : evTarget1 >= 2 ? 'excellent'
+    : evTarget1 >= 0.5 ? 'positive'
+    : evTarget1 >= -0.5 ? 'neutral'
+    : 'negative';
 
   // 8. Walk-forward 歷史驗證 — 跑兩次（feature-augmented + legacy）取得 ROI 對照
   const historicalAccuracy = walkForwardAccuracy(k, { lookback: 60, holdDays: 5, taiexCloses: taiexHist });
@@ -1242,6 +1264,14 @@ export function diagnose(k, inst = [], opts = {}) {
     bias20, atr14, maDeduct20, volZ, turnoverRate,
     signals,
     score, winRate,
+    expectedValue: {                                     // ★ EV 期望值（盈虧比加權勝率）
+      target1: evTarget1,                                // EV @ 第一停利
+      target2: evTarget2,                                // EV @ 第二停利
+      upside: upsidePct,                                 // 上漲空間 %
+      downside: downsidePct,                             // 下跌空間 %
+      rrRatio,                                           // 盈虧比 = 上 / 下
+      category: evCategory,                              // excellent / positive / neutral / negative
+    },
     legacyWinRate,                                       // ★ ROI 對照：feature 升級前的勝率
     featureUpgrade: {                                    // ★ Feature engineering 貢獻明細
       delta: winRate - legacyWinRate,

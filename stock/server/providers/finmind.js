@@ -9,7 +9,23 @@ const BASE = 'https://api.finmindtrade.com/api/v4/data';
 let TOKEN = '';
 export function setToken(t) { TOKEN = t || ''; }
 
+// Circuit breaker — 一旦遇到 402/403/429 立即冷卻 1 小時，所有後續呼叫直接 throw（不再打 API）
+// 解決 quota 耗盡後仍對 FinMind 硬幹、拖慢 diag 整體速度的問題
+let circuitUntil = 0;
+const COOLDOWN_MS = 60 * 60 * 1000;
+const STATUS_OPEN_CIRCUIT = new Set([402, 403, 429]);
+
+export function circuitStatus() {
+  return {
+    open: Date.now() < circuitUntil,
+    cooldownEndsAt: circuitUntil ? new Date(circuitUntil).toISOString() : null,
+  };
+}
+
 async function call(dataset, params = {}) {
+  if (Date.now() < circuitUntil) {
+    throw new Error(`finmind circuit open (cooldown until ${new Date(circuitUntil).toISOString().slice(11, 19)})`);
+  }
   const url = new URL(BASE);
   url.searchParams.set('dataset', dataset);
   for (const [k, v] of Object.entries(params)) {
@@ -17,9 +33,22 @@ async function call(dataset, params = {}) {
   }
   const headers = TOKEN ? { Authorization: `Bearer ${TOKEN}` } : {};
   const res = await fetch(url, { headers });
-  if (!res.ok) throw new Error(`finmind ${dataset} HTTP ${res.status}`);
+  if (!res.ok) {
+    if (STATUS_OPEN_CIRCUIT.has(res.status)) {
+      circuitUntil = Date.now() + COOLDOWN_MS;
+      console.warn(`[finmind] circuit opened (HTTP ${res.status}) — 1 小時內所有 FinMind 呼叫直接 fallback`);
+    }
+    throw new Error(`finmind ${dataset} HTTP ${res.status}`);
+  }
   const json = await res.json();
-  if (json.status !== 200) throw new Error(`finmind ${dataset} status=${json.status} msg=${json.msg}`);
+  // FinMind 有時 200 但 status 402（quota exceeded as JSON body）
+  if (json.status !== 200) {
+    if (STATUS_OPEN_CIRCUIT.has(json.status)) {
+      circuitUntil = Date.now() + COOLDOWN_MS;
+      console.warn(`[finmind] circuit opened (status=${json.status}) — 1 小時內 fallback`);
+    }
+    throw new Error(`finmind ${dataset} status=${json.status} msg=${json.msg}`);
+  }
   return json.data || [];
 }
 

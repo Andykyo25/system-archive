@@ -16,6 +16,7 @@ import * as predictions from './predictions.js';
 import * as portfolio from './portfolio.js';
 import { getMarketContext } from './marketContext.js';
 import { getIndustryStatsFor } from './industryContext.js';
+import * as klineCache from './klineCache.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -280,8 +281,19 @@ app.get('/api/kline/:code', async (req, res) => {
   const start = new Date(Date.now() - days * 86400e3).toISOString().slice(0, 10);
   try {
     let data = null;
-    // 主源：FinMind
+    // ★ Layer 0：Supabase kline_cache（已收盤資料）
     try {
+      const cached = await klineCache.loadFromCache(code, days + 10);
+      if (cached.length >= Math.min(days, 60)) {
+        data = cached.map((d) => ({
+          date: d.date,
+          open: d.open, max: d.high, min: d.low, close: d.close,
+          Trading_Volume: d.vol,
+        }));
+      }
+    } catch { /* skip */ }
+    // 主源：FinMind（cache 不夠時）
+    if (!data) try {
       data = await memo(`kline:${code}:${days}`, TTL_LIVE * 60, () => finmind.stockPrice(code, start, end));
       if (!data || data.length < 30) data = null;
     } catch (e) {
@@ -336,6 +348,15 @@ app.get('/api/kline/:code', async (req, res) => {
       } catch (e) { console.warn(`[kline ${code}] stooq:`, e.message); }
     }
     if (!data) throw new Error('K 線資料不可用（FinMind / Yahoo / Cnyes / TWSE / Stooq 全失敗）');
+    // ★ 成功取得後背景寫進 Supabase（只存已收盤、跳過盤中未完成）
+    klineCache.saveToCache(code, data.map((d) => ({
+      date: d.date,
+      open: d.open != null ? +d.open : null,
+      high: +(d.max ?? d.high ?? 0) || null,
+      low: +(d.min ?? d.low ?? 0) || null,
+      close: +d.close,
+      vol: +(d.Trading_Volume ?? d.volume ?? 0),
+    })), 'kline-endpoint').catch(() => {});
     ok(res, data);
   } catch (e) { fail(res, e); }
 });
@@ -345,6 +366,14 @@ app.post('/api/quotes/reset', (_req, res) => {
   const before = lastGoodQuotes.size;
   lastGoodQuotes.clear();
   ok(res, { cleared: before });
+});
+
+// 各 provider circuit 狀態（debug 用）
+app.get('/api/providers/status', (_req, res) => {
+  ok(res, {
+    finmind: finmind.circuitStatus(),
+    // 其他 provider 的 circuit 狀態（Yahoo/Cnyes）目前是內部變數，未來可加 export
+  });
 });
 
 // ───────────────────────── 個股即時報價批次 ─────────────────────────
@@ -808,9 +837,23 @@ async function loadStockDiagnose(code) {
     })),
   ]);
 
-  // K 線 5 層 fallback：FinMind → Cnyes → TWSE STOCK_DAY → Stooq → Yahoo
+  // ★ Layer 0: Supabase kline_cache（已收盤的 90 日歷史）— 跑過一週後幾乎不再打外網
   let kSource = 'finmind';
   let rawKline = klineRaw;
+  if (!rawKline || rawKline.length < 30) {
+    try {
+      const cached = await klineCache.loadFromCache(code, 100);
+      if (cached.length >= 60) {
+        rawKline = cached.map((d) => ({
+          open: d.open, high: d.high, low: d.low, close: d.close,
+          Trading_Volume: d.vol,
+          date: d.date,
+        }));
+        kSource = `supabase(${cached.length})`;
+      }
+    } catch (e) { console.warn(`[diag ${code}] supabase cache:`, e.message); }
+  }
+  // 以下是原 5 層 fallback — 只在 cache 不夠時觸發
   if (!rawKline || rawKline.length < 30) {
     try {
       const cn = await memo(`cnyesKline:${code}:90`, 60 * 60 * 1000, () => cnyes.chart(code, 100));
@@ -866,6 +909,19 @@ async function loadStockDiagnose(code) {
 
   if (!rawKline || rawKline.length < 20) {
     throw new Error(`K 線資料不足（FinMind/Cnyes/TWSE/Stooq/Yahoo 全失敗）`);
+  }
+
+  // ★ 從外網新抓的 K 線 → 背景非阻塞 upsert 到 Supabase（只存 date < today，跳過盤中未收盤）
+  if (!kSource.startsWith('supabase')) {
+    const toCache = rawKline.map((r) => ({
+      date: r.date,
+      open: r.open != null ? +r.open : null,
+      high: +(r.max ?? r.high ?? 0) || null,
+      low: +(r.min ?? r.low ?? 0) || null,
+      close: +r.close,
+      vol: +(r.Trading_Volume ?? r.volume ?? 0),
+    }));
+    klineCache.saveToCache(code, toCache, kSource).catch((e) => console.warn(`[klineCache save ${code}]`, e.message));
   }
 
   // 法人 fallback：FinMind 失敗 → 改打 TWSE T86（免 quota）
@@ -1305,8 +1361,9 @@ app.get('/api/ranking', async (req, res) => {
   try {
     const cacheKey = `ranking:${codes.join(',')}`;
     const data = await memo(cacheKey, 5 * 60 * 1000, async () => {
-      // ★ 並發限 3：避免 35-57 檔同時打 4 個 provider 造成 200+ 並發請求把 FinMind 403 / Yahoo 429
-      const CONCURRENCY = 3;
+      // ★ 並發限 2 + 批次間 500ms 延遲：實測 FinMind/Cnyes 都會 rate limit，需溫柔
+      const CONCURRENCY = 2;
+      const BATCH_DELAY_MS = 500;
       const buildTask = (code) => async () => {
         try {
           const r = await memo(`diag:${code}`, 30000, () => loadStockDiagnose(code));
@@ -1315,6 +1372,7 @@ app.get('/api/ranking', async (req, res) => {
             code: r.code,
             close: r.close, prevClose: r.prevClose, chg: r.chg, pct: r.pct,
             winRate: r.winRate, score: r.score, subScores: r.subScores,
+            expectedValue: r.expectedValue,                  // ★ EV
             overall: r.overall, action: r.action, trend: r.trend,
             kdSignal: r.kd?.signal, macdSignal: r.macd?.signal, volSignal: r.vol?.signal,
             mainForce: r.inst?.mainForce, bias20: r.bias20, atr14: r.atr14,
@@ -1328,8 +1386,21 @@ app.get('/api/ranking', async (req, res) => {
         const batch = codes.slice(i, i + CONCURRENCY).map(buildTask);
         const r = await Promise.all(batch.map((t) => t()));
         all.push(...r.filter(Boolean));
+        // 批次間延遲，給 Cnyes/TWSE 喘息空間
+        if (i + CONCURRENCY < codes.length) {
+          await new Promise((resolve) => setTimeout(resolve, BATCH_DELAY_MS));
+        }
       }
-      all.sort((a, b) => b.winRate - a.winRate);
+      // ★ 改用 EV 排序：勝率 + 賠率合併指標，比純看勝率更接近實際獲利期望
+      // EV null（極少數無 levels 的標的）→ 退回 winRate 排序
+      all.sort((a, b) => {
+        const aEV = a.expectedValue?.target1;
+        const bEV = b.expectedValue?.target1;
+        if (aEV != null && bEV != null) return bEV - aEV;
+        if (aEV != null) return -1;
+        if (bEV != null) return 1;
+        return b.winRate - a.winRate;
+      });
       return all;
     });
 

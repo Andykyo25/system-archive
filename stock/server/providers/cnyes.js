@@ -73,37 +73,58 @@ export async function newsAggregate(categories = ['tw_stock', 'headline', 'wd_st
   return merged;
 }
 
-// 個股 / 大盤日線歷史（K 線備援 — 免 quota、穩定）
-// 鉅亨網 charting API — 嘗試多種 URL / symbol 變體（API 會時不時改規格）
-async function tryCnyesChart(symbol, from, to) {
-  const urls = [
-    `https://ws.api.cnyes.com/ws/api/v1/charting/history?symbol=${symbol}&resolution=D&from=${from}&to=${to}&quote=1`,
-    `https://ws.api.cnyes.com/ws/api/v1/charting/history?symbol=${symbol}&resolution=D&from=${from}&to=${to}`,
-    `https://api.cnyes.com/charting/api/v1/history?symbol=${symbol}&resolution=D&from=${from}&to=${to}`,
+// Cnyes circuit breaker — 連續 5 次空回應冷卻 5 分鐘
+let cnyesEmptyCount = 0;
+let cnyesCooldownUntil = 0;
+const CNYES_COOLDOWN_MS = 5 * 60 * 1000;
+const CNYES_EMPTY_THRESHOLD = 5;
+
+// 個股 / 大盤日線歷史（K 線備援）
+// 試多 URL 變體 + 編碼／不編碼 colon（cnyes 對 URL encoding 反應不穩）
+async function tryCnyesChart(symbolRaw, from, to) {
+  if (Date.now() < cnyesCooldownUntil) return null;
+  // symbolRaw 是 "TWS:2330:STOCK"；同時試「編碼」與「不編碼」兩種寫法
+  const symEnc = encodeURIComponent(symbolRaw);
+  const symbolVariants = [symEnc, symbolRaw];
+  const baseUrls = [
+    'https://ws.api.cnyes.com/ws/api/v1/charting/history',
+    'https://api.cnyes.com/charting/api/v1/history',
   ];
-  for (const url of urls) {
-    const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), 6000);
-    try {
-      const res = await fetch(url, {
-        signal: ctrl.signal,
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-          Accept: 'application/json, text/plain, */*',
-          'Accept-Language': 'zh-TW,zh;q=0.9',
-          Origin: 'https://www.cnyes.com',
-          Referer: 'https://www.cnyes.com/',
-        },
-      });
-      clearTimeout(t);
-      if (!res.ok) continue;
-      const j = await res.json();
-      // 各端點回傳格式略不同，找含 t/c 陣列的 key
-      const d = j.data || j;
-      const ts = d.t || d.time || [];
-      const c = d.c || d.close || [];
-      if (ts.length && c.length) return { ts, o: d.o || d.open || [], h: d.h || d.high || [], l: d.l || d.low || [], c, v: d.v || d.volume || [] };
-    } catch { clearTimeout(t); }
+  for (const sym of symbolVariants) {
+    for (const base of baseUrls) {
+      const url = `${base}?symbol=${sym}&resolution=D&from=${from}&to=${to}&quote=1`;
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), 6000);
+      try {
+        const res = await fetch(url, {
+          signal: ctrl.signal,
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            Accept: 'application/json, text/plain, */*',
+            'Accept-Language': 'zh-TW,zh;q=0.9',
+            Origin: 'https://www.cnyes.com',
+            Referer: 'https://www.cnyes.com/',
+          },
+        });
+        clearTimeout(t);
+        if (!res.ok) continue;
+        const j = await res.json();
+        const d = j.data || j;
+        const ts = d.t || d.time || [];
+        const c = d.c || d.close || [];
+        if (ts.length && c.length) {
+          cnyesEmptyCount = 0;  // 成功一次就重置 counter
+          return { ts, o: d.o || d.open || [], h: d.h || d.high || [], l: d.l || d.low || [], c, v: d.v || d.volume || [] };
+        }
+      } catch { clearTimeout(t); }
+    }
+  }
+  // 全部變體都空 → 累計 + 達閾值開 circuit
+  cnyesEmptyCount++;
+  if (cnyesEmptyCount >= CNYES_EMPTY_THRESHOLD) {
+    cnyesCooldownUntil = Date.now() + CNYES_COOLDOWN_MS;
+    cnyesEmptyCount = 0;
+    console.warn(`[cnyes] circuit opened — ${CNYES_COOLDOWN_MS / 60000} 分鐘內不再嘗試（可能 IP 被擋）`);
   }
   return null;
 }

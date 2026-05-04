@@ -11,6 +11,7 @@ let lastRanking = [];
 let allocation = [];
 let activeHoldings = [];   // 目前持股快照
 let usedCapital = 0;       // 持股已佔用資金
+let universeMeta = { core: 0, holdings: 0, hot: 0, total: 0 };
 
 export function mount() {
   budgetEl = document.getElementById('ai-budget');
@@ -19,9 +20,10 @@ export function mount() {
   rebuildBtn = document.getElementById('ai-rebuild');
 
   rebuildBtn.addEventListener('click', () => {
-    // 觸發 ranking 重抓（會自動 emit ranking:updated → 引發 rebuild）
+    // 顯示 loading 狀態 + 觸發 ranking 重抓（ranking 完成後會 emit ranking:updated → 自動 rebuild）
+    document.getElementById('thesis-summary').innerHTML =
+      '<span style="color:var(--gold)">📊 正在掃描候選股…（並發 3、預計 30-60 秒）</span>';
     emit('ranking:reload');
-    rebuild();
   });
   budgetEl.addEventListener('change', () => rebuild());
   cashEl.addEventListener('change', () => rebuild());
@@ -30,9 +32,14 @@ export function mount() {
   // 大盤趨勢敘述
   on('indices:changed', updateThesis);
 
-  // ranking 更新時自動重建配置
-  on('ranking:updated', (rk) => {
-    lastRanking = rk || [];
+  // ranking 更新時自動重建配置（新格式: { result, meta }；舊格式 fallback）
+  on('ranking:updated', (payload) => {
+    if (payload && Array.isArray(payload.result)) {
+      lastRanking = payload.result;
+      universeMeta = payload.meta || universeMeta;
+    } else {
+      lastRanking = payload || [];
+    }
     rebuild();
   });
 
@@ -79,6 +86,15 @@ async function refreshHoldings() {
 
 // ─── 核心：依預算配置（已扣除持股佔用資金、排除已持有股）───
 function rebuild() {
+  // ★ ranking 還沒拿到 → 顯示 loading，不要急著 fail（避免「0 檔」誤導）
+  if (!lastRanking.length) {
+    allocation = [];
+    renderTable(+budgetEl.value || 250000, 0, 0);
+    document.getElementById('thesis-summary').innerHTML =
+      '<span style="color:var(--gold)">📊 候選股掃描中…</span>（首次或剛重啟需 30-60 秒，掃完會自動配置）';
+    return;
+  }
+
   const budget = +budgetEl.value || 250000;
   const cashPct = +cashEl.value || 0;
   const minWin = +minWinEl.value || 55;
@@ -89,25 +105,66 @@ function rebuild() {
   const cashReserved = budget - totalAfterCash;
   const heldCodes = new Set(activeHoldings.map((h) => h.code));
 
-  // 從 ranking 篩選：勝率達門檻 + 買得起 + 不在已持有清單裡
-  const candidates = lastRanking
-    .filter((r) => r.winRate >= minWin)
-    .filter((r) => r.costPerLot <= investableTotal)
-    .filter((r) => !heldCodes.has(r.code))   // 排除已持有
+  // 篩選邏輯：
+  //   strict：勝率 ≥ minWin、EV ≥ -1（明顯正期望值或接近 break-even）
+  //   relax：strict 0 檔時自動放寬到 EV ≥ -2，並提示
+  const baseFilter = (r) =>
+    r.winRate >= minWin
+    && r.costPerLot <= investableTotal
+    && !heldCodes.has(r.code);
+  let relaxed = false;
+  let candidates = lastRanking
+    .filter(baseFilter)
+    .filter((r) => (r.expectedValue?.target1 ?? 0) >= -1)
     .slice(0, 10);
+
+  // Auto-relax：EV 條件自動放寬一階（避免在熊市時直接 0 檔）
+  if (!candidates.length) {
+    relaxed = true;
+    candidates = lastRanking
+      .filter(baseFilter)
+      .filter((r) => (r.expectedValue?.target1 ?? 0) >= -2)
+      .slice(0, 10);
+  }
 
   if (!candidates.length) {
     allocation = [];
     renderTable(budget, cashReserved, 0);
-    const msg = investableTotal <= 0
-      ? `<span style="color:var(--gold)">⚠ 可投入資金已耗盡</span>（預算 ${fmt(budget, 0)} - 持股佔用 ${fmt(usedCapital, 0)} - 現金保留 ${cashPct}% = 0），先平倉或加大預算才能配置新標的`
-      : `預算 ${fmt(budget, 0)} - 持股佔用 ${fmt(usedCapital, 0)} - 現金保留 ${cashPct}% = 可投入 ${fmt(investableTotal, 0)} / 勝率 ≥ ${minWin}% — 沒有符合條件的新標的（已排除 ${activeHoldings.length} 檔持股）`;
-    document.getElementById('thesis-summary').innerHTML = msg;
+    // 找出 ranking 全部結果中為何被刷掉，給具體建議
+    const total = lastRanking.length;
+    const passWin = lastRanking.filter((r) => r.winRate >= minWin).length;
+    const passBudget = lastRanking.filter((r) => r.costPerLot <= investableTotal).length;
+    const passEV = lastRanking.filter((r) => (r.expectedValue?.target1 ?? 0) >= -2).length;
+    let suggestion = '';
+    if (investableTotal <= 0) {
+      suggestion = `<span style="color:var(--gold)">⚠ 可投入資金已耗盡</span>。預算 ${fmt(budget, 0)} − 持股佔用 ${fmt(usedCapital, 0)} − 現金保留 ${cashPct}% = 0`;
+    } else if (passWin === 0) {
+      suggestion = `<span style="color:var(--gold)">⚠ 沒有股票勝率達 ${minWin}%</span>（最高 ${Math.max(...lastRanking.map((r) => r.winRate))}%）。建議把「最低勝率」調到 50% 試試`;
+    } else if (passEV === 0) {
+      suggestion = `<span style="color:var(--gold)">⚠ 沒有股票 EV ≥ -2%</span>（賠率太差）。可能大盤偏空、目標獲利空間有限。建議改觀望或加大現金保留`;
+    } else if (passBudget === 0) {
+      suggestion = `<span style="color:var(--gold)">⚠ 預算太少</span>，所有候選股單張成本都超過 ${fmt(investableTotal, 0)}。建議加大資金總額或降低現金保留`;
+    } else {
+      suggestion = `候選股都被個別條件刷掉。掃描 ${total} 檔 / 過勝率 ${passWin} / 過 EV ${passEV} / 過預算 ${passBudget}`;
+    }
+    document.getElementById('thesis-summary').innerHTML = suggestion;
     return;
+  }
+  // strict 沒過、relax 才過 → 在 thesis-summary 顯示「自動放寬」提示
+  if (relaxed) {
+    setTimeout(() => {
+      const el = document.getElementById('thesis-summary');
+      if (el) el.innerHTML = `<span style="color:var(--gold)">⚠ 已自動放寬條件（EV ≥ -2）</span> — 嚴格 EV 標準下沒有符合的標的，目前推薦的 ${candidates.length} 檔屬於「中性偏負期望」，建議降低部位<br>` + el.innerHTML;
+    }, 0);
   }
 
   // 分配權重：以「winRate - 50」為加權因子，分數越高權重越大
-  const weights = candidates.map((r) => Math.max(1, r.winRate - 50));
+  // ★ 權重融合：EV 為主（盈虧比加權勝率，更接近真實獲利期望）+ 勝率作 baseline
+  const weights = candidates.map((r) => {
+    const ev = r.expectedValue?.target1 ?? 0;
+    const winBase = Math.max(0, r.winRate - 50);
+    return Math.max(1, ev * 5 + winBase);   // EV 每 +1% 約等於 winRate +5
+  });
   const totalW = weights.reduce((s, w) => s + w, 0);
 
   // 單檔上限：投資金額 30%
@@ -140,11 +197,17 @@ function rebuild() {
   const finalCash = budget - totalCost;
   const finalCashPct = (finalCash / budget) * 100;
 
+  // universe 來源摘要（核心 + 持股 + 熱錢三層）
+  const m = universeMeta;
+  const universeStr = m.total
+    ? `<span style="color:var(--dim);font-size:11px">候選池 ${m.total} 檔（核心 ${m.core}+ 持股 ${m.holdings}+ 熱錢 ${m.hot}）</span>`
+    : '';
   document.getElementById('thesis-summary').innerHTML =
     `預算 <b style="color:var(--gold)">${fmt(budget, 0)}</b>` +
     (usedCapital > 0 ? ` · 持股佔用 <b style="color:var(--neon)">${fmt(usedCapital, 0)}</b>（${activeHoldings.length} 檔已排除）` : '') +
     ` · 新配置 <b>${allocation.length}</b> 檔 / <b style="color:var(--up)">${fmt(totalCost, 0)}</b>` +
-    ` · 剩餘現金 <b>${fmt(finalCash, 0)}</b> (${finalCashPct.toFixed(1)}%)`;
+    ` · 剩餘現金 <b>${fmt(finalCash, 0)}</b> (${finalCashPct.toFixed(1)}%)` +
+    (universeStr ? '<br>' + universeStr : '');
 
   renderTable(budget, finalCash, totalCost);
   drawPie(finalCash, totalCost);
@@ -175,7 +238,10 @@ function renderTable(budget, cash, totalCost) {
         <td class="pf-lots">${a.lots}</td>
         <td class="pf-cost">${fmt(a.cost, 0)}</td>
         <td class="pf-weight">${pct.toFixed(1)}%</td>
-        <td><span class="pf-win ${tone}">${a.winRate}%</span></td>
+        <td>
+          <span class="pf-win ${tone}">${a.winRate}%</span>
+          ${a.expectedValue?.target1 != null ? `<div style="font-size:10px;color:${a.expectedValue.target1 >= 1 ? 'var(--up)' : a.expectedValue.target1 >= 0 ? 'var(--gold)' : 'var(--down)'}">EV ${a.expectedValue.target1 >= 0 ? '+' : ''}${a.expectedValue.target1}%</div>` : ''}
+        </td>
         <td class="pf-num">${fmt(a.entry?.low, 0)}~${fmt(a.entry?.high, 0)}</td>
         <td class="pf-num" style="color:var(--down)">${fmt(a.stop, 0)}</td>
         <td class="pf-num" style="color:var(--up)">${fmt(a.target, 0)}</td>

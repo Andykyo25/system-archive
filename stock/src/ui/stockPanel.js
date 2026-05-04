@@ -654,21 +654,26 @@ function buildAdvisor(d, stockMeta) {
   const code = d.code || '';
   const name = stockMeta?.name || '';
 
-  // ─ 主結論（含強勢突破 override）─
+  // ─ 主結論（含強勢突破 override 與 EV 護欄）─
   let emoji, headline, pill;
-  // 強勢突破訊號（漲停 / 大紅帶量）→ 優先給強買
   const fu = d.featureUpgrade?.contributions || {};
   const hasBreakout = fu.limit_up_breakout || fu.strong_breakout;
+  const ev = d.expectedValue?.target1;
+  // EV 嚴重負 → 不論 winRate 多高都應警告（盈虧比太差，勝了也賠）
+  const evNegative = ev != null && ev < -1;
 
   if (personalErr) {
     emoji = '⚠️'; headline = '此股近期模型不準，建議觀望'; pill = '系統低信心';
   } else if (hasBreakout) {
     emoji = '🚀'; headline = '建議：強勢突破日，順勢進場'; pill = '突破訊號';
-  } else if (winRate >= 60 && costOK !== false) {  // 65 → 60
+  } else if (evNegative && winRate < 65) {
+    // 勝率不夠高、又是負期望值 → 直接擋下
+    emoji = '⚠️'; headline = '建議：負期望值，盈虧比不足'; pill = `EV ${ev}%`;
+  } else if (winRate >= 60 && costOK !== false) {
     emoji = '🟢'; headline = '建議：分批進場'; pill = '訊號偏多';
-  } else if (winRate >= 50) {                      // 55 → 50
+  } else if (winRate >= 50) {
     emoji = '🟢'; headline = '建議：等回測再進場'; pill = '中期偏多';
-  } else if (winRate >= 42) {                      // 45 → 42
+  } else if (winRate >= 42) {
     emoji = '🟡'; headline = '建議：觀望優先'; pill = '訊號中性';
   } else if (winRate >= 30) {
     emoji = '🟠'; headline = '建議：減碼或不進場'; pill = '訊號偏空';
@@ -796,6 +801,18 @@ function buildAdvisor(d, stockMeta) {
 
   // ─ 系統可信度 ─
   const trust = [];
+  // ★ 期望值 EV（賠率加權勝率）— 放最前面，這是真正的「該不該進場」核心
+  if (d.expectedValue?.target1 != null) {
+    const ev = d.expectedValue.target1;
+    const rr = d.expectedValue.rrRatio;
+    const cat = d.expectedValue.category;
+    const evColor = cat === 'excellent' ? 'var(--up)'
+      : cat === 'positive' ? 'var(--gold)'
+      : cat === 'neutral' ? 'var(--dim)'
+      : 'var(--down)';
+    const evLabel = cat === 'excellent' ? '優異' : cat === 'positive' ? '正向' : cat === 'neutral' ? '中性' : '負期望';
+    trust.push(`<span class="item">期望值 (EV)：<b style="color:${evColor}">${ev >= 0 ? '+' : ''}${ev}%</b> <span style="color:var(--dim);font-size:10px">${evLabel}・盈虧比 ${rr ?? '--'}・賺 ${d.expectedValue.upside}% / 損 ${d.expectedValue.downside}%</span></span>`);
+  }
   if (consensus != null) {
     const lvl = consensus >= 75 ? '高（訊號一致）' : consensus >= 50 ? '中（部分分歧）' : '低（模組互打）';
     trust.push(`<span class="item">訊號一致度：<b>${consensus}%</b> ${lvl}</span>`);
