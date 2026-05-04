@@ -332,18 +332,8 @@ app.get('/api/kline/:code', async (req, res) => {
 // 主源：TWSE MIS → Yahoo → FinMind cache
 // 加固：last-known-good 快取 + freshness 檢查 + 異常跳價過濾
 const lastGoodQuotes = new Map();      // code → { price, prev, chg, pct, ts, source }
-// 異常偵測只在「連續 poll 30 秒內」之間做（30 秒內單筆跳 7% 才合理視為錯誤資料）
-// 若 cache 已超過 30 秒（盤前→盤中、跳空、漲停等正常情況）則接受新價
-const ANOMALY_WINDOW_MS = 30 * 1000;
-const ANOMALY_THRESHOLD = 0.07;
-
-function isAnomaly(newPrice, last) {
-  if (!last || !(last.price > 0)) return false;
-  const ageMs = Date.now() - (last.ts || 0);
-  if (ageMs > ANOMALY_WINDOW_MS) return false;  // cache 過舊不檢查（漲跌停、隔日等不該被擋）
-  const diff = Math.abs(newPrice - last.price) / last.price;
-  return diff > ANOMALY_THRESHOLD;
-}
+// 註：原本有 anomaly 檢查（跳價 > 7% 視為錯誤資料），但 scheduler poll 間隔正好 = 30s 窗口，
+// 漲停（+9.97%）會被誤判而卡住，已拿掉。lastGoodQuotes 只用於來源全失敗時的 stillMissing fallback。
 // 台股跳動單位 round（修正 Yahoo/Stooq 偶爾回不合法價格如 242.13）
 function roundToTwTick(p) {
   if (p == null || !Number.isFinite(+p)) return p;
@@ -358,7 +348,7 @@ function roundToTwTick(p) {
 
 function applyQuoteGuard(code, q) {
   if (!q || q.price == null) return null;
-  // 先 round 到台股合法跳動單位
+  // 只做台股跳動單位 round，不做 anomaly 攔截（漲停會被誤判）
   const normalized = {
     ...q,
     price: roundToTwTick(q.price),
@@ -367,15 +357,9 @@ function applyQuoteGuard(code, q) {
     dayHigh: q.dayHigh != null ? roundToTwTick(q.dayHigh) : undefined,
     dayLow: q.dayLow != null ? roundToTwTick(q.dayLow) : undefined,
   };
-  // 重算 chg / pct 以對齊已 round 的價格
   if (Number.isFinite(normalized.price) && Number.isFinite(normalized.prev) && normalized.prev > 0) {
     normalized.chg = +(normalized.price - normalized.prev).toFixed(2);
     normalized.pct = +(((normalized.price - normalized.prev) / normalized.prev) * 100).toFixed(2);
-  }
-  const last = lastGoodQuotes.get(code);
-  if (isAnomaly(normalized.price, last)) {
-    console.warn(`[quote guard] ${code} 30s 內跳價 ${last.price} → ${normalized.price}，沿用 last-good`);
-    return { ...last, source: last.source + '-cached', anomaly: true };
   }
   const guarded = { ...normalized, ts: Date.now() };
   lastGoodQuotes.set(code, guarded);
@@ -798,7 +782,7 @@ async function loadStockDiagnose(code) {
     })),
   ]);
 
-  // K 線 fallback：FinMind 失敗或太少 → 試 Yahoo chart
+  // K 線 4 層 fallback：FinMind → Yahoo → TWSE STOCK_DAY → Stooq
   let kSource = 'finmind';
   let rawKline = klineRaw;
   if (!rawKline || rawKline.length < 30) {
@@ -807,19 +791,42 @@ async function loadStockDiagnose(code) {
       if (yhK && yhK.length >= 30) {
         rawKline = yhK.map((d) => ({
           open: d.open, high: d.high, low: d.low, close: d.close,
-          // Yahoo 量是「股」單位 → 換成「張」
           Trading_Volume: Math.round((d.volume || 0) / 1000),
           date: d.date,
         }));
         kSource = 'yahoo';
       }
-    } catch (e) {
-      console.warn(`[diag ${code}] yahoo kline fallback failed:`, e.message);
-    }
+    } catch (e) { console.warn(`[diag ${code}] yahoo:`, e.message); }
+  }
+  if (!rawKline || rawKline.length < 30) {
+    try {
+      const tw = await memo(`twseDay:${code}:90`, 24 * 60 * 60 * 1000, () => twse.stockDayHistory(code, 90));
+      if (tw && tw.length >= 30) {
+        rawKline = tw.map((d) => ({
+          open: d.open, high: d.high, low: d.low, close: d.close,
+          Trading_Volume: d.volume,
+          date: d.date,
+        }));
+        kSource = 'twse';
+      }
+    } catch (e) { console.warn(`[diag ${code}] twse:`, e.message); }
+  }
+  if (!rawKline || rawKline.length < 30) {
+    try {
+      const sq = await memo(`sqKline:${code}:90`, 30 * 60 * 1000, () => stooq.chart(`${code}.tw`, 100));
+      if (sq && sq.length >= 30) {
+        rawKline = sq.map((d) => ({
+          open: d.open, high: d.high, low: d.low, close: d.close,
+          Trading_Volume: Math.round((d.volume || 0) / 1000),
+          date: d.date,
+        }));
+        kSource = 'stooq';
+      }
+    } catch (e) { console.warn(`[diag ${code}] stooq:`, e.message); }
   }
 
   if (!rawKline || rawKline.length < 20) {
-    throw new Error(`K 線資料不足（FinMind/Yahoo 均無可用歷史）`);
+    throw new Error(`K 線資料不足（FinMind/Yahoo/TWSE/Stooq 全失敗）`);
   }
 
   const k = rawKline.map((r) => ({
