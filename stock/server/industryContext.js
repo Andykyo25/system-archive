@@ -1,11 +1,13 @@
 // 產業同業 60 日報酬統計 — 用於 cross-sectional industry RS rank
 // 一天計算一次（產業變動慢），cache 24h
-import { memo } from './cache.js';
+import { memo, memoFailsafe } from './cache.js';
 import * as finmind from './providers/finmind.js';
 import * as yahoo from './providers/yahoo.js';
 import * as stooq from './providers/stooq.js';
+import * as cnyes from './providers/cnyes.js';
 
 const TTL = 24 * 60 * 60 * 1000;
+const FAIL_TTL = 5 * 60 * 1000;   // 失敗 5 分鐘不重試
 
 // 涵蓋台灣 50 / 0050 + 主要產業領頭羊（~60 檔）
 const PEERS = [
@@ -18,7 +20,7 @@ const PEERS = [
 ];
 
 export async function getAllIndustryStats() {
-  return memo('industry:stats:v1', TTL, async () => {
+  return memoFailsafe('industry:stats:v1', TTL, FAIL_TTL, async () => {
     const allInfo = await memo('finmind:stockInfo', TTL, () => finmind.stockInfo()).catch(() => []);
     const codeToIndustry = {};
     (allInfo || []).forEach((r) => {
@@ -27,12 +29,18 @@ export async function getAllIndustryStats() {
 
     const start = new Date(Date.now() - 90 * 86400e3).toISOString().slice(0, 10);
     const tasks = [...new Set(PEERS)].map(async (code) => {
-      // 順序調整：Stooq 為主（無 quota）→ FinMind → Yahoo（最容易 429）
+      // 順序：Cnyes（免 quota、穩定）→ Stooq → FinMind → Yahoo
       let closes = [];
       try {
-        const sq = await memo(`sqKline:${code}:90`, 30 * 60 * 1000, () => stooq.chart(`${code}.tw`, 100));
-        if (sq && sq.length >= 61) closes = sq.map((d) => +d.close).filter(Number.isFinite);
+        const cn = await memo(`cnyesKline:${code}:90`, 60 * 60 * 1000, () => cnyes.chart(code, 100));
+        if (cn && cn.length >= 61) closes = cn.map((d) => +d.close).filter(Number.isFinite);
       } catch { /* skip */ }
+      if (closes.length < 61) {
+        try {
+          const sq = await memo(`sqKline:${code}:90`, 30 * 60 * 1000, () => stooq.chart(`${code}.tw`, 100));
+          if (sq && sq.length >= 61) closes = sq.map((d) => +d.close).filter(Number.isFinite);
+        } catch { /* skip */ }
+      }
       if (closes.length < 61) {
         try {
           const k = await memo(`kline:${code}:90`, 60000, () => finmind.stockPrice(code, start));

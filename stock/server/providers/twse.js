@@ -4,18 +4,23 @@
 
 const BASE = 'https://openapi.twse.com.tw/v1';
 
-async function fetchJson(path) {
-  const res = await fetch(`${BASE}${path}`, {
-    headers: { Accept: 'application/json' },
-    redirect: 'manual',
-  });
-  if (res.status !== 200) throw new Error(`twse ${path} status=${res.status}`);
-  const ct = res.headers.get('content-type') || '';
-  const text = await res.text();
-  if (!ct.includes('json') && text.trim().startsWith('<')) {
-    throw new Error(`twse ${path} returned HTML (likely maintenance / not yet published)`);
-  }
-  return JSON.parse(text);
+async function fetchJson(path, timeoutMs = 5000) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const res = await fetch(`${BASE}${path}`, {
+      headers: { Accept: 'application/json' },
+      redirect: 'manual',
+      signal: ctrl.signal,
+    });
+    if (res.status !== 200) throw new Error(`twse ${path} status=${res.status}`);
+    const ct = res.headers.get('content-type') || '';
+    const text = await res.text();
+    if (!ct.includes('json') && text.trim().startsWith('<')) {
+      throw new Error(`twse ${path} returned HTML (likely maintenance / not yet published)`);
+    }
+    return JSON.parse(text);
+  } finally { clearTimeout(t); }
 }
 
 // 大盤所有指數收盤
@@ -27,9 +32,22 @@ export async function indices() {
 // 直接打 www.twse.com.tw 不走 openapi（因為 openapi 沒有此端點）
 export async function stockDay(stockNo, yyyymmFirst) {
   const url = `https://www.twse.com.tw/exchangeReport/STOCK_DAY?response=json&date=${yyyymmFirst}&stockNo=${encodeURIComponent(stockNo)}`;
-  const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0 TWSE-WarRoom/1.0', Accept: 'application/json' } });
-  if (!res.ok) throw new Error(`twse stockDay HTTP ${res.status}`);
-  const j = await res.json();
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 8000);  // 8s（TWSE 有時較慢）
+  let res, j;
+  try {
+    res = await fetch(url, {
+      signal: ctrl.signal,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        Accept: 'application/json, text/plain, */*',
+        'Accept-Language': 'zh-TW,zh;q=0.9',
+        Referer: 'https://www.twse.com.tw/',
+      },
+    });
+    if (!res.ok) throw new Error(`twse stockDay HTTP ${res.status}`);
+    j = await res.json();
+  } finally { clearTimeout(t); }
   if (j.stat !== 'OK') throw new Error(`twse stockDay ${j.stat || 'no data'}`);
   return (j.data || []).map((row) => {
     const parts = String(row[0] || '').split('/');
@@ -93,14 +111,21 @@ export async function stockDayHistory(stockNo, days = 90) {
   const today = new Date();
   const monthsNeeded = Math.ceil(days / 22) + 1;
   const all = [];
+  const errors = [];
   for (let i = 0; i < monthsNeeded; i++) {
     const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
     const yyyymmFirst = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}01`;
     try {
       const r = await stockDay(stockNo, yyyymmFirst);
       all.push(...r);
-    } catch { /* skip this month */ }
-    if (i < monthsNeeded - 1) await new Promise((r) => setTimeout(r, 250));
+    } catch (e) {
+      errors.push(`${yyyymmFirst}:${e.message}`);
+    }
+    if (i < monthsNeeded - 1) await new Promise((r) => setTimeout(r, 350));
+  }
+  // 全失敗才印（避免 log 暴增）
+  if (!all.length && errors.length) {
+    console.warn(`[twse stockDayHistory ${stockNo}] all months failed:`, errors.slice(0, 2).join(' | '));
   }
   const byDate = new Map();
   all.forEach((r) => byDate.set(r.date, r));

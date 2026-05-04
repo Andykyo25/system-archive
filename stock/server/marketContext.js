@@ -3,11 +3,13 @@
 // 內容：TAIEX 趨勢、20 日已實現波動度、5/60 日報酬、市場 breadth
 // 用 server cache 5 分鐘共享給所有 diagnose 呼叫（盤中也夠新）
 
-import { memo } from './cache.js';
+import { memo, memoFailsafe } from './cache.js';
 import * as yahoo from './providers/yahoo.js';
 import * as stooq from './providers/stooq.js';
+import * as cnyes from './providers/cnyes.js';
 
 const CTX_TTL = 5 * 60 * 1000;
+const CTX_FAIL_TTL = 60 * 1000;        // 失敗 60 秒內不重試
 const TAIEX_KLINE_TTL = 24 * 60 * 60 * 1000;
 
 const avg = (arr) => arr.reduce((s, x) => s + x, 0) / (arr.length || 1);
@@ -18,13 +20,24 @@ function stdDev(arr) {
 }
 
 export async function getMarketContext() {
-  return memo('market:context', CTX_TTL, async () => {
-    // TAIEX 歷史：Stooq 為主（無 quota），Yahoo 為備（429 多）
+  // 用 failsafe — TAIEX 撈不到時 60 秒內不重試（避免 log 暴增 + 拖慢 diagnose）
+  return memoFailsafe('market:context', CTX_TTL, CTX_FAIL_TTL, async () => {
+    // TAIEX 歷史：Cnyes（最穩）→ Stooq → Yahoo
     let taiexCloses = [];
     try {
-      const data = await memo('taiex:stooq:90', TAIEX_KLINE_TTL, () => stooq.chart('^twi', 120));
+      const data = await memo('taiex:cnyes:90', TAIEX_KLINE_TTL, () => cnyes.chart('TAIEX', 120, 'TWS', 'INDEX'));
       taiexCloses = (data || []).map((d) => +d.close).filter(Number.isFinite);
-    } catch (e) { console.warn('[marketContext] stooq TAIEX:', e.message); }
+    } catch (e) { console.warn('[marketContext] cnyes TAIEX:', e.message); }
+    if (taiexCloses.length < 60) {
+      try {
+        const data = await memo('taiex:stooq:90', TAIEX_KLINE_TTL, async () => {
+          try { return await stooq.chart('^twii', 120); } catch {}
+          try { return await stooq.chart('^twi', 120); } catch {}
+          return [];
+        });
+        taiexCloses = (data || []).map((d) => +d.close).filter(Number.isFinite);
+      } catch (e) { console.warn('[marketContext] stooq TAIEX:', e.message); }
+    }
     if (taiexCloses.length < 60) {
       try {
         const data = await memo('taiex:yh:90', TAIEX_KLINE_TTL, () => yahoo.chart('^TWII', '3mo', '1d'));
@@ -41,7 +54,8 @@ export async function getMarketContext() {
       taiex_return_60d: null,
       regime_label: '未知',
     };
-    if (taiexCloses.length < 60) return ctx;
+    // TAIEX 拿不到 → throw 讓 memoFailsafe cache 失敗 sentinel 60 秒
+    if (taiexCloses.length < 60) throw new Error('TAIEX 歷史不足');
 
     const last = taiexCloses[taiexCloses.length - 1];
     const ma20 = avg(taiexCloses.slice(-20));

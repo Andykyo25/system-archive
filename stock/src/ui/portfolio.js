@@ -18,7 +18,11 @@ export function mount() {
   minWinEl = document.getElementById('ai-minwin');
   rebuildBtn = document.getElementById('ai-rebuild');
 
-  rebuildBtn.addEventListener('click', () => rebuild());
+  rebuildBtn.addEventListener('click', () => {
+    // 觸發 ranking 重抓（會自動 emit ranking:updated → 引發 rebuild）
+    emit('ranking:reload');
+    rebuild();
+  });
   budgetEl.addEventListener('change', () => rebuild());
   cashEl.addEventListener('change', () => rebuild());
   minWinEl.addEventListener('change', () => rebuild());

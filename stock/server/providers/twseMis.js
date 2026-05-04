@@ -17,19 +17,25 @@
 const BASE = 'https://mis.twse.com.tw/stock/api/getStockInfo.jsp';
 const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36';
 
-async function fetchJson(url) {
-  const res = await fetch(url, {
-    headers: {
-      'User-Agent': UA,
-      Accept: 'application/json, text/plain, */*',
-      'Accept-Language': 'zh-TW,zh;q=0.9,en;q=0.8',
-      Referer: 'https://mis.twse.com.tw/stock/index.jsp',
-    },
-  });
-  if (!res.ok) throw new Error(`mis HTTP ${res.status}`);
-  const text = await res.text();
-  // MIS 回傳前綴可能有空行
-  return JSON.parse(text);
+async function fetchJson(url, timeoutMs = 5000) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, {
+      signal: ctrl.signal,
+      headers: {
+        'User-Agent': UA,
+        Accept: 'application/json, text/plain, */*',
+        'Accept-Language': 'zh-TW,zh;q=0.9,en;q=0.8',
+        Referer: 'https://mis.twse.com.tw/stock/index.jsp',
+      },
+    });
+    if (!res.ok) throw new Error(`mis HTTP ${res.status}`);
+    const text = await res.text();
+    return JSON.parse(text);
+  } finally {
+    clearTimeout(t);
+  }
 }
 
 // chunk 以避免 URL 過長

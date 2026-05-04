@@ -335,6 +335,15 @@ async function renderTech(code, s) {
     }
   }
   if (d) {
+    // ★ Diagnose 是 price 的最終權威（含 MIS overlay）→ 同步寫回 state.stocks，避免 header 顯示舊 movers 價
+    if (state.stocks[code] && d.close != null && Number.isFinite(d.close)) {
+      const stockState = state.stocks[code];
+      stockState.price = d.close;
+      if (d.prevClose != null) stockState.prev = d.prevClose;
+      if (d.chg != null) stockState.chg = d.chg;
+      if (d.pct != null) stockState.pct = d.pct;
+      emit('stocks:changed');
+    }
     renderDiag(d, k);
     renderTechKpis(d);
   } else {

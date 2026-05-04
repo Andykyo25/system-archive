@@ -299,7 +299,19 @@ app.get('/api/kline/:code', async (req, res) => {
         }
       } catch (e) { console.warn(`[kline ${code}] yahoo:`, e.message); }
     }
-    // 備援 2：TWSE STOCK_DAY（用戶 diag 顯示 TWSE 穩定 — 主要 TW backup）
+    // 備援 2：鉅亨網 chart（免 quota、穩定）★ 主要備援
+    if (!data) {
+      try {
+        const cn = await memo(`cnyesKline:${code}:${days}`, 60 * 60 * 1000, () => cnyes.chart(code, Math.max(days, 100)));
+        if (cn && cn.length >= 30) {
+          data = cn.map((d) => ({
+            date: d.date, open: d.open, max: d.high, min: d.low, close: d.close,
+            Trading_Volume: Math.round((d.volume || 0) / 1000),  // cnyes vol 為股 → 張
+          }));
+        }
+      } catch (e) { console.warn(`[kline ${code}] cnyes:`, e.message); }
+    }
+    // 備援 3：TWSE STOCK_DAY
     if (!data) {
       try {
         const tw = await memo(`twseDay:${code}:${days}`, 24 * 60 * 60 * 1000, () => twse.stockDayHistory(code, days));
@@ -311,7 +323,7 @@ app.get('/api/kline/:code', async (req, res) => {
         }
       } catch (e) { console.warn(`[kline ${code}] twse:`, e.message); }
     }
-    // 備援 3：Stooq CSV（最後防線）
+    // 備援 4：Stooq CSV
     if (!data) {
       try {
         const sq = await memo(`sqKline:${code}:${days}`, 30 * 60 * 1000, () => stooq.chart(`${code}.tw`, Math.max(days, 100)));
@@ -323,7 +335,7 @@ app.get('/api/kline/:code', async (req, res) => {
         }
       } catch (e) { console.warn(`[kline ${code}] stooq:`, e.message); }
     }
-    if (!data) throw new Error('K 線資料不可用（FinMind / Yahoo / TWSE / Stooq 全失敗）');
+    if (!data) throw new Error('K 線資料不可用（FinMind / Yahoo / Cnyes / TWSE / Stooq 全失敗）');
     ok(res, data);
   } catch (e) { fail(res, e); }
 });
@@ -796,10 +808,22 @@ async function loadStockDiagnose(code) {
     })),
   ]);
 
-  // K 線 4 層 fallback（順序已重排：TWSE 為主，因 FinMind 402 / Yahoo 429 都靠不住）
-  // FinMind → TWSE STOCK_DAY → Stooq → Yahoo
+  // K 線 5 層 fallback：FinMind → Cnyes → TWSE STOCK_DAY → Stooq → Yahoo
   let kSource = 'finmind';
   let rawKline = klineRaw;
+  if (!rawKline || rawKline.length < 30) {
+    try {
+      const cn = await memo(`cnyesKline:${code}:90`, 60 * 60 * 1000, () => cnyes.chart(code, 100));
+      if (cn && cn.length >= 30) {
+        rawKline = cn.map((d) => ({
+          open: d.open, high: d.high, low: d.low, close: d.close,
+          Trading_Volume: Math.round((d.volume || 0) / 1000),
+          date: d.date,
+        }));
+        kSource = 'cnyes';
+      }
+    } catch (e) { console.warn(`[diag ${code}] cnyes:`, e.message); }
+  }
   if (!rawKline || rawKline.length < 30) {
     try {
       const tw = await memo(`twseDay:${code}:90`, 24 * 60 * 60 * 1000, () => twse.stockDayHistory(code, 90));
@@ -841,7 +865,7 @@ async function loadStockDiagnose(code) {
   }
 
   if (!rawKline || rawKline.length < 20) {
-    throw new Error(`K 線資料不足（FinMind/Yahoo/TWSE/Stooq 全失敗）`);
+    throw new Error(`K 線資料不足（FinMind/Cnyes/TWSE/Stooq/Yahoo 全失敗）`);
   }
 
   // 法人 fallback：FinMind 失敗 → 改打 TWSE T86（免 quota）
@@ -896,22 +920,20 @@ async function loadStockDiagnose(code) {
   // 計算新聞情緒（純函式，無網路）
   const sentiment = newsSentiment(newsList || []);
 
-  // ★ Feature engineering：注入大盤 regime / RS / 波動度 + 產業 RS + 基本面
+  // ★ Feature engineering：每個 sub-call 各自 5 秒 timeout，任一卡住都不能拖 diagnose
+  const withT = (p, ms = 5000) => Promise.race([
+    p, new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), ms)),
+  ]).catch(() => null);
   const [marketContext, industryStats, fundamentalsData] = await Promise.all([
-    getMarketContext().catch(() => null),
-    getIndustryStatsFor(code).catch(() => null),
-    memo(`fund:${code}`, TTL_HIST / 24, async () => {
-      // 重用 fundamentals endpoint 的核心邏輯（簡化版：只取我們要用的幾個欄位）
+    withT(getMarketContext()),
+    withT(getIndustryStatsFor(code)),
+    withT(memo(`fund:${code}`, TTL_HIST / 24, async () => {
       try {
         const all = await memo('bwibbu:all', TTL_HIST / 24, () => twse.bwibbu());
         const r = all.find((x) => x.Code === code);
-        return r ? {
-          pe: +r.PEratio || null,
-          pb: +r.PBratio || null,
-          divYield: +r.DividendYield || null,
-        } : null;
+        return r ? { pe: +r.PEratio || null, pb: +r.PBratio || null, divYield: +r.DividendYield || null } : null;
       } catch { return null; }
-    }).catch(() => null),
+    })),
   ]);
 
   const d = diagnose(k, instEnriched, {
@@ -1254,10 +1276,17 @@ app.get('/api/predictions', (_req, res) => {
 });
 
 // ───────────────────────── 個股診斷（單檔） ─────────────────────────
+// 加 12 秒 timeout 防某個 fallback 卡死整條請求
+function withTimeout(promise, ms, label = 'timeout') {
+  return Promise.race([
+    promise,
+    new Promise((_, rej) => setTimeout(() => rej(new Error(`${label} > ${ms}ms`)), ms)),
+  ]);
+}
 app.get('/api/diagnose/:code', async (req, res) => {
   const code = req.params.code;
   try {
-    const data = await memo(`diag:${code}`, 30000, () => loadStockDiagnose(code));
+    const data = await memo(`diag:${code}`, 30000, () => withTimeout(loadStockDiagnose(code), 12000, `diag ${code}`));
     if (!data) return fail(res, new Error('資料不足無法診斷'));
     ok(res, data);
   } catch (e) { fail(res, e); }
@@ -1276,41 +1305,32 @@ app.get('/api/ranking', async (req, res) => {
   try {
     const cacheKey = `ranking:${codes.join(',')}`;
     const data = await memo(cacheKey, 5 * 60 * 1000, async () => {
-      // 用共用 helper：每檔結果 cache 30 秒（避免 FinMind 暴打）
-      const tasks = codes.map(async (code) => {
+      // ★ 並發限 3：避免 35-57 檔同時打 4 個 provider 造成 200+ 並發請求把 FinMind 403 / Yahoo 429
+      const CONCURRENCY = 3;
+      const buildTask = (code) => async () => {
         try {
           const r = await memo(`diag:${code}`, 30000, () => loadStockDiagnose(code));
           if (!r) return null;
-          // 對齊舊欄位，給前端 portfolio 表格用
           return {
             code: r.code,
-            close: r.close,
-            prevClose: r.prevClose,
-            chg: r.chg,
-            pct: r.pct,
-            winRate: r.winRate,
-            score: r.score,
-            subScores: r.subScores,
-            overall: r.overall,
-            action: r.action,
-            trend: r.trend,
-            kdSignal: r.kd?.signal,
-            macdSignal: r.macd?.signal,
-            volSignal: r.vol?.signal,
-            mainForce: r.inst?.mainForce,
-            bias20: r.bias20,
-            atr14: r.atr14,
-            entry: r.entry,
-            stop: r.stopATR,
-            target: r.targetATR,
-            signals: r.signals?.slice(0, 2),
-            costPerLot: r.costPerLot,
+            close: r.close, prevClose: r.prevClose, chg: r.chg, pct: r.pct,
+            winRate: r.winRate, score: r.score, subScores: r.subScores,
+            overall: r.overall, action: r.action, trend: r.trend,
+            kdSignal: r.kd?.signal, macdSignal: r.macd?.signal, volSignal: r.vol?.signal,
+            mainForce: r.inst?.mainForce, bias20: r.bias20, atr14: r.atr14,
+            entry: r.entry, stop: r.stopATR, target: r.targetATR,
+            signals: r.signals?.slice(0, 2), costPerLot: r.costPerLot,
           };
         } catch { return null; }
-      });
-      const results = (await Promise.all(tasks)).filter(Boolean);
-      results.sort((a, b) => b.winRate - a.winRate);
-      return results;
+      };
+      const all = [];
+      for (let i = 0; i < codes.length; i += CONCURRENCY) {
+        const batch = codes.slice(i, i + CONCURRENCY).map(buildTask);
+        const r = await Promise.all(batch.map((t) => t()));
+        all.push(...r.filter(Boolean));
+      }
+      all.sort((a, b) => b.winRate - a.winRate);
+      return all;
     });
 
     // 篩選（不算進 cache，因 cache key 不含 minWinRate / maxBudget）
@@ -1412,9 +1432,9 @@ app.listen(PORT, async () => {
     });
   });
 
-  // 啟動預熱（預設關閉，避免 FinMind/Yahoo 在啟動 30 秒內被打爆 quota）
-  // 要開：環境變數 WARM_CACHE=1
-  if (process.env.WARM_CACHE === '1') {
+  // 啟動預熱已永久禁用（之前用會把 FinMind/Yahoo quota 打爆，且現在 free quota 已死）
+  // 如果未來真要開，需先確認 quota 充足、加並發限制
+  if (false) {
     setTimeout(async () => {
       const t0 = Date.now();
       const WEIGHTED = ['2330', '2317', '2454', '2308', '2891', '2882'];

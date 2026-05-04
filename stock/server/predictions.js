@@ -137,22 +137,30 @@ async function flushDirty() {
     return 0;
   }
 
+  // 偵測 'features' column 不存在 → schema 沒升級 → 後續寫入剝除
+  let stripFeatures = false;
   try {
-    // 分批 upsert（避免單次 payload 過大）
     const BATCH = 500;
     let total = 0;
     for (let i = 0; i < rows.length; i += BATCH) {
-      const chunk = rows.slice(i, i + BATCH);
-      const { error } = await supabase
+      let chunk = rows.slice(i, i + BATCH);
+      if (stripFeatures) chunk = chunk.map(({ features, ...r }) => r);
+      let { error } = await supabase
         .from('predictions')
         .upsert(chunk, { onConflict: 'code,date' });
+      // 偵測 features column 不存在 → 剝除 features 重試一次
+      if (error && /'features' column|features.*does not exist/i.test(error.message)) {
+        console.warn('[predictions] schema 缺 features 欄位（建議 ALTER TABLE predictions ADD COLUMN features JSONB），後續寫入自動剝除');
+        stripFeatures = true;
+        chunk = chunk.map(({ features, ...r }) => r);
+        ({ error } = await supabase.from('predictions').upsert(chunk, { onConflict: 'code,date' }));
+      }
       if (error) throw error;
       total += chunk.length;
     }
     flushInFlight = false;
     return total;
   } catch (e) {
-    // 失敗：把 key 放回 dirty queue 等下次重試
     snapshot.forEach((k) => dirtyKeys.add(k));
     flushInFlight = false;
     console.warn('[predictions upsert]', e.message);
