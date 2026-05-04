@@ -13,7 +13,6 @@ import * as ranking from './ui/ranking.js';
 import * as portfolio from './ui/portfolio.js';
 import * as postPanel from './ui/postPanel.js';
 import * as holdings from './ui/holdings.js';
-import * as backtest from './ui/backtest.js';
 
 // ─── 啟動 ───
 function boot() {
@@ -30,18 +29,6 @@ function boot() {
   portfolio.mount();    // AI 智選（訂閱 'ranking:updated'）
   postPanel.mount();
   holdings.mount();     // 我的持股 + 每日報告 + 每週復盤
-  backtest.mount();     // Backtest 結果 + Ablation Study
-
-  // 主畫面 / Backtest tab 切換
-  document.querySelectorAll('.view-tab').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('.view-tab').forEach((x) => x.classList.remove('active'));
-      btn.classList.add('active');
-      const v = btn.dataset.view;
-      document.body.classList.toggle('view-backtest', v === 'backtest');
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    });
-  });
 
   // select 事件 → stock:selected
   on('select', (code) => emit('stock:selected', code));

@@ -4,10 +4,13 @@ import { state, emit, on } from '../state.js';
 import { fmt } from '../utils/format.js';
 import { mountChart } from './charts.js';
 import { stocks as mockStocks } from '../data/mock.js';
+import { api } from '../data/api.js';
 
 let budgetEl, cashEl, minWinEl, rebuildBtn;
 let lastRanking = [];
 let allocation = [];
+let activeHoldings = [];   // 目前持股快照
+let usedCapital = 0;       // 持股已佔用資金
 
 export function mount() {
   budgetEl = document.getElementById('ai-budget');
@@ -28,6 +31,14 @@ export function mount() {
     lastRanking = rk || [];
     rebuild();
   });
+
+  // 持股新增 / 刪除 / 平倉 → 重新讀持股 + 重建配置
+  on('holdings:changed', () => {
+    refreshHoldings().then(() => rebuild());
+  });
+
+  // 啟動時先載一次持股
+  refreshHoldings();
 
   // placeholder
   document.getElementById('portfolio-table').innerHTML =
@@ -50,27 +61,44 @@ function updateThesis() {
     : '大盤資料載入中...';
 }
 
-// ─── 核心：依預算配置 ───
+// 從 server 拉持股
+async function refreshHoldings() {
+  try {
+    const all = await api.portfolioList();
+    activeHoldings = (all || []).filter((h) => h.status === 'active');
+    usedCapital = activeHoldings.reduce((s, h) => s + (h.entry_price * h.lots * 1000), 0);
+  } catch {
+    activeHoldings = [];
+    usedCapital = 0;
+  }
+}
+
+// ─── 核心：依預算配置（已扣除持股佔用資金、排除已持有股）───
 function rebuild() {
-  const budget = +budgetEl.value || 500000;
+  const budget = +budgetEl.value || 250000;
   const cashPct = +cashEl.value || 0;
   const minWin = +minWinEl.value || 55;
 
-  // 可投入資金（扣現金保留）
-  const investableTotal = budget * (1 - cashPct / 100);
-  const cashReserved = budget - investableTotal;
+  // 可投入資金 = 預算 - 持股佔用 - 現金保留
+  const totalAfterCash = budget * (1 - cashPct / 100);
+  const investableTotal = Math.max(0, totalAfterCash - usedCapital);
+  const cashReserved = budget - totalAfterCash;
+  const heldCodes = new Set(activeHoldings.map((h) => h.code));
 
-  // 從 ranking 篩選：勝率 ≥ minWin 且 單張成本 ≤ 預算可投入額
+  // 從 ranking 篩選：勝率達門檻 + 買得起 + 不在已持有清單裡
   const candidates = lastRanking
     .filter((r) => r.winRate >= minWin)
     .filter((r) => r.costPerLot <= investableTotal)
-    .slice(0, 10); // 最多 10 檔
+    .filter((r) => !heldCodes.has(r.code))   // 排除已持有
+    .slice(0, 10);
 
   if (!candidates.length) {
     allocation = [];
     renderTable(budget, cashReserved, 0);
-    document.getElementById('thesis-summary').textContent =
-      `預算 ${fmt(budget, 0)} 元 / 現金保留 ${cashPct}% / 勝率 ≥ ${minWin}% — 沒有符合條件的標的。建議降低勝率門檻或增加預算。`;
+    const msg = investableTotal <= 0
+      ? `<span style="color:var(--gold)">⚠ 可投入資金已耗盡</span>（預算 ${fmt(budget, 0)} - 持股佔用 ${fmt(usedCapital, 0)} - 現金保留 ${cashPct}% = 0），先平倉或加大預算才能配置新標的`
+      : `預算 ${fmt(budget, 0)} - 持股佔用 ${fmt(usedCapital, 0)} - 現金保留 ${cashPct}% = 可投入 ${fmt(investableTotal, 0)} / 勝率 ≥ ${minWin}% — 沒有符合條件的新標的（已排除 ${activeHoldings.length} 檔持股）`;
+    document.getElementById('thesis-summary').innerHTML = msg;
     return;
   }
 
@@ -109,7 +137,10 @@ function rebuild() {
   const finalCashPct = (finalCash / budget) * 100;
 
   document.getElementById('thesis-summary').innerHTML =
-    `預算 <b style="color:var(--gold)">${fmt(budget, 0)}</b> 元 · 配置 <b>${allocation.length}</b> 檔 · 已投入 <b style="color:var(--up)">${fmt(totalCost, 0)}</b> · 剩餘現金 <b>${fmt(finalCash, 0)}</b> (${finalCashPct.toFixed(1)}%)`;
+    `預算 <b style="color:var(--gold)">${fmt(budget, 0)}</b>` +
+    (usedCapital > 0 ? ` · 持股佔用 <b style="color:var(--neon)">${fmt(usedCapital, 0)}</b>（${activeHoldings.length} 檔已排除）` : '') +
+    ` · 新配置 <b>${allocation.length}</b> 檔 / <b style="color:var(--up)">${fmt(totalCost, 0)}</b>` +
+    ` · 剩餘現金 <b>${fmt(finalCash, 0)}</b> (${finalCashPct.toFixed(1)}%)`;
 
   renderTable(budget, finalCash, totalCost);
   drawPie(finalCash, totalCost);

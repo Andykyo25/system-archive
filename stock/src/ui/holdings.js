@@ -34,6 +34,7 @@ export function mount() {
       formEl.reset();
       document.getElementById('hf-date').value = today;
       await refresh();
+      emit('holdings:changed');
     } catch (err) {
       alert('新增失敗：' + err.message);
     }
@@ -123,6 +124,7 @@ async function loadHoldings() {
         try {
           await api.portfolioClose(id, { exit_price: +exitPrice });
           await refresh();
+          emit('holdings:changed');
         } catch (err) {
           alert('平倉失敗：' + err.message);
         }
@@ -136,6 +138,7 @@ async function loadHoldings() {
         try {
           await api.portfolioDelete(+btn.dataset.id);
           await refresh();
+          emit('holdings:changed');
         } catch (err) {
           alert('刪除失敗：' + err.message);
         }

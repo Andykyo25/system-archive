@@ -713,15 +713,21 @@ function buildAdvisor(d, stockMeta) {
   const code = d.code || '';
   const name = stockMeta?.name || '';
 
-  // ─ 主結論 ─
+  // ─ 主結論（含強勢突破 override）─
   let emoji, headline, pill;
+  // 強勢突破訊號（漲停 / 大紅帶量）→ 優先給強買
+  const fu = d.featureUpgrade?.contributions || {};
+  const hasBreakout = fu.limit_up_breakout || fu.strong_breakout;
+
   if (personalErr) {
     emoji = '⚠️'; headline = '此股近期模型不準，建議觀望'; pill = '系統低信心';
-  } else if (winRate >= 65 && costOK !== false) {
+  } else if (hasBreakout) {
+    emoji = '🚀'; headline = '建議：強勢突破日，順勢進場'; pill = '突破訊號';
+  } else if (winRate >= 60 && costOK !== false) {  // 65 → 60
     emoji = '🟢'; headline = '建議：分批進場'; pill = '訊號偏多';
-  } else if (winRate >= 55) {
+  } else if (winRate >= 50) {                      // 55 → 50
     emoji = '🟢'; headline = '建議：等回測再進場'; pill = '中期偏多';
-  } else if (winRate >= 45) {
+  } else if (winRate >= 42) {                      // 45 → 42
     emoji = '🟡'; headline = '建議：觀望優先'; pill = '訊號中性';
   } else if (winRate >= 30) {
     emoji = '🟠'; headline = '建議：減碼或不進場'; pill = '訊號偏空';

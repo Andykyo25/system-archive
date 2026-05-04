@@ -38,12 +38,6 @@
 <!-- Mobile drawer 遮罩 -->
 <div class="drawer-overlay" id="drawer-overlay"></div>
 
-<!-- 主畫面 / 系統評估 切換 -->
-<div class="view-tabs" id="view-tabs">
-  <button class="view-tab active" data-view="main">📊 個股 / 持股 / 大盤</button>
-  <button class="view-tab" data-view="backtest">🧪 系統評估（Backtest）</button>
-</div>
-
 <div class="shell">
 
   <aside class="sidebar">
@@ -359,42 +353,6 @@
       <div id="report-area"></div>
     </div>
 
-    <!-- ▼ Backtest 結果 + Ablation Study（獨立 tab） -->
-    <div class="panel view-only-backtest" id="backtest-panel">
-      <div class="panel-head">
-        <h2>系統 Backtest · Ablation
-          <span style="color:var(--dim);font-size:11px;font-weight:400;margin-left:8px">過去 1 年、5 路線對照、扣 1.17% 雙趟成本</span>
-        </h2>
-        <div class="actions">
-          <button class="tab" id="bt-run">▶ 跑 Backtest（約 1-2 分鐘）</button>
-        </div>
-      </div>
-      <div id="bt-status" style="font-size:11px;color:var(--dim);margin-bottom:10px">尚未執行</div>
-      <div style="overflow-x:auto">
-        <table class="chip-table" id="bt-table" style="display:none">
-          <thead>
-            <tr>
-              <th style="text-align:left">策略路線</th>
-              <th>交易筆數</th>
-              <th>勝率</th>
-              <th>累積報酬</th>
-              <th>平均單筆</th>
-              <th>Sharpe</th>
-              <th>最大回撤</th>
-            </tr>
-          </thead>
-          <tbody id="bt-tbody"></tbody>
-        </table>
-      </div>
-      <div style="margin-top:14px;display:none" id="bt-chart-wrap">
-        <div class="aside-title">▲ 累積報酬走勢（5 路線對照）</div>
-        <div class="chart-wrap" style="height:280px;background:var(--bg-3);border-radius:6px;padding:8px">
-          <canvas id="bt-chart"></canvas>
-        </div>
-      </div>
-      <div id="bt-conclusion" style="margin-top:14px;font-size:12px;line-height:1.7;display:none"></div>
-    </div>
-
     <div class="panel" id="ai-pick-panel">
       <div class="panel-head">
         <h2>AI 智選 · 依資金配置投資組合
@@ -402,7 +360,7 @@
         </h2>
         <div class="actions" style="gap:8px;align-items:center">
           <label style="font-size:11px;color:var(--dim)">資金總額
-            <input id="ai-budget" type="number" min="10000" step="10000" value="500000" style="width:110px;background:var(--bg-3);color:var(--txt);border:1px solid var(--line);padding:4px 8px;border-radius:4px;font-family:'JetBrains Mono',monospace;margin-left:4px">
+            <input id="ai-budget" type="number" min="10000" step="10000" value="250000" style="width:110px;background:var(--bg-3);color:var(--txt);border:1px solid var(--line);padding:4px 8px;border-radius:4px;font-family:'JetBrains Mono',monospace;margin-left:4px">
           </label>
           <label style="font-size:11px;color:var(--dim)">現金保留
             <select id="ai-cash" style="background:var(--bg-3);color:var(--txt);border:1px solid var(--line);padding:4px 8px;border-radius:4px;margin-left:4px">

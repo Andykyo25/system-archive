@@ -53,14 +53,6 @@ export const api = {
   },
   reportDaily: () => call('/reports/daily'),
   reportWeekly: () => call('/reports/weekly'),
-  // Backtest
-  backtestLatest: () => call('/backtest/latest'),
-  backtestRun: async () => {
-    const res = await fetch(BASE + '/backtest/run', { method: 'POST' });
-    const j = await res.json();
-    if (!j.ok) throw new Error(j.error);
-    return j.data;
-  },
   ranking: (codes, opts = {}) => {
     const q = new URLSearchParams({
       codes: codes.join(','),

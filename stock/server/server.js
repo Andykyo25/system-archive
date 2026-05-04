@@ -16,7 +16,6 @@ import * as predictions from './predictions.js';
 import * as portfolio from './portfolio.js';
 import { getMarketContext } from './marketContext.js';
 import { getIndustryStatsFor } from './industryContext.js';
-import { runBacktest } from './backtest.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -330,9 +329,31 @@ app.get('/api/kline/:code', async (req, res) => {
 });
 
 // ───────────────────────── 個股即時報價批次 ─────────────────────────
-// 主源：TWSE MIS（台灣本地、券商級、無 rate limit、含五檔）
-// 備援 1：Yahoo Finance（國際指數同源）
-// 備援 2：FinMind 日線快取（盤中不發新請求、保 quota）
+// 主源：TWSE MIS → Yahoo → FinMind cache
+// 加固：last-known-good 快取 + freshness 檢查 + 異常跳價過濾
+const lastGoodQuotes = new Map();      // code → { price, prev, chg, pct, ts, source }
+const QUOTE_FRESH_MS = 60 * 1000;       // 60 秒內視為新鮮
+const ANOMALY_THRESHOLD = 0.07;         // 跳動超過 7% 視為異常（台股漲跌停 ±10%，盤中單筆 7% 跳動極不合理）
+
+function isAnomaly(newPrice, lastGoodPrice) {
+  if (!lastGoodPrice || !(lastGoodPrice > 0)) return false;
+  const diff = Math.abs(newPrice - lastGoodPrice) / lastGoodPrice;
+  return diff > ANOMALY_THRESHOLD;
+}
+function applyQuoteGuard(code, q) {
+  if (!q || q.price == null) return null;
+  const last = lastGoodQuotes.get(code);
+  // 異常偵測：跳動 > 7% → 沿用 last good（log 異常）
+  if (last && isAnomaly(q.price, last.price)) {
+    console.warn(`[quote guard] ${code} 跳價異常 ${last.price} → ${q.price} (${((q.price - last.price) / last.price * 100).toFixed(1)}%)，沿用 last-good`);
+    return { ...last, source: last.source + '-cached', anomaly: true };
+  }
+  // 正常：更新 last good
+  const guarded = { ...q, ts: Date.now() };
+  lastGoodQuotes.set(code, guarded);
+  return guarded;
+}
+
 app.get('/api/quotes/batch', async (req, res) => {
   const codes = (req.query.codes || '').split(',').map((s) => s.trim()).filter(Boolean);
   if (!codes.length) return ok(res, {});
@@ -341,7 +362,7 @@ app.get('/api/quotes/batch', async (req, res) => {
     const out = {};
     const errors = {};
 
-    // ─ 主源：TWSE MIS（cache 1 秒，盡量即時。MIS 無 rate limit）─
+    // ─ 主源：TWSE MIS（cache 1 秒，含異常偵測與 last-good guard）─
     try {
       const misResults = await memo(`mis:${codes.join(',')}`, 1000, () => twseMis.quotes(codes, 'tse'));
       misResults.forEach((r) => {
@@ -349,26 +370,16 @@ app.get('/api/quotes/batch', async (req, res) => {
           if (r?.error) errors[r.code] = r.error;
           return;
         }
-        out[r.code] = {
-          price: r.price,
-          prev: r.prevClose,
-          chg: r.chg,
-          pct: r.pct,
-          open: r.open,
-          dayHigh: r.high,
-          dayLow: r.low,
-          volume: r.volume,
-          bestBid: r.bestBid,
-          bestAsk: r.bestAsk,
-          bid: r.bid,
-          ask: r.ask,
-          bidVol: r.bidVol,
-          askVol: r.askVol,
-          limitUp: r.limitUp,
-          limitDown: r.limitDown,
-          time: r.time,
+        const raw = {
+          price: r.price, prev: r.prevClose, chg: r.chg, pct: r.pct,
+          open: r.open, dayHigh: r.high, dayLow: r.low,
+          volume: r.volume, bestBid: r.bestBid, bestAsk: r.bestAsk,
+          bid: r.bid, ask: r.ask, bidVol: r.bidVol, askVol: r.askVol,
+          limitUp: r.limitUp, limitDown: r.limitDown, time: r.time,
           source: 'twse-mis',
         };
+        const guarded = applyQuoteGuard(r.code, raw);
+        if (guarded) out[r.code] = guarded;
       });
     } catch (e) {
       console.warn('[mis batch]', e.message);
@@ -386,19 +397,26 @@ app.get('/api/quotes/batch', async (req, res) => {
           if (!q || q.error || q.price == null) return;
           const close = q.price;
           const prev = q.prevClose ?? close;
-          out[code] = {
-            price: close,
-            prev,
+          const raw = {
+            price: close, prev,
             chg: close - prev,
             pct: prev ? ((close - prev) / prev) * 100 : 0,
-            dayHigh: q.dayHigh,
-            dayLow: q.dayLow,
-            volume: q.volume,
-            time: q.time,
-            source: 'yahoo',
+            dayHigh: q.dayHigh, dayLow: q.dayLow, volume: q.volume,
+            time: q.time, source: 'yahoo',
           };
+          const guarded = applyQuoteGuard(code, raw);
+          if (guarded) out[code] = guarded;
         });
       } catch (e) { errors._yahoo = e.message; }
+    }
+
+    // ─ 最後防線：對仍 missing 的代碼套用 last-known-good ─
+    const stillMissing = codes.filter((c) => !out[c]);
+    for (const c of stillMissing) {
+      const last = lastGoodQuotes.get(c);
+      if (last && Date.now() - last.ts < 5 * 60 * 1000) {  // 5 分鐘內的 last good 還算有效
+        out[c] = { ...last, source: last.source + '-stale', stale: true };
+      }
     }
 
     // ─ 備援 2：FinMind cache（盤中不發新請求）─
@@ -1106,31 +1124,6 @@ app.get('/api/reports/weekly', async (_req, res) => {
       closedThisWeek,
     });
   } catch (e) { fail(res, e); }
-});
-
-// ───────────────────────── Backtest 框架 ─────────────────────────
-// 結果 cache 24 小時（耗時操作）
-let backtestRunning = false;
-app.get('/api/backtest/latest', async (_req, res) => {
-  try {
-    const data = await memo('backtest:latest', 24 * 60 * 60 * 1000, async () => null);
-    if (!data) return ok(res, { status: 'no_data', message: '尚無 backtest 結果，POST /api/backtest/run 啟動' });
-    ok(res, data);
-  } catch (e) { fail(res, e); }
-});
-app.post('/api/backtest/run', async (_req, res) => {
-  if (backtestRunning) return res.status(429).json({ ok: false, error: 'backtest 正在跑，請稍候' });
-  backtestRunning = true;
-  try {
-    const t0 = Date.now();
-    const data = await runBacktest({ lookbackDays: 252 });
-    data.elapsedMs = Date.now() - t0;
-    // 寫進 cache 給 /latest 拿
-    const { set } = await import('./cache.js');
-    set('backtest:latest', data, 24 * 60 * 60 * 1000);
-    ok(res, data);
-  } catch (e) { fail(res, e); }
-  finally { backtestRunning = false; }
 });
 
 // ───────────────────────── 預測追蹤（自我學習回饋資料） ─────────────────────────
