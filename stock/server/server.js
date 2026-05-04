@@ -332,24 +332,52 @@ app.get('/api/kline/:code', async (req, res) => {
 // 主源：TWSE MIS → Yahoo → FinMind cache
 // 加固：last-known-good 快取 + freshness 檢查 + 異常跳價過濾
 const lastGoodQuotes = new Map();      // code → { price, prev, chg, pct, ts, source }
-const QUOTE_FRESH_MS = 60 * 1000;       // 60 秒內視為新鮮
-const ANOMALY_THRESHOLD = 0.07;         // 跳動超過 7% 視為異常（台股漲跌停 ±10%，盤中單筆 7% 跳動極不合理）
+// 異常偵測只在「連續 poll 30 秒內」之間做（30 秒內單筆跳 7% 才合理視為錯誤資料）
+// 若 cache 已超過 30 秒（盤前→盤中、跳空、漲停等正常情況）則接受新價
+const ANOMALY_WINDOW_MS = 30 * 1000;
+const ANOMALY_THRESHOLD = 0.07;
 
-function isAnomaly(newPrice, lastGoodPrice) {
-  if (!lastGoodPrice || !(lastGoodPrice > 0)) return false;
-  const diff = Math.abs(newPrice - lastGoodPrice) / lastGoodPrice;
+function isAnomaly(newPrice, last) {
+  if (!last || !(last.price > 0)) return false;
+  const ageMs = Date.now() - (last.ts || 0);
+  if (ageMs > ANOMALY_WINDOW_MS) return false;  // cache 過舊不檢查（漲跌停、隔日等不該被擋）
+  const diff = Math.abs(newPrice - last.price) / last.price;
   return diff > ANOMALY_THRESHOLD;
 }
+// 台股跳動單位 round（修正 Yahoo/Stooq 偶爾回不合法價格如 242.13）
+function roundToTwTick(p) {
+  if (p == null || !Number.isFinite(+p)) return p;
+  const v = +p;
+  if (v < 10)   return Math.round(v * 100) / 100;
+  if (v < 50)   return Math.round(v * 20) / 20;
+  if (v < 100)  return Math.round(v * 10) / 10;
+  if (v < 500)  return Math.round(v * 2) / 2;
+  if (v < 1000) return Math.round(v);
+  return Math.round(v / 5) * 5;
+}
+
 function applyQuoteGuard(code, q) {
   if (!q || q.price == null) return null;
+  // 先 round 到台股合法跳動單位
+  const normalized = {
+    ...q,
+    price: roundToTwTick(q.price),
+    prev: roundToTwTick(q.prev),
+    open: q.open != null ? roundToTwTick(q.open) : undefined,
+    dayHigh: q.dayHigh != null ? roundToTwTick(q.dayHigh) : undefined,
+    dayLow: q.dayLow != null ? roundToTwTick(q.dayLow) : undefined,
+  };
+  // 重算 chg / pct 以對齊已 round 的價格
+  if (Number.isFinite(normalized.price) && Number.isFinite(normalized.prev) && normalized.prev > 0) {
+    normalized.chg = +(normalized.price - normalized.prev).toFixed(2);
+    normalized.pct = +(((normalized.price - normalized.prev) / normalized.prev) * 100).toFixed(2);
+  }
   const last = lastGoodQuotes.get(code);
-  // 異常偵測：跳動 > 7% → 沿用 last good（log 異常）
-  if (last && isAnomaly(q.price, last.price)) {
-    console.warn(`[quote guard] ${code} 跳價異常 ${last.price} → ${q.price} (${((q.price - last.price) / last.price * 100).toFixed(1)}%)，沿用 last-good`);
+  if (isAnomaly(normalized.price, last)) {
+    console.warn(`[quote guard] ${code} 30s 內跳價 ${last.price} → ${normalized.price}，沿用 last-good`);
     return { ...last, source: last.source + '-cached', anomaly: true };
   }
-  // 正常：更新 last good
-  const guarded = { ...q, ts: Date.now() };
+  const guarded = { ...normalized, ts: Date.now() };
   lastGoodQuotes.set(code, guarded);
   return guarded;
 }
@@ -918,6 +946,39 @@ async function loadStockDiagnose(code) {
 }
 
 // ───────────────────────── 個人持股追蹤 + 每日報告 ─────────────────────────
+// 台股交易成本：手續費 0.1425%（買賣都收）、證交稅 0.3%（賣出收）
+const FEE_RATE = 0.001425;
+const TAX_RATE = 0.003;
+const FEE_MIN = 20;  // 最低手續費 20 元
+
+// 計算實際損益（含手續費與證交稅）
+//   買進總成本 = price × shares × (1 + 手續費率)，但最低 20 元手續費
+//   賣出實得  = price × shares × (1 - 手續費率 - 證交稅率)
+//   損益       = 賣出實得 - 買進成本
+function computePL(entryPrice, currentPrice, lots) {
+  const shares = lots * 1000;
+  const buyGross = entryPrice * shares;
+  const buyFee = Math.max(buyGross * FEE_RATE, FEE_MIN);
+  const buyTotal = buyGross + buyFee;
+  const sellGross = currentPrice * shares;
+  const sellFee = Math.max(sellGross * FEE_RATE, FEE_MIN);
+  const sellTax = sellGross * TAX_RATE;
+  const sellNet = sellGross - sellFee - sellTax;
+  const pl = sellNet - buyTotal;
+  const plPct = (pl / buyTotal) * 100;
+  const avgEntry = buyTotal / shares;     // 含手續費的「實際成交均價」
+  const breakEven = (buyTotal) / (shares * (1 - FEE_RATE - TAX_RATE)); // 損益兩平價
+  return {
+    pl: +pl.toFixed(0),
+    plPct: +plPct.toFixed(2),
+    buyTotal: +buyTotal.toFixed(0),
+    sellNet: +sellNet.toFixed(0),
+    avgEntry: +avgEntry.toFixed(2),
+    breakEven: +breakEven.toFixed(2),
+    fees: +(buyFee + sellFee + sellTax).toFixed(0),
+  };
+}
+
 // 列出所有持股（active / closed 都拿）— 並自動帶上「現在該怎麼辦」的診斷
 app.get('/api/portfolio', async (req, res) => {
   try {
@@ -930,14 +991,10 @@ app.get('/api/portfolio', async (req, res) => {
         const d = await memo(`diag:${h.code}`, 30000, () => loadStockDiagnose(h.code));
         if (!d) return h;
         const currentPrice = d.close;
-        const cost = h.entry_price * h.lots * 1000;
-        const value = currentPrice * h.lots * 1000;
-        const pl = value - cost;
-        const plPct = ((currentPrice - h.entry_price) / h.entry_price) * 100;
-        // 簡易動作判讀（給報告用）
+        const plData = computePL(h.entry_price, currentPrice, h.lots);
         let advice;
         if (d.personalAccuracy?.consecutiveBigError) advice = 'reduce';
-        else if (d.winRate >= 60 && plPct > 0) advice = 'hold';
+        else if (d.winRate >= 60 && plData.plPct > 0) advice = 'hold';
         else if (d.winRate >= 60) advice = 'add';
         else if (d.winRate < 40 || (d.levels?.stop && currentPrice < d.levels.stop)) advice = 'sell';
         else if (d.levels?.target1 && currentPrice >= d.levels.target1) advice = 'take_profit';
@@ -945,8 +1002,12 @@ app.get('/api/portfolio', async (req, res) => {
         return {
           ...h,
           current_price: currentPrice,
-          pl,
-          pl_pct: +plPct.toFixed(2),
+          pl: plData.pl,
+          pl_pct: plData.plPct,
+          avg_entry: plData.avgEntry,
+          break_even: plData.breakEven,
+          fees: plData.fees,
+          buy_total: plData.buyTotal,
           win_rate: d.winRate,
           direction: d.direction,
           advice,
@@ -1002,13 +1063,12 @@ app.get('/api/reports/daily', async (_req, res) => {
       const d = await memo(`diag:${h.code}`, 30000, () => loadStockDiagnose(h.code)).catch(() => null);
       if (!d) return { code: h.code, error: '診斷失敗' };
       const cur = d.close;
-      const plPct = ((cur - h.entry_price) / h.entry_price) * 100;
+      const pl = computePL(h.entry_price, cur, h.lots);
       const days = Math.floor((Date.now() - new Date(h.entry_date).getTime()) / 86400000);
-      // 構建白話文段落
       const lines = [];
-      lines.push(`【${h.code}${d.name ? ' ' + d.name : ''}】持有 ${days} 天，目前 ${cur.toFixed(2)}（買進 ${h.entry_price}）`);
-      lines.push(`  損益：${plPct >= 0 ? '+' : ''}${plPct.toFixed(2)}%（${plPct >= 0 ? '獲利' : '虧損'} ${Math.abs(((cur - h.entry_price) * h.lots * 1000)).toFixed(0)} 元）`);
-      lines.push(`  系統勝率 ${d.winRate}%，方向 ${d.direction === 'long' ? '偏多' : d.direction === 'short' ? '偏空' : '中性'}`);
+      lines.push(`【${h.code}${d.name ? ' ' + d.name : ''}】持有 ${days} 天，目前 ${cur.toFixed(2)}（買進 ${h.entry_price}，含費均價 ${pl.avgEntry}）`);
+      lines.push(`  實際損益：${pl.plPct >= 0 ? '+' : ''}${pl.plPct.toFixed(2)}%（${pl.pl >= 0 ? '獲利' : '虧損'} ${Math.abs(pl.pl).toLocaleString()} 元，已扣手續費+證交稅 ${pl.fees.toLocaleString()} 元）`);
+      lines.push(`  損益兩平價：${pl.breakEven}　·　系統勝率 ${d.winRate}%（${d.direction === 'long' ? '偏多' : d.direction === 'short' ? '偏空' : '中性'}）`);
       if (d.levels?.stop && cur < d.levels.stop) {
         lines.push(`  ⚠️ 已跌破停損 ${d.levels.stop} — 建議出場`);
       } else if (d.levels?.target1 && cur >= d.levels.target1) {
@@ -1017,7 +1077,7 @@ app.get('/api/reports/daily', async (_req, res) => {
         lines.push(`  ⚠️ 此股近期模型不準（連 3 筆誤差 > 5%）— 建議降低部位`);
       } else if (d.winRate < 40) {
         lines.push(`  ⚠️ 訊號偏空 — 反彈即減碼`);
-      } else if (d.winRate >= 60 && plPct < 0) {
+      } else if (d.winRate >= 60 && pl.plPct < 0) {
         lines.push(`  💡 訊號仍偏多但目前虧損 — 可考慮在 ${d.levels?.support20 || ''} 加碼攤平`);
       } else if (d.winRate >= 60) {
         lines.push(`  ✓ 訊號維持偏多 — 持有，目標 ${d.levels?.target1}、停損 ${d.levels?.stop}`);
@@ -1029,10 +1089,13 @@ app.get('/api/reports/daily', async (_req, res) => {
         name: d.name,
         entryDate: h.entry_date,
         entryPrice: h.entry_price,
+        avgEntry: pl.avgEntry,
+        breakEven: pl.breakEven,
+        fees: pl.fees,
         lots: h.lots,
         currentPrice: cur,
-        plPct: +plPct.toFixed(2),
-        plAmount: Math.round((cur - h.entry_price) * h.lots * 1000),
+        plPct: pl.plPct,
+        plAmount: pl.pl,
         days,
         winRate: d.winRate,
         direction: d.direction,

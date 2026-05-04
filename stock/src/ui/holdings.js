@@ -87,11 +87,15 @@ async function loadHoldings() {
             ${h.note ? `<div style="color:var(--dim);font-size:10px">${h.note}</div>` : ''}
           </td>
           <td>${h.entry_date}</td>
-          <td>${fmt(h.entry_price, 2)}</td>
+          <td>${fmt(h.entry_price, 2)}
+            ${h.avg_entry != null ? `<div style="font-size:10px;color:var(--dim)">含費 ${fmt(h.avg_entry, 2)}</div>` : ''}
+          </td>
           <td>${h.lots}</td>
-          <td>${h.current_price != null ? fmt(h.current_price, 2) : '--'}</td>
+          <td>${h.current_price != null ? fmt(h.current_price, 2) : '--'}
+            ${h.break_even != null ? `<div style="font-size:10px;color:var(--dim)">兩平 ${fmt(h.break_even, 2)}</div>` : ''}
+          </td>
           <td class="${plCls}">${pl != null ? (pl > 0 ? '+' : '') + pl.toFixed(2) + '%' : '--'}
-            ${h.pl != null ? `<div style="font-size:10px;color:var(--dim)">${h.pl >= 0 ? '+' : ''}${Math.round(h.pl).toLocaleString()} 元</div>` : ''}
+            ${h.pl != null ? `<div style="font-size:10px;color:var(--dim)">${h.pl >= 0 ? '+' : ''}${h.pl.toLocaleString()}${h.fees != null ? ` (扣費 ${h.fees.toLocaleString()})` : ''} 元</div>` : ''}
           </td>
           <td><span style="color:${winColor};font-weight:700">${h.win_rate != null ? h.win_rate + '%' : '--'}</span></td>
           <td style="text-align:left" class="${adviceCls}">${adviceText}

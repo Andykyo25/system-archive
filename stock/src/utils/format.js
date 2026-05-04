@@ -2,6 +2,23 @@ export const fmt = (n, d = 2) => {
   if (n == null || !Number.isFinite(+n)) return '--';
   return (+n).toLocaleString('en', { minimumFractionDigits: d, maximumFractionDigits: d });
 };
+
+// 台股跳動單位：< 10:0.01、< 50:0.05、< 100:0.1、< 500:0.5、< 1000:1、≥ 1000:5
+export function roundToTick(p) {
+  if (p == null || !Number.isFinite(+p)) return p;
+  const v = +p;
+  if (v < 10)   return Math.round(v * 100) / 100;
+  if (v < 50)   return Math.round(v * 20) / 20;
+  if (v < 100)  return Math.round(v * 10) / 10;
+  if (v < 500)  return Math.round(v * 2) / 2;
+  if (v < 1000) return Math.round(v);
+  return Math.round(v / 5) * 5;
+}
+
+// 顯示用：先 roundToTick 再 fmt
+export function fmtTick(n, d = 2) {
+  return fmt(roundToTick(n), d);
+}
 export const sign = (n) => (n > 0 ? '+' : '') + fmt(n, 2);
 export const pctClass = (n) => (n > 0 ? 'up' : n < 0 ? 'down' : '');
 export const colorOf = (n) => (n > 0 ? 'var(--up)' : n < 0 ? 'var(--down)' : 'var(--flat)');

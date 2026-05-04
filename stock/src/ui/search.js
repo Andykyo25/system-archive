@@ -12,17 +12,24 @@ export async function mount() {
   inputEl = document.getElementById('search-input');
   suggestEl = document.getElementById('search-suggest');
 
-  // 載入全市場股票清單（FinMind）
+  // 載入全市場股票清單（FinMind）— dedupe by code，twse 優先 tpex
   try {
     const list = await api.stocks();
-    allStocks = (list || [])
-      .filter((s) => s.type === 'twse' || s.type === 'tpex' || /^\d{4,6}$/.test(s.stock_id))
-      .map((s) => ({
+    const map = new Map();
+    (list || []).forEach((s) => {
+      if (!s.stock_id || !/^\d{4,6}$/.test(s.stock_id)) return;
+      if (s.type !== 'twse' && s.type !== 'tpex') return;
+      const existing = map.get(s.stock_id);
+      // twse 優先：若已是 twse 則略過 tpex 重複
+      if (existing && existing.type === 'twse') return;
+      map.set(s.stock_id, {
         code: s.stock_id,
         name: s.stock_name,
         industry: s.industry_category || '-',
         type: s.type,
-      }));
+      });
+    });
+    allStocks = [...map.values()];
   } catch (e) {
     console.warn('[search] FinMind stock list failed, fallback to mock', e.message);
     allStocks = Object.entries(mockStocks).map(([code, s]) => ({
