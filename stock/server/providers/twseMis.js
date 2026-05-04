@@ -97,24 +97,43 @@ function parseRow(r) {
   };
 }
 
-// 一次查多個個股（自動 chunk）
-// codes: ['2330', '2317', ...]，會自動加 tse_ 或 otc_ 前綴
-// market: 'tse' 預設，需要時可指定 'otc'
+// 一次查多個個股（自動 chunk）— 缺的 code 會單獨重試一次
+// MIS 偶爾會漏部分 code（msgArray 不返回所有要求的 row），單獨重試命中率高
 export async function quotes(codes, market = 'tse') {
   if (!Array.isArray(codes) || !codes.length) return [];
   const out = [];
+  const returnedCodes = new Set();
+
+  // 第一輪：批次查詢
   for (let i = 0; i < codes.length; i += CHUNK) {
     const batch = codes.slice(i, i + CHUNK);
     const ex_ch = batch.map((c) => `${market}_${c}.tw`).join('|');
     try {
       const j = await fetchJson(`${BASE}?ex_ch=${encodeURIComponent(ex_ch)}&json=1&delay=0`);
       const arr = (j.msgArray || []).map(parseRow);
+      arr.forEach((r) => { if (r?.code) returnedCodes.add(r.code); });
       out.push(...arr);
     } catch (e) {
-      // 整批失敗，給每個 code 一個錯誤標記
       batch.forEach((c) => out.push({ code: c, error: e.message, source: 'twse-mis' }));
+      batch.forEach((c) => returnedCodes.add(c));  // 算已嘗試（錯誤），避免單獨重試
     }
   }
+
+  // 第二輪：對「沒回應 + 沒錯誤」的 code 單獨重試（解 MIS batch 漏個股的問題）
+  const missing = codes.filter((c) => !returnedCodes.has(c));
+  if (missing.length) {
+    for (const c of missing) {
+      try {
+        const j = await fetchJson(`${BASE}?ex_ch=${market}_${c}.tw&json=1&delay=0`);
+        const arr = (j.msgArray || []).map(parseRow);
+        if (arr.length) out.push(...arr);
+        else out.push({ code: c, error: 'MIS empty msgArray', source: 'twse-mis' });
+      } catch (e) {
+        out.push({ code: c, error: e.message, source: 'twse-mis' });
+      }
+    }
+  }
+
   return out;
 }
 

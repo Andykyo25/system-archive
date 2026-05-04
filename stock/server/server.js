@@ -328,6 +328,13 @@ app.get('/api/kline/:code', async (req, res) => {
   } catch (e) { fail(res, e); }
 });
 
+// 清掉 lastGoodQuotes 與 server cache（debug 用）
+app.post('/api/quotes/reset', (_req, res) => {
+  const before = lastGoodQuotes.size;
+  lastGoodQuotes.clear();
+  ok(res, { cleared: before });
+});
+
 // ───────────────────────── 個股即時報價批次 ─────────────────────────
 // 主源：TWSE MIS → Yahoo → FinMind cache
 // 加固：last-known-good 快取 + freshness 檢查 + 異常跳價過濾

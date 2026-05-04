@@ -185,6 +185,16 @@ server `applyQuoteGuard()` 與前端 `format.js fmtTick()` 都有。
 ### K. lastGoodQuotes 鎖死
 `lastGoodQuotes` 在 server 記憶體中，重啟才清。如果舊邏輯把錯值寫進去，**重啟才會解**。
 
+### M. MIS batch 偶爾漏 code
+**踩過**：2408 漲停日 header 顯示 215.50（昨收），但 diagnose 用對的 237。原因：MIS
+`msgArray` 在 batch 請求 50 檔時偶爾少回幾個 row（無 error、就是沒回），這些 code 被
+`stillMissing` 掉到 `lastGoodQuotes`（cold start 空的）→ 整段沒寫入 → state 維持
+loadMovers 建立時的昨日數據。
+
+**修法**：`twseMis.quotes` 第二輪對「沒回應 + 沒錯誤」的 code 單獨重試（單個 code 永遠不會漏）。
+
+**Debug 端點**：`POST /api/quotes/reset` 可清 `lastGoodQuotes`（不必重啟 server）。
+
 ### L. state.stocks[code] 多源覆寫衝突
 `state.stocks[code].price` 是 header 顯示的 single source of truth，但有多處在寫：
 - `scheduler.bootstrapQuotes`（`/api/quotes/batch` → MIS 即時，**正確來源**）
