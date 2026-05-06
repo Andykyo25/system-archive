@@ -17,6 +17,7 @@ import * as portfolio from './portfolio.js';
 import { getMarketContext } from './marketContext.js';
 import { getIndustryStatsFor } from './industryContext.js';
 import * as klineCache from './klineCache.js';
+import * as backfill from './cron/dailyBackfill.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -702,6 +703,48 @@ app.get('/api/financial/:code', async (req, res) => {
   try {
     const data = await memo(`fin:${code}`, TTL_HIST, () => finmind.financial(code, start));
     ok(res, data);
+  } catch (e) { fail(res, e); }
+});
+
+// ───────────────────────── 離線化排程（每日盤後 14:35）─────────────────────────
+// 用途：每日盤後一次抓全市場資料（K 線 / 法人 / 融資融券 / 大盤指數）灌進 Supabase，
+// 盤中前端只讀 Supabase，徹底解決 API 超額／黑名單問題。
+//
+// 觸發方式：
+//   1. 啟動時自動補今日（如果 ≥ 14:35 且尚未跑過）
+//   2. 內建 setInterval 每天 14:35 自動觸發
+//   3. POST /api/cron/daily-backfill（CRON_SECRET 保護，給外部 cron service 觸發）
+
+const CRON_SECRET = process.env.CRON_SECRET || '';
+
+function checkCronAuth(req, res) {
+  if (!CRON_SECRET) return true;        // 沒設 secret = 不檢查（dev 方便）
+  const got = req.headers['x-cron-secret'] || req.query.secret || '';
+  if (got !== CRON_SECRET) {
+    res.status(401).json({ ok: false, error: 'unauthorized' });
+    return false;
+  }
+  return true;
+}
+
+// 手動 / 外部觸發每日 backfill
+//   POST /api/cron/daily-backfill
+//   body: { tradeDate?: 'YYYY-MM-DD', force?: bool, skipKline?, skipInst?, skipMargin?, skipIndex? }
+//   header: x-cron-secret 或 ?secret= （CRON_SECRET 有設時必填）
+app.post('/api/cron/daily-backfill', async (req, res) => {
+  if (!checkCronAuth(req, res)) return;
+  try {
+    const result = await backfill.runDailyBackfill(req.body || {});
+    ok(res, result);
+  } catch (e) { fail(res, e); }
+});
+
+// 看最近 N 筆排程紀錄（不需 secret，純查狀態）
+app.get('/api/cron/status', async (req, res) => {
+  const limit = Math.min(+(req.query.limit || 20), 100);
+  try {
+    const runs = await backfill.getRecentRuns(limit);
+    ok(res, { connected: backfill.isReady(), runs });
   } catch (e) { fail(res, e); }
 });
 
@@ -1488,6 +1531,56 @@ app.listen(PORT, async () => {
     const n = await predictions.persist();
     if (n > 0) console.log(`  predictions flushed: ${n} rows`);
   }, 5 * 60 * 1000);
+
+  // ───── 離線化資料管線：啟動補抓 + 每日 14:35 自動觸發 ─────
+  // 取台灣時間（避開 Railway 預設 UTC）
+  function taipeiNow() {
+    const fmt = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Asia/Taipei',
+      hour: '2-digit', minute: '2-digit', hour12: false,
+      weekday: 'short',
+    });
+    const parts = fmt.formatToParts(new Date());
+    const get = (t) => parts.find((p) => p.type === t)?.value;
+    return { hour: +get('hour'), minute: +get('minute'), weekday: get('weekday') };
+  }
+
+  async function maybeRunDailyBackfill(reason) {
+    if (!backfill.isReady()) {
+      console.warn(`[cron] ${reason} skipped: supabase not configured`);
+      return;
+    }
+    try {
+      const r = await backfill.runDailyBackfill();
+      if (r.skipped) console.log(`[cron] ${reason} skipped: ${r.skipped} (${r.tradeDate})`);
+      else console.log(`[cron] ${reason} done status=${r.status} elapsed=${r.stats?.elapsedMs}ms`);
+    } catch (e) { console.warn(`[cron] ${reason} failed:`, e.message); }
+  }
+
+  // 啟動補抓：若現在台灣時間 ≥ 14:35 且為工作日，且今日尚未 backfill → 立刻補
+  {
+    const t = taipeiNow();
+    const isWeekday = !['Sat', 'Sun'].includes(t.weekday);
+    const past1435 = (t.hour > 14) || (t.hour === 14 && t.minute >= 35);
+    if (isWeekday && past1435) {
+      // 延遲 5 秒讓 server 先穩定
+      setTimeout(() => maybeRunDailyBackfill('startup-catchup'), 5000);
+    } else {
+      console.log(`[cron] startup: 等候每日 14:35 自動觸發 (現在 TPE ${String(t.hour).padStart(2, '0')}:${String(t.minute).padStart(2, '0')} ${t.weekday})`);
+    }
+  }
+
+  // setInterval 每分鐘檢查：到 14:35 觸發（防同日重複用 lastTriggerKey）
+  let lastTriggerKey = '';
+  setInterval(() => {
+    const t = taipeiNow();
+    if (['Sat', 'Sun'].includes(t.weekday)) return;
+    if (t.hour !== 14 || t.minute !== 35) return;
+    const key = new Date().toISOString().slice(0, 10);
+    if (key === lastTriggerKey) return;
+    lastTriggerKey = key;
+    maybeRunDailyBackfill('14:35-trigger');
+  }, 60 * 1000);
 
   // graceful shutdown：強制把 dirty queue 寫完再退出
   ['SIGTERM', 'SIGINT'].forEach((sig) => {

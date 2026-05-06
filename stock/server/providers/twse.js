@@ -199,6 +199,64 @@ export async function margin() {
   return fetchJson('/exchangeReport/MI_MARGN');
 }
 
+// 全市場個股融資融券（單日，免 quota 官方）
+// /rwd/zh/marginTrading/MI_MARGN?date=YYYYMMDD&selectType=ALL&response=json
+// fields 範例：['股票代號','股票名稱','融資買進','融資賣出','現金償還','前資餘額','資餘額',
+//            '融資限額','融券買進','融券賣出','現券償還','前券餘額','券餘額','融券限額','資券互抵','註記']
+export async function marginByDay(yyyymmdd) {
+  const url = `https://www.twse.com.tw/rwd/zh/marginTrading/MI_MARGN?date=${yyyymmdd}&selectType=ALL&response=json`;
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 8000);
+  let res, j;
+  try {
+    res = await fetch(url, {
+      signal: ctrl.signal,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 TWSE-WarRoom/1.0',
+        Accept: 'application/json',
+        Referer: 'https://www.twse.com.tw/',
+      },
+    });
+    if (!res.ok) throw new Error(`twse MI_MARGN HTTP ${res.status}`);
+    j = await res.json();
+  } finally { clearTimeout(t); }
+  if (j.stat !== 'OK') throw new Error(`twse MI_MARGN ${j.stat || 'no data'}`);
+  // 結構：tables[1].fields + tables[1].data （個股明細在 tables[1]）
+  const tables = j.tables || [];
+  const target = tables.find((t) => Array.isArray(t.data) && t.data.length > 100) || tables[1] || tables[0];
+  if (!target || !Array.isArray(target.data)) throw new Error('twse MI_MARGN no detail table');
+  const fields = target.fields || [];
+  const idx = (...kws) => {
+    for (const kw of kws) {
+      const i = fields.findIndex((f) => f && f.replace(/\s/g, '').includes(kw));
+      if (i >= 0) return i;
+    }
+    return -1;
+  };
+  const codeI = idx('股票代號', '證券代號');
+  const marginBuyI = idx('融資買進');
+  const marginSellI = idx('融資賣出');
+  const marginBalI = idx('資餘額', '融資餘額');
+  const shortBuyI = idx('融券買進');
+  const shortSellI = idx('融券賣出');
+  const shortBalI = idx('券餘額', '融券餘額');
+  if (codeI < 0) throw new Error('twse MI_MARGN 欄位解析失敗');
+  const num = (s) => +String(s ?? '0').replace(/,/g, '') || 0;
+  return target.data.map((row) => {
+    const code = String(row[codeI] || '').trim();
+    if (!/^\d{4,6}$/.test(code)) return null;
+    return {
+      code,
+      margin_buy: num(row[marginBuyI]),
+      margin_sell: num(row[marginSellI]),
+      margin_balance: num(row[marginBalI]),
+      short_buy: num(row[shortBuyI]),
+      short_sell: num(row[shortSellI]),
+      short_balance: num(row[shortBalI]),
+    };
+  }).filter(Boolean);
+}
+
 // 個股殖利率/本益比/股價淨值比
 export async function bwibbu() {
   return fetchJson('/exchangeReport/BWIBBU_ALL');
