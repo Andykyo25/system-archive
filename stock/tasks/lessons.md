@@ -98,3 +98,19 @@
 ### L14 — Tailwind v4 在 components 直接寫 utility class 比 @apply 簡單
 **做法**:不寫 `.btn { @apply ... }` 抽象。直接在 JSX 用 `className="rounded-md bg-blue-600 ..."`,或用 const 字串複用(如 `const inputCls = "..."`)
 **為什麼**:Tailwind v4 改了 @apply 行為 + JIT 編譯模式,@apply 偶有意外。inline 雖然冗長但 100% 可預期,debug 容易
+
+---
+
+## Watchlist 改產業視圖(M5 patch)後
+
+### L15 — Edge Function deploy via MCP 要 JSON-encode 整個 source
+**問題**:`deploy_edge_function.files[0].content` 接 string,要把 TS source 用 JSON-escape 後塞進 tool call。手動 escape 容易壞(quote / 換行 / 反斜線)
+**做法**:用 Node 一行 `fs.writeFileSync('out.json', JSON.stringify(fs.readFileSync(src, 'utf8')))`,然後 Read out.json 拿到 escaped 字串,直接貼進 tool call
+**為什麼**:Windows Bash 沒 jq,Python 是 Microsoft Store 假連結也不能跑;Node 一定有(我們在 Next.js 專案內),最穩
+
+### L16 — Andy 要的「值得進場」是 institutional-grade 多因子模型,不是動能
+**摘要**:Andy 給的 framework(EPS 10 年成長 / ROE>15% / 自由現金流 / PEG / P/B + 逆勢布局)需要財報數據,不是只有 OHLCV 能算
+**做法**:
+- 短期 MVP:用 5 日漲幅(動能 proxy)排序,UI 明確標示「待 fundamentals 補」
+- 中期 M3.6:接 FinMind 的 `TaiwanStockFinancialStatements` 等 dataset,建 `stock_fundamentals` 表,改 view 用 6 條規則評分
+**為什麼**:資料層先有什麼就用什麼,先把產業視圖跑起來;但長期不能用動能假裝是基本面

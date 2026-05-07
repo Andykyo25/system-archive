@@ -165,7 +165,37 @@
 
 - [ ] LINE Notify 或 LINE Messaging API 串接
 - [ ] `alert_events` 觸發時推 LINE
-- [ ] 每日盤後摘要(總損益、警示清單、paper vs real 對照)
+- [ ] 每日盤後摘要(總損益、警示清單)
+
+---
+
+## ✅ 已完成 patch:Paper Trade 移除 + Watchlist 改產業視圖(2026-05-07)
+
+- Paper trade 整套移除:`app/paper/`、`v_paper_pnl`、`v_paper_positions`、`paper_orders` 全 drop
+- 新表 `industry_stocks(industry, symbol, name, display_order)`,seed 10 產業 × 10 股(96/100 抓得到報價,4 檔 KY/特殊股號待修)
+- 新 view `v_industry_quotes`(含 5 日 / 20 日漲幅)
+- 兩個 Edge Function 都改成把 `industry_stocks.symbol` 加入 targetSymbols
+- Watchlist tab 改名「產業」,分產業顯示,內排 5 日漲幅 desc(動能 proxy)
+- EPS / ROE / PEG / P/B 欄位先預留為 `—`,等 M3.6 fundamentals 補
+
+---
+
+## M3.6(下一輪) — Fundamentals layer 補 Andy 完整篩選條件
+
+從 FinMind 補財報數據,套 Andy 給的 6 條規則(EPS 10 年成長 / ROE>15% / FCF / PEG / P/B)做評分排序
+
+- [ ] 驗證 FinMind 免費版有哪些 datasets:`TaiwanStockFinancialStatements` / `TaiwanStockBalanceSheet` / `TaiwanStockCashFlowsStatement` / `TaiwanStockPER`
+- [ ] 新表 `stock_fundamentals (symbol, period, eps, roe, fcf, pe, pb, ...)`
+- [ ] 新 Edge Function `fetch-finmind-fundamentals`(每週跑,財報季更新慢)
+- [ ] pg_cron schedule:每週一 03:00 UTC 觸發
+- [ ] 改 `v_industry_quotes` → `v_industry_picks`,加分數 / filter:
+  - EPS 10 年連續為正
+  - ROE > 15%
+  - FCF > 0
+  - PEG < 1.0(理想 < 0.66)
+  - P/B < 2
+  - 5 日 / 20 日漲幅(動能加分)
+- [ ] UI 排序改用評分,每個 row 顯示通過幾條條件
 
 ---
 
@@ -175,3 +205,5 @@
 - 限價單 / 停損單模擬
 - 多 user 登入(改用 Supabase Auth)
 - 跨市場(美股、加密貨幣)
+- Tab 5 個股(K 線 + 技術指標)
+- Tab 6 Alerts(觸發紀錄 + LINE 通知)

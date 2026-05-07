@@ -6,8 +6,7 @@ import { usePathname } from "next/navigation";
 const tabs = [
   { href: "/", label: "Dashboard" },
   { href: "/holdings", label: "持股" },
-  { href: "/watchlist", label: "Watchlist" },
-  { href: "/paper", label: "Paper Trade" },
+  { href: "/watchlist", label: "產業" },
 ];
 
 export function TabNav() {

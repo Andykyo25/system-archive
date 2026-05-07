@@ -144,9 +144,10 @@ Deno.serve(async (req: Request) => {
   }
   const supabase = createClient(Deno.env.get("SUPABASE_URL")!, SERVICE_ROLE);
 
-  const [holdings, watchlist] = await Promise.all([
+  const [holdings, watchlist, industry] = await Promise.all([
     supabase.from("holdings").select("symbol").is("closed_at", null),
     supabase.from("watchlist").select("symbol"),
+    supabase.from("industry_stocks").select("symbol"),
   ]);
   if (holdings.error) {
     return Response.json({ error: "holdings query", detail: holdings.error.message }, { status: 500 });
@@ -154,10 +155,14 @@ Deno.serve(async (req: Request) => {
   if (watchlist.error) {
     return Response.json({ error: "watchlist query", detail: watchlist.error.message }, { status: 500 });
   }
+  if (industry.error) {
+    return Response.json({ error: "industry_stocks query", detail: industry.error.message }, { status: 500 });
+  }
 
   const targetSymbols = new Set<string>();
   for (const r of holdings.data ?? []) targetSymbols.add(r.symbol);
   for (const r of watchlist.data ?? []) targetSymbols.add(r.symbol);
+  for (const r of industry.data ?? []) targetSymbols.add(r.symbol);
 
   if (targetSymbols.size === 0) {
     return Response.json({
