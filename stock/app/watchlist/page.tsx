@@ -33,6 +33,9 @@ interface IndustryPick {
   peg_basis: string | null;
   pb_threshold: string | number | null;
   dividend_yield: string | number | null;
+  latest_revenue_period: number | null;
+  latest_revenue: number | string | null;
+  latest_revenue_yoy_pct: number | string | null;
   score: number;
 }
 
@@ -50,6 +53,7 @@ const SECTOR_ORDER = [
 ];
 
 function scoreClass(score: number): string {
+  if (score >= 6) return "bg-green-600 text-white";
   if (score >= 5) return "bg-green-700 text-white";
   if (score >= 4) return "bg-green-800 text-green-100";
   if (score >= 3) return "bg-yellow-800 text-yellow-100";
@@ -120,7 +124,9 @@ export default async function WatchlistPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-baseline justify-between">
-        <p className="text-xs text-zinc-500">分數 hover 看中文分析 · 同分內依 5 日漲幅</p>
+        <p className="text-xs text-zinc-500">
+          評分 0-6:EPS連4季正 / ROE&gt;15% / FCF&gt;0 / PEG&lt;1 / PB&lt;產業門檻 / 月營收YoY&gt;0
+        </p>
         <p className="text-xs text-zinc-500">
           法人預估在 <a href="/settings" className="underline hover:text-zinc-300">設定</a> 改
         </p>
@@ -187,7 +193,7 @@ function SectorBlock({
                   <td className="px-3 py-2 text-sm text-zinc-300">{r.name ?? "—"}</td>
                   <td className="px-3 py-2 text-center" title={tooltip}>
                     <span className={`cursor-help rounded px-2 py-0.5 text-xs font-semibold tabular-nums ${scoreClass(r.score)}`}>
-                      {r.score}/5
+                      {r.score}/6
                     </span>
                   </td>
                   <td className="px-3 py-2 text-right">

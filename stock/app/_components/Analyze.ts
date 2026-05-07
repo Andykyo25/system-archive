@@ -22,6 +22,9 @@ export interface AnalyzeInput {
   peg?: number | string | null;
   peg_basis?: string | null;
   dividend_yield?: number | string | null;
+  // 月營收
+  latest_revenue_period?: number | null;
+  latest_revenue_yoy_pct?: number | string | null;
   // 動能
   pct_5d?: number | string | null;
   pct_20d?: number | string | null;
@@ -116,6 +119,20 @@ export function analyzeRow(r: AnalyzeInput): AnalysisOut {
     }
   }
 
+  // 月營收 YoY(先行指標)
+  const revYoy = toN(r.latest_revenue_yoy_pct);
+  const revPeriod = r.latest_revenue_period;
+  if (revYoy != null) {
+    const periodLabel = revPeriod != null
+      ? `${Math.floor(revPeriod / 100)}/${(revPeriod % 100).toString().padStart(2, "0")}`
+      : "";
+    if (revYoy > 30) notes.push(`✓✓ 月營收 ${periodLabel} YoY +${revYoy.toFixed(1)}%(高速成長)`);
+    else if (revYoy > 0) notes.push(`✓ 月營收 ${periodLabel} YoY +${revYoy.toFixed(1)}%`);
+    else notes.push(`✗ 月營收 ${periodLabel} YoY ${revYoy.toFixed(1)}%(衰退)`);
+  } else {
+    notes.push(`— 月營收無資料(下次週一 cron 會抓)`);
+  }
+
   // 毛利率 YoY
   const gmYoy = toN(r.gross_margin_yoy_pp);
   const gm = toN(r.gross_margin_pct);
@@ -142,15 +159,16 @@ export function analyzeRow(r: AnalyzeInput): AnalysisOut {
     notes.push(`⚠ 現價來自備案資料(FinMind),待主力 reconcile`);
   }
 
-  // Headline
+  // Headline(score 0-6)
   const score = r.score;
   let headline: string;
-  if (score >= 5) headline = "🚀 體質完美 — 5 條規則全通過,可關注進場時機";
-  else if (score >= 4) headline = "📈 體質佳 — 4/5 通過,僅 1 項需注意";
-  else if (score >= 3) headline = "🔍 部分亮點 — 3/5 通過,需個別評估";
-  else if (score >= 2) headline = "⚠️ 多項偏弱 — 2/5 通過,謹慎";
+  if (score >= 6) headline = "🚀 體質完美 — 6 條規則全通過,可關注進場時機";
+  else if (score >= 5) headline = "📈 體質佳 — 5/6 通過,僅 1 項需注意";
+  else if (score >= 4) headline = "📊 表現中上 — 4/6 通過,2 項待觀察";
+  else if (score >= 3) headline = "🔍 部分亮點 — 3/6 通過,需個別評估";
+  else if (score >= 2) headline = "⚠️ 多項偏弱 — 2/6 通過,謹慎";
   else if (score >= 1) headline = "🚧 體質不足 — 僅 1 項通過";
-  else headline = "❌ 體質不佳 — 5 條規則皆未通過";
+  else headline = "❌ 體質不佳 — 6 條規則皆未通過";
 
   return { headline, notes };
 }
