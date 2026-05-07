@@ -59,13 +59,24 @@
 
 ## M2 — 主力資料源接入(1 day)`data-pipeline`
 
-- [ ] 研究 TWSE / TPEX 官方收盤 OpenAPI:URL、欄位、頻率限制
-- [ ] Edge Function `fetch-twse-daily`:抓當日收盤,**過濾**只寫 `holdings.symbol ∪ watchlist.symbol`
-- [ ] 寫入 `price_daily` 用 `INSERT ... ON CONFLICT DO NOTHING`(防止覆蓋已 lock 的主力資料)
-- [ ] pg_cron:每日 14:30(盤後 30 分)觸發
-- [ ] 連跑 3 天驗證:`price_daily` 數字與 TWSE 網站對得上,`fetch_log` 正常記錄
+實際合併 TWSE + TPEX 進同一個 Edge Function,因為兩家欄位差異不大且兩者一起跑/一起記 log 比較好維運。
 
-**Review**:_(完成後填)_
+- [x] 研究 TWSE / TPEX 官方收盤 OpenAPI:免註冊免限速,Date 是民國年 7 碼字串
+- [x] Edge Function `fetch-daily-prices`:同時抓 TWSE + TPEX,filter 到 `holdings.symbol ∪ watchlist.symbol`
+- [x] 寫入用 `upsert(... ignoreDuplicates: true)` = `ON CONFLICT DO NOTHING` 實作 lock
+- [x] 啟用 `pg_cron` + `pg_net` extensions(migration 006)
+- [x] 排程 `cron.schedule('fetch-daily-prices', '30 6 * * 1-5', ...)` = 平日 14:30 Taipei(migration 007)
+- [x] JWT 用 vault secret `edge_function_auth` 存取,migration 不洩漏 JWT
+- [x] 端到端驗證:手動 curl 200 OK / 寫 1 筆;net.http_post 200 OK / lock skip 正確;cron 排程已 active
+- [ ] 等隔週 5 個交易日後檢查連跑穩定性(由 cron 自動執行,觀察 `fetch_log` 與 `price_daily` 累積)
+
+**Review**:
+- 一次 fetch:TWSE 1350 檔(含 ETF),TPEX 5743 筆(含權證等)
+- TSMC 2330 抓回:close 2250(2026-05-06),數字與 TWSE 網站一致 ✅
+- Lock 機制驗證:同檔同日連跑 3 次,只第一次 written=1,後續 written=0 / skipped=1 ✅
+- TPEX endpoint 偶發 "error reading a body from connection"(payload ~5MB 大,可能網路毛邊),已 lessons L06 記錄
+- Edge Function auth 用 JWT payload role 檢查,而不是與 `SUPABASE_SERVICE_ROLE_KEY` env 比對(已 lessons L05 記錄)
+- 測試資料(2330 watchlist 與 price_daily)已清除,DB 回空狀態
 
 ---
 

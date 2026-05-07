@@ -26,4 +26,24 @@
 
 ---
 
-_(後續教訓往下加)_
+## M2 接 TWSE/TPEX 主力資料源實做後
+
+### L04 — TWSE / TPEX 免費 OpenAPI 關鍵欄位差異
+**摘要**:
+- TWSE `/v1/exchangeReport/STOCK_DAY_ALL` ~1350 檔(含 ETF / 特別股)。欄位 `Code`、`OpeningPrice`、`HighestPrice`、`LowestPrice`、`ClosingPrice`、`TradeVolume`
+- TPEX `/openapi/v1/tpex_mainboard_daily_close_quotes` ~5700+ 筆(含權證)。欄位 `SecuritiesCompanyCode`、`Open`、`High`、`Low`、`Close`、`TradingShares`
+- 兩家 `Date` 都是民國年 7 碼字串(`1150506` = 2026-05-06),需轉 ISO
+**做法**:Edge Function 內各自有 `parseTWSE` / `parseTPEX`,輸出 normalized `PriceRow`
+
+### L05 — Edge Function 認證:不要拿 SUPABASE_SERVICE_ROLE_KEY env 直接比對 Authorization header
+**問題**:`req.headers.get("authorization") === "Bearer " + Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")` 永遠 401(env 內值與外部 JWT 不一致,可能因 Supabase 內部 key rotation 或新格式)
+**做法**:`verify_jwt: true` 已讓平台先驗簽,函式只 decode JWT payload 確認 `role === 'service_role'` 即可
+**為什麼**:平台的 `SUPABASE_SERVICE_ROLE_KEY` 自動注入值不一定等於使用者 dashboard 拿到的那把 JWT
+
+### L06 — TPEX endpoint payload 大(~5MB),偶發 "error reading a body from connection"
+**做法**:**每個 source 一筆 fetch_log,獨立 try/catch**;TPEX 失敗不會中斷 TWSE。失敗的留 dead letter,讓 reconcile job 補洞
+**為什麼**:多 source 整條 pipeline 死 = 資料缺口擴大;隔離才能 graceful degrade
+
+### L07 — pg_net 是 async,回應在 `net._http_response` 表
+**做法**:cron 觸發的 Edge Function 觀測點是 `public.fetch_log`,不是 `net._http_response`。寫入 fetch_log 是 Edge Function 的職責,讓監控有單一入口
+**為什麼**:`net._http_response` 只記錄 HTTP 層狀態(200 / 5xx),不知道函式內部成不成功
