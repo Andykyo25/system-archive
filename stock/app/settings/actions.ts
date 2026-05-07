@@ -20,18 +20,17 @@ export async function updateSetting(formData: FormData): Promise<void> {
   revalidatePath("/");
   revalidatePath("/holdings");
   revalidatePath("/watchlist");
+  revalidatePath("/etf");
 }
 
 export async function updateForecasts(formData: FormData): Promise<void> {
   const text = String(formData.get("forecasts") ?? "").trim();
-  // Format: 一行一筆「symbol=value」(空白/全形等號都接受)
-  // 允許 # 開頭的註解行
   const lines = text.split(/\r?\n/);
   const parsed: { symbol: string; value: number | null }[] = [];
   for (const line of lines) {
     const t = line.trim();
     if (!t || t.startsWith("#")) continue;
-    const m = t.match(/^([A-Za-z0-9\-]+)\s*[=:= ]\s*(.+)$/);
+    const m = t.match(/^([A-Za-z0-9\-]+)\s*[=:= ]\s*([^#]+?)(\s*#.*)?$/);
     if (!m) throw new Error(`無法解析:${t}`);
     const symbol = m[1].trim();
     const valStr = m[2].trim();
@@ -45,7 +44,6 @@ export async function updateForecasts(formData: FormData): Promise<void> {
   }
 
   const sb = createClient();
-  // 對每個 symbol,update industry_stocks 所有同 symbol 的 row
   for (const { symbol, value } of parsed) {
     const { error } = await sb
       .from("industry_stocks")
@@ -53,8 +51,57 @@ export async function updateForecasts(formData: FormData): Promise<void> {
       .eq("symbol", symbol);
     if (error) throw new Error(`更新 ${symbol} 失敗:${error.message}`);
   }
-
   revalidatePath("/settings");
   revalidatePath("/");
   revalidatePath("/watchlist");
+}
+
+// ETF metadata CRUD
+export async function upsertEtf(formData: FormData): Promise<void> {
+  const symbol = String(formData.get("symbol") ?? "").trim();
+  if (!symbol) throw new Error("股號必填");
+
+  const name = String(formData.get("name") ?? "").trim() || null;
+  const category = String(formData.get("category") ?? "").trim() || "其他";
+  const expRaw = String(formData.get("expense_ratio") ?? "").trim();
+  const sizeRaw = String(formData.get("fund_size_billion") ?? "").trim();
+  const isActive = formData.get("is_active_etf") === "on";
+  const notes = String(formData.get("notes") ?? "").trim() || null;
+
+  const expense_ratio = expRaw === "" ? null : Number(expRaw);
+  const fund_size_billion = sizeRaw === "" ? null : Number(sizeRaw);
+  if (expense_ratio !== null && !Number.isFinite(expense_ratio)) {
+    throw new Error("內扣費用必須是數字");
+  }
+  if (fund_size_billion !== null && !Number.isFinite(fund_size_billion)) {
+    throw new Error("規模必須是數字");
+  }
+
+  const sb = createClient();
+  const { error } = await sb.from("etf_metadata").upsert(
+    {
+      symbol,
+      name,
+      category,
+      expense_ratio,
+      fund_size_billion,
+      is_active_etf: isActive,
+      notes,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "symbol" },
+  );
+  if (error) throw new Error(error.message);
+  revalidatePath("/settings");
+  revalidatePath("/etf");
+}
+
+export async function deleteEtf(formData: FormData): Promise<void> {
+  const symbol = String(formData.get("symbol") ?? "").trim();
+  if (!symbol) return;
+  const sb = createClient();
+  const { error } = await sb.from("etf_metadata").delete().eq("symbol", symbol);
+  if (error) throw new Error(error.message);
+  revalidatePath("/settings");
+  revalidatePath("/etf");
 }
