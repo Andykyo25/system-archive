@@ -82,14 +82,26 @@
 
 ## M3 — 備案資料源 + Reconciliation(0.5 day)`data-pipeline`
 
-- [ ] FinMind 免費版註冊,token 進 Supabase secrets
-- [ ] Edge Function `fetch-finmind-fallback`:**只** fill 主力空缺(WHERE NOT EXISTS),寫入時 `is_provisional=true`
-- [ ] pg_cron:每日 16:00 觸發(主力 1.5 hr 緩衝)
-- [ ] Edge Function `reconcile-provisional`:把已被主力覆蓋的 provisional 用主力覆寫,記入 `reconcile_audit`
-- [ ] pg_cron:每日 22:00 觸發 reconcile
-- [ ] 驗證:刻意停掉主力一天 → fallback 進來 → 隔日 reconcile 蓋回 → audit 有紀錄
+- [x] FinMind 免費版 token(Andy 提供),存入 Supabase **vault** `finmind_token`
+- [x] RPC `public.read_finmind_token()`(SECURITY DEFINER,只 service_role 能呼叫)— Edge Function 用這個讀 vault,免設環境變數
+- [x] Edge Function `fetch-finmind-fallback`:fill 主力空缺(client-side 過濾 existingKeys + `ON CONFLICT DO NOTHING`),寫入 `is_provisional=true`
+- [x] Quota 機制:`api_quota_state` 記 finmind/today,每次扣減,跑滿停手
+- [x] pg_cron:平日 16:00 Taipei (UTC 08:00),已 active(jobid=2)
+- [ ] ~~Edge Function `reconcile-provisional`~~ — **改為「first-write-wins」,不做 reconcile**(見下面 review 解釋)
+- [ ] ~~pg_cron 每日 22:00 reconcile~~ — 同上
+- [ ] 等實際運作幾天看 fallback / quota 行為(由 cron 自動跑,無動作)
 
-**Review**:_(完成後填)_
+**Review**:
+- 端到端驗證:第 1 次跑 written=5(2330 過去 7 個交易日,close 數字與 FinMind 一致)、第 2 次跑 written=0/skipped=5(lock 工作)
+- FinMind 欄位特殊:`max`/`min`(不是 high/low)、`stock_id`(不是 code)— 已在 `parseFinmind` 處理,L09 lessons 記錄
+- Vault + RPC 模式:**Edge Function 不需設置環境變數 secret**,所有 secret 走 vault + SECURITY DEFINER RPC,migration history 不洩漏 token
+- Quota 600/day 為 FinMind 免費保守值,30 symbol × 1 call/day = 30 call,還有大量餘裕
+- **跳過 reconcile 的設計決策**:
+  - 原計畫:fallback 寫的 provisional 在主力恢復後被覆寫
+  - 問題:TWSE STOCK_DAY_ALL 只給「今天」,沒辦法用同一個 endpoint 回頭抓昨天的歷史去覆蓋 provisional
+  - 取捨:**first-write-wins**,任何已寫入的 row 永不被覆寫(跨 source 也不)— 完全符合 Andy「不能因為切換 API 導致股價跳來跳去」的硬約束
+  - 副作用:若 fallback 比主力先寫(例如主力今天 15:00 才恢復、fallback 16:00 已寫過),今天的 row 永遠是 provisional;UI 會顯示來源警示
+  - 真正需要 reconcile 時再加 M3.5(用 TWSE STOCK_DAY 單股歷史 endpoint 補蓋)
 
 ---
 

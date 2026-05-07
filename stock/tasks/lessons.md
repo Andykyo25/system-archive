@@ -47,3 +47,36 @@
 ### L07 — pg_net 是 async,回應在 `net._http_response` 表
 **做法**:cron 觸發的 Edge Function 觀測點是 `public.fetch_log`,不是 `net._http_response`。寫入 fetch_log 是 Edge Function 的職責,讓監控有單一入口
 **為什麼**:`net._http_response` 只記錄 HTTP 層狀態(200 / 5xx),不知道函式內部成不成功
+
+---
+
+## M3 接 FinMind 備案後
+
+### L08 — 部署 Next.js 到 Railway 時,Supabase Edge Function 檔案不該被打包
+**問題**:`supabase/functions/*.ts` 用 `jsr:` imports(Deno 專用),Next.js TS check 抓不到 type → Docker build 在 `npm run build` 階段 fail
+**做法**:
+- `.dockerignore` 排除 `supabase/`、`tasks/`、`.claude/` 等不屬於 Next.js runtime 的目錄
+- `tsconfig.json` exclude 用簡單目錄名(`["node_modules", "supabase", "tasks"]`),glob `supabase/functions/**/*` 在 Linux 似乎沒生效
+**為什麼**:Edge Function 是直接部到 Supabase 平台,跟 Next.js Docker image 完全無關;打包它只會壞 build
+
+### L09 — FinMind v4 TaiwanStockPrice 欄位命名不一致(`max`/`min` 不是 `high`/`low`)
+**摘要**:
+- Endpoint:`GET https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockPrice&data_id=<symbol>&start_date=YYYY-MM-DD&end_date=YYYY-MM-DD&token=<token>`
+- 回傳 `{msg: "success", status: 200, data: [{date, stock_id, open, max, min, close, Trading_Volume, Trading_money, spread, Trading_turnover}]}`
+- **`max`/`min` 不是 `high`/`low`**,parser 別寫錯
+- `date` 已是 ISO `YYYY-MM-DD`(不像 TWSE 是民國年 7 碼)
+**為什麼**:踩過一次就一輩子,記下來下次新 source 接入時直接看欄位 mapping table
+
+### L10 — Edge Function 取 secret 的最佳模式:vault + SECURITY DEFINER RPC
+**問題**:Supabase MCP 沒有 `set_function_secret` tool;手動在 dashboard 設又麻煩、還會跟 Postgres 內已有的 vault 重複狀態
+**做法**:
+1. `select vault.create_secret(<value>, '<name>', '<description>');`(execute_sql,不入 migration)
+2. `create function public.read_<name>() returns text language sql security definer set search_path = '' as $$ select decrypted_secret from vault.decrypted_secrets where name = '<name>' limit 1 $$;`
+3. `revoke execute on function ... from public, anon, authenticated; grant execute on function ... to service_role;`
+4. Edge Function 用 `await supabase.rpc('read_<name>')` 取值
+**為什麼**:secret 集中在 vault(加密儲存)+ MCP 全自動可重建,不需 Andy 手動操作 dashboard
+
+### L11 — 首寫贏(first-write-wins)是強約束「不跳價」的最簡實作
+**做法**:`upsert(rows, { onConflict: '...', ignoreDuplicates: true })` = `ON CONFLICT DO NOTHING`。任何已存在的 (symbol, trade_date) 不被任何 source 覆蓋
+**取捨**:Reconciliation 變難 — 一旦 fallback 先寫(例如主力今天恢復前 fallback 已執行),provisional 就永遠存在。要真的「primary 永遠最終勝出」需另外用 TWSE 單股歷史 endpoint(STOCK_DAY)在 reconcile job 抓回來覆蓋
+**為什麼**:Andy 的硬約束是「不能因為切換 API 導致股價跳來跳去」,first-write-wins 完全保證這點。Reconciliation 是 nice-to-have,不是 must-have
