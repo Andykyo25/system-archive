@@ -85,7 +85,25 @@ async function fetchSource(
     const rows = allRows.filter((r) => targetSymbols.has(r.symbol));
 
     let written = 0;
+    let upgraded = 0;
     if (rows.length > 0) {
+      // 主力可以覆蓋 provisional(reconcile),但不能覆蓋主力(lock)。
+      // 做法:先刪掉這批 (symbol, trade_date) 中 is_provisional=true 的 row,
+      //       再 upsert ignoreDuplicates → 殘留的主力 row 不動,被刪的 provisional 位置會寫入新主力。
+      // 假設:同一個 source 一次回傳的 rows 共用一個 trade_date(TWSE/TPEX 的 STOCK_DAY_ALL 是這樣)
+      const dates = new Set(rows.map((r) => r.trade_date));
+      const symbols = rows.map((r) => r.symbol);
+      for (const date of dates) {
+        const { data: del } = await supabase
+          .from("price_daily")
+          .delete()
+          .in("symbol", symbols)
+          .eq("trade_date", date)
+          .eq("is_provisional", true)
+          .select("symbol");
+        upgraded += del?.length ?? 0;
+      }
+
       const { data, error } = await supabase
         .from("price_daily")
         .upsert(rows, { onConflict: "symbol,trade_date", ignoreDuplicates: true })
@@ -102,7 +120,7 @@ async function fetchSource(
       rows_skipped: skipped,
     }).eq("id", logId);
 
-    return { source, fetched: allRows.length, matched: rows.length, written, skipped };
+    return { source, fetched: allRows.length, matched: rows.length, written, upgraded, skipped };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     await supabase.from("fetch_log").update({

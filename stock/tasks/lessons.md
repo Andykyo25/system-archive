@@ -114,3 +114,11 @@
 - 短期 MVP:用 5 日漲幅(動能 proxy)排序,UI 明確標示「待 fundamentals 補」
 - 中期 M3.6:接 FinMind 的 `TaiwanStockFinancialStatements` 等 dataset,建 `stock_fundamentals` 表,改 view 用 6 條規則評分
 **為什麼**:資料層先有什麼就用什麼,先把產業視圖跑起來;但長期不能用動能假裝是基本面
+
+### L17 — TWSE OpenAPI `STOCK_DAY_ALL` 有 T+1 延遲(2026-05-07 17:30 Taipei 仍給 5-06 資料)
+**問題**:Andy 反映「股價不是今日收盤價」。實測 TWSE endpoint 1356 筆全部 Date=1150506,FinMind 同時間有 5-07 資料(close 2310)。所以 TWSE OpenAPI 要等到「明天」才有「今天」的收盤
+**做法**:
+1. **L11 的「first-write-wins」是錯的**,改為 **「主力可覆蓋 provisional,但不能覆蓋主力」**(這才是 reconcile 真正含義)
+2. fetch-daily-prices 寫入流程:`DELETE WHERE (symbol IN ...) AND trade_date=X AND is_provisional=true` → `UPSERT ignoreDuplicates`。被刪的 provisional 會被新主力填位,殘留的主力不動
+3. 觀察 1-2 天 TWSE endpoint 是否會在當日晚上更新成當日資料(若會,加 22:00 / UTC 14:00 第二次 cron)
+**為什麼**:即時報價 vs 最終正確收盤是兩種需求。TWSE 收盤檔遲到的話,fallback 補當日 provisional 給 user 看,等主力到再升級為 final。這就是 L11 提到的真正 reconcile 機制
