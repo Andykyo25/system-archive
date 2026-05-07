@@ -1,4 +1,5 @@
 import { Fragment } from "react";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { fmtMoney, fmtPct, pctColor } from "../_components/Format";
 import { PriceCell } from "../_components/PriceCell";
@@ -200,7 +201,9 @@ function CategoryBlock({ category, rows }: { category: string; rows: EtfPick[] }
                 <Fragment key={r.symbol}>
                 <tr className="border-t border-zinc-800">
                   <td className="px-3 py-2 font-mono">
-                    {r.symbol}
+                    <Link href={`/stocks/${r.symbol}`} className="text-blue-400 hover:text-blue-300 hover:underline">
+                      {r.symbol}
+                    </Link>
                     {r.is_active_etf && (
                       <span className="ml-1 rounded bg-purple-900 px-1 text-[10px] text-purple-200">主動</span>
                     )}

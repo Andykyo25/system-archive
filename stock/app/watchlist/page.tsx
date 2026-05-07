@@ -1,4 +1,5 @@
 import { Fragment } from "react";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { fmtMoney, fmtPct, pctColor } from "../_components/Format";
 import { PriceCell } from "../_components/PriceCell";
@@ -189,7 +190,11 @@ function SectorBlock({
               return (
                 <Fragment key={r.id}>
                 <tr className="border-t border-zinc-800">
-                  <td className="px-3 py-2 font-mono">{r.symbol}</td>
+                  <td className="px-3 py-2 font-mono">
+                    <Link href={`/stocks/${r.symbol}`} className="text-blue-400 hover:text-blue-300 hover:underline">
+                      {r.symbol}
+                    </Link>
+                  </td>
                   <td className="px-3 py-2 text-sm text-zinc-300">{r.name ?? "—"}</td>
                   <td className="px-3 py-2 text-center" title={tooltip}>
                     <span className={`cursor-help rounded px-2 py-0.5 text-xs font-semibold tabular-nums ${scoreClass(r.score)}`}>
