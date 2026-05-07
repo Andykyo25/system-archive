@@ -1,6 +1,8 @@
+import { Fragment } from "react";
 import { createClient } from "@/lib/supabase/server";
 import { fmtMoney, fmtPct, pctColor } from "./_components/Format";
 import { PriceCell } from "./_components/PriceCell";
+import { analyzeRow } from "./_components/Analyze";
 
 export const dynamic = "force-dynamic";
 
@@ -24,6 +26,13 @@ interface HoldingFull {
   unrealized_pct: number | string | null;
   market_value: number | string | null;
   cost_basis: number | string;
+  stock_type: "stock" | "etf";
+  commission_rate: number | string;
+  sell_tax_rate: number | string;
+  total_cost_with_fee: number | string;
+  net_proceeds_if_sold_now: number | string | null;
+  net_pnl_est: number | string | null;
+  net_pct_est: number | string | null;
   primary_industry: string | null;
   eps_ttm: number | string | null;
   eps_yoy_pct: number | string | null;
@@ -48,13 +57,6 @@ function scoreClass(score: number): string {
   if (score >= 2) return "bg-orange-900 text-orange-200";
   if (score >= 1) return "bg-zinc-800 text-zinc-300";
   return "bg-zinc-900 text-zinc-500";
-}
-
-function pegBasisLabel(b: string | null): string {
-  if (b === "forecast") return "預";
-  if (b === "last_q_yoy") return "季";
-  if (b === "ttm_yoy") return "TTM";
-  return "—";
 }
 
 function fmtRoe(n: string | number | null | undefined): string {
@@ -118,10 +120,10 @@ function SummaryCards({ summary }: { summary: PortfolioSummary | null }) {
   return (
     <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
       <Stat label="持股檔數" value={String(summary.positions)} />
-      <Stat label="總成本" value={fmtMoney(summary.total_cost)} />
+      <Stat label="總成本(毛)" value={fmtMoney(summary.total_cost)} />
       <Stat label="總市值" value={fmtMoney(summary.total_value)} />
       <Stat
-        label="未實現損益"
+        label="未實現損益(毛)"
         value={fmtMoney(summary.total_pnl)}
         sub={fmtPct(summary.total_pct)}
         color={pctColor(summary.total_pnl)}
@@ -156,9 +158,10 @@ function Stat({
 
 function HoldingsAnalysis({ rows }: { rows: HoldingFull[] }) {
   if (rows.length === 0) return null;
+  const COL_COUNT = 13;
   return (
     <section>
-      <h2 className="mb-3 text-lg font-semibold">真實持股(含基本面分析)</h2>
+      <h2 className="mb-3 text-lg font-semibold">真實持股(含基本面分析 + 稅後估算)</h2>
       <div className="overflow-x-auto rounded-lg border border-zinc-800 bg-zinc-900">
         <table className="w-full text-sm">
           <thead className="border-b border-zinc-800 bg-zinc-950 text-left text-xs text-zinc-400">
@@ -168,68 +171,86 @@ function HoldingsAnalysis({ rows }: { rows: HoldingFull[] }) {
               <th className="px-3 py-2 text-right">股數</th>
               <th className="px-3 py-2 text-right">均價</th>
               <th className="px-3 py-2 text-right">現價</th>
-              <th className="px-3 py-2 text-right">市值</th>
-              <th className="px-3 py-2 text-right">損益</th>
-              <th className="px-3 py-2 text-right">%</th>
+              <th className="px-3 py-2 text-right" title="毛市值,未扣手續費/稅">市值</th>
+              <th className="px-3 py-2 text-right" title="稅後預估淨損益:賣出實得 − 含費成本">淨損益(估)</th>
+              <th className="px-3 py-2 text-right">淨%</th>
               <th className="px-3 py-2 text-right" title="最近一季 EPS YoY">EPS Q-YoY</th>
               <th className="px-3 py-2 text-right">ROE</th>
               <th className="px-3 py-2 text-center">FCF</th>
-              <th className="px-3 py-2 text-right" title="毛利率 + YoY 變化(pp)">毛利</th>
               <th className="px-3 py-2 text-right">PE</th>
-              <th className="px-3 py-2 text-right" title="PB / 產業門檻">PB</th>
-              <th className="px-3 py-2 text-right" title="PEG / 計算依據(預=forecast、季=last quarter、TTM=trailing)">PEG</th>
+              <th className="px-3 py-2 text-right">PB</th>
             </tr>
           </thead>
           <tbody>
             {rows.map((h) => {
               const fcf = fmtFcf(h.fcf_ttm);
               const pegYoy = h.last_q_eps_yoy_pct ?? h.eps_yoy_pct;
+              const analysis = analyzeRow(h);
+              const grossPnl = Number(h.unrealized_pnl);
+              const netPnl = Number(h.net_pnl_est);
+              const feeDiff = Number.isFinite(grossPnl) && Number.isFinite(netPnl)
+                ? grossPnl - netPnl : null;
+              const netPnlTip = feeDiff != null
+                ? `毛 ${fmtMoney(grossPnl, 0)} / 手續費+稅 ${fmtMoney(feeDiff, 0)}`
+                : "";
               return (
-                <tr key={h.id} className="border-t border-zinc-800">
-                  <td className="px-3 py-2 font-mono">{h.symbol}</td>
-                  <td className="px-3 py-2 text-center">
-                    <span className={`rounded px-2 py-0.5 text-xs font-semibold tabular-nums ${scoreClass(h.score)}`}>
-                      {h.score}/5
-                    </span>
-                  </td>
-                  <td className="px-3 py-2 text-right tabular-nums">{h.qty}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{fmtMoney(h.avg_cost, 2)}</td>
-                  <td className="px-3 py-2 text-right">
-                    <PriceCell value={h.current_price} isProvisional={h.is_provisional} date={h.price_date} />
-                  </td>
-                  <td className="px-3 py-2 text-right tabular-nums">{fmtMoney(h.market_value, 0)}</td>
-                  <td className={`px-3 py-2 text-right tabular-nums ${pctColor(h.unrealized_pnl)}`}>
-                    {fmtMoney(h.unrealized_pnl, 0)}
-                  </td>
-                  <td className={`px-3 py-2 text-right tabular-nums ${pctColor(h.unrealized_pct)}`}>
-                    {fmtPct(h.unrealized_pct)}
-                  </td>
-                  <td className={`px-3 py-2 text-right tabular-nums ${pctColor(pegYoy)}`}>
-                    {fmtPct(pegYoy)}
-                  </td>
-                  <td className="px-3 py-2 text-right tabular-nums">{fmtRoe(h.roe_ttm)}</td>
-                  <td className={`px-3 py-2 text-center font-bold ${fcf.cls}`} title={fcf.title}>
-                    {fcf.text}
-                  </td>
-                  <td className="px-3 py-2 text-right tabular-nums" title={`毛利 YoY: ${fmtPct(h.gross_margin_yoy_pp)} pp`}>
-                    {fmtRoe(h.gross_margin_pct)}
-                  </td>
-                  <td className="px-3 py-2 text-right tabular-nums">{fmtMoney(h.pe, 1)}</td>
-                  <td className={`px-3 py-2 text-right tabular-nums ${pbCellClass(h.pb, h.pb_threshold)}`} title={`門檻 < ${h.pb_threshold}`}>
-                    {fmtMoney(h.pb, 2)}
-                  </td>
-                  <td className="px-3 py-2 text-right tabular-nums" title={`依據: ${h.peg_basis ?? "—"}`}>
-                    {fmtMoney(h.peg, 2)}
-                    <span className="ml-1 text-[10px] text-zinc-500">{pegBasisLabel(h.peg_basis)}</span>
-                  </td>
-                </tr>
+                <Fragment key={h.id}>
+                  <tr className="border-t border-zinc-800">
+                    <td className="px-3 py-2 font-mono">
+                      {h.symbol}
+                      {h.stock_type === "etf" && (
+                        <span className="ml-1 rounded bg-blue-900 px-1 text-[10px] text-blue-200">ETF</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2 text-center">
+                      <span className={`rounded px-2 py-0.5 text-xs font-semibold tabular-nums ${scoreClass(h.score)}`}>
+                        {h.score}/5
+                      </span>
+                    </td>
+                    <td className="px-3 py-2 text-right tabular-nums">{h.qty}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{fmtMoney(h.avg_cost, 2)}</td>
+                    <td className="px-3 py-2 text-right">
+                      <PriceCell value={h.current_price} isProvisional={h.is_provisional} date={h.price_date} />
+                    </td>
+                    <td className="px-3 py-2 text-right tabular-nums">{fmtMoney(h.market_value, 0)}</td>
+                    <td className={`px-3 py-2 text-right tabular-nums ${pctColor(h.net_pnl_est)}`} title={netPnlTip}>
+                      {fmtMoney(h.net_pnl_est, 0)}
+                    </td>
+                    <td className={`px-3 py-2 text-right tabular-nums ${pctColor(h.net_pct_est)}`}>
+                      {fmtPct(h.net_pct_est)}
+                    </td>
+                    <td className={`px-3 py-2 text-right tabular-nums ${pctColor(pegYoy)}`}>
+                      {fmtPct(pegYoy)}
+                    </td>
+                    <td className="px-3 py-2 text-right tabular-nums">{fmtRoe(h.roe_ttm)}</td>
+                    <td className={`px-3 py-2 text-center font-bold ${fcf.cls}`} title={fcf.title}>
+                      {fcf.text}
+                    </td>
+                    <td className="px-3 py-2 text-right tabular-nums">{fmtMoney(h.pe, 1)}</td>
+                    <td className={`px-3 py-2 text-right tabular-nums ${pbCellClass(h.pb, h.pb_threshold)}`} title={`產業門檻 < ${h.pb_threshold ?? "—"}`}>
+                      {fmtMoney(h.pb, 2)}
+                    </td>
+                  </tr>
+                  <tr className="border-t border-zinc-900/50 bg-zinc-950/40">
+                    <td colSpan={COL_COUNT} className="px-3 py-2 text-xs leading-relaxed text-zinc-400">
+                      <span className="font-semibold text-zinc-200">{analysis.headline}</span>
+                      {analysis.notes.length > 0 && (
+                        <>
+                          <br />
+                          <span className="text-zinc-400">{analysis.notes.join("　·　")}</span>
+                        </>
+                      )}
+                    </td>
+                  </tr>
+                </Fragment>
               );
             })}
           </tbody>
         </table>
       </div>
       <p className="mt-2 text-xs text-zinc-500">
-        評分 0-5:EPS 連 4 季正 / ROE&gt;15% / FCF&gt;0 / PEG&lt;1 / PB&lt;產業門檻
+        評分 0-5:EPS 連 4 季正 / ROE&gt;15% / FCF&gt;0 / PEG&lt;1 / PB&lt;產業門檻 ·
+        淨損益已扣 0.0855% × 2 手續費 + 0.3% 證交稅(ETF 0.1%)
       </p>
     </section>
   );
