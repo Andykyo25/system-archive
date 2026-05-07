@@ -25,8 +25,8 @@
 - [x] 寫 `railway.json`(builder = Dockerfile,Restart on failure)
 - [x] `.env.example` 列必要 env(`NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` / `SUPABASE_SERVICE_ROLE_KEY` / `FINMIND_TOKEN`)
 - [x] `npm run build` 成功(standalone server.js + .next/static 產出正常)
-- [ ] commit & push 到 `main`
-- [ ] Railway 那端待 Andy 設好專案後 deploy
+- [x] commit & push 到 `main`(commit `5714c78`,Andy push)
+- [x] Railway 已配置完成(Andy 自行設定)
 
 **Review**:
 - 框架實際版本:Next.js **16.2.5** + React **19.2.4** + Tailwind **v4**(注意 v4 PostCSS plugin 改用 `@tailwindcss/postcss`,跟 v3 寫法不同)
@@ -38,20 +38,22 @@
 
 ## M1 — 資料層 schema(0.5 day)`data-pipeline`
 
-- [ ] Migration 001:`holdings`(symbol, qty, avg_cost, opened_at, closed_at, note)
-- [ ] Migration 002:`watchlist`(symbol, added_at, note)
-- [ ] Migration 003:`price_daily`(symbol, trade_date, open, high, low, close, volume, source, is_provisional, fetched_at)
-  - PK = (symbol, trade_date)
-  - 加 unique constraint 保證 lock
-- [ ] Migration 004:`fetch_log`(run_id, source, started_at, finished_at, success, rows_written, error)
-- [ ] Migration 005:`api_quota_state`(source, date, used, budget)
-- [ ] Migration 006:`reconcile_audit`(symbol, trade_date, old_source, old_close, new_source, new_close, reconciled_at)
-- [ ] Migration 007:`paper_orders`(id, symbol, side, qty, price, ordered_at, note)
-- [ ] Migration 008:`alert_rules`(symbol, condition, threshold, enabled)+ `alert_events`(symbol, rule_id, triggered_at, snapshot)
-- [ ] RLS:anon 可 SELECT(讀);所有 INSERT/UPDATE/DELETE 限 service_role
-- [ ] 把 schema 同步進 `stock/supabase/migrations/`(或 SQL 檔)以便版控
+實際合併成 5 個邏輯 migration,全部都在 `stock/supabase/migrations/` 並透過 Supabase MCP apply 到 project `trnvkwievjewhghdvniq`。
 
-**Review**:_(完成後填)_
+- [x] **001_core_tables**:`holdings` / `watchlist` / `paper_orders`(使用者直接維護的資料)
+- [x] **002_price_data**:`price_daily`(PK = symbol + trade_date 做 lock)+ `price_intraday_cache`
+- [x] **003_pipeline_ops**:`fetch_log` / `api_quota_state` / `reconcile_audit`
+- [x] **004_alerts**:`alert_rules` + `alert_events`(FK → alert_rules,delete cascade)
+- [x] **005_rls**:全部 10 表 enable RLS(實際發現 Supabase 平台有 `rls_auto_enable()` event trigger 已自動做這件事,migration 為冗餘但 idempotent)
+- [x] 走 service_role 全寫(無 client-side 寫),所以 `rls_enabled_no_policy` advisor INFO 是預期內,不加 policy
+
+**Review**:
+- 10 表全部建好,RLS 全 on,row count = 0
+- 索引覆蓋:`price_daily.trade_date`、`alert_events` 未發送、`paper_orders` symbol+time、`holdings` 持有中(closed_at is null)
+- Schema 設計關鍵:**`price_daily` PK = (symbol, trade_date)** 強制每組唯一性,主力寫入後 `INSERT ... ON CONFLICT DO NOTHING` 即達成 lock(M2 會用)
+- `is_provisional` 配 partial index `where is_provisional = true` 加速 reconcile 查詢
+- Supabase advisor:1 個 SECURITY DEFINER 警告是 `rls_auto_enable()`(平台內建,event trigger function,anon 直呼叫等於 no-op),不需處理
+- Migration 名稱用 `YYYYMMDDHHMMSS_<name>.sql` 對齊 Supabase CLI 慣例,之後 `supabase db push` 可重建
 
 ---
 
