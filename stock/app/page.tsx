@@ -1,4 +1,3 @@
-import { Fragment } from "react";
 import { createClient } from "@/lib/supabase/server";
 import { fmtMoney, fmtPct, pctColor } from "./_components/Format";
 import { PriceCell } from "./_components/PriceCell";
@@ -12,6 +11,10 @@ interface PortfolioSummary {
   total_value: number | string;
   total_pnl: number | string;
   total_pct: number | string;
+  net_total_cost: number | string;
+  net_total_value: number | string;
+  net_total_pnl: number | string;
+  net_total_pct: number | string;
 }
 
 interface HoldingFull {
@@ -27,8 +30,6 @@ interface HoldingFull {
   market_value: number | string | null;
   cost_basis: number | string;
   stock_type: "stock" | "etf";
-  commission_rate: number | string;
-  sell_tax_rate: number | string;
   total_cost_with_fee: number | string;
   net_proceeds_if_sold_now: number | string | null;
   net_pnl_est: number | string | null;
@@ -90,6 +91,10 @@ function pbCellClass(
   return pbN < thN ? "text-red-400" : "text-zinc-400";
 }
 
+function buildScoreTooltip(analysis: { headline: string; notes: string[] }): string {
+  return [analysis.headline, "", ...analysis.notes].join("\n");
+}
+
 export default async function Dashboard() {
   const sb = createClient();
   const [{ data: summary }, { data: holdings }] = await Promise.all([
@@ -101,7 +106,7 @@ export default async function Dashboard() {
   ]);
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <SummaryCards summary={summary as PortfolioSummary | null} />
       <HoldingsAnalysis rows={(holdings as HoldingFull[] | null) ?? []} />
     </div>
@@ -117,16 +122,25 @@ function SummaryCards({ summary }: { summary: PortfolioSummary | null }) {
       </div>
     );
   }
+  const grossPnl = Number(summary.total_pnl);
   return (
     <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
       <Stat label="持股檔數" value={String(summary.positions)} />
-      <Stat label="總成本(毛)" value={fmtMoney(summary.total_cost)} />
-      <Stat label="總市值" value={fmtMoney(summary.total_value)} />
       <Stat
-        label="未實現損益(毛)"
-        value={fmtMoney(summary.total_pnl)}
-        sub={fmtPct(summary.total_pct)}
-        color={pctColor(summary.total_pnl)}
+        label="總成本(含費)"
+        value={fmtMoney(summary.net_total_cost, 0)}
+        sub={`毛 ${fmtMoney(summary.total_cost, 0)}`}
+      />
+      <Stat
+        label="預估賣出實得"
+        value={fmtMoney(summary.net_total_value, 0)}
+        sub={`毛市值 ${fmtMoney(summary.total_value, 0)}`}
+      />
+      <Stat
+        label="未實現淨損益"
+        value={fmtMoney(summary.net_total_pnl, 0)}
+        sub={`${fmtPct(summary.net_total_pct)}　·　毛 ${fmtMoney(grossPnl, 0)}`}
+        color={pctColor(summary.net_total_pnl)}
       />
     </div>
   );
@@ -150,7 +164,9 @@ function Stat({
         {value}
       </div>
       {sub ? (
-        <div className={`text-sm tabular-nums ${color}`}>{sub}</div>
+        <div className={`text-xs tabular-nums text-zinc-500 ${color ? "" : ""}`}>
+          {sub}
+        </div>
       ) : null}
     </div>
   );
@@ -158,21 +174,23 @@ function Stat({
 
 function HoldingsAnalysis({ rows }: { rows: HoldingFull[] }) {
   if (rows.length === 0) return null;
-  const COL_COUNT = 13;
   return (
     <section>
-      <h2 className="mb-3 text-lg font-semibold">真實持股(含基本面分析 + 稅後估算)</h2>
+      <div className="mb-2 flex items-baseline justify-between">
+        <h2 className="text-lg font-semibold">真實持股</h2>
+        <span className="text-xs text-zinc-500">分數 hover 看分析</span>
+      </div>
       <div className="overflow-x-auto rounded-lg border border-zinc-800 bg-zinc-900">
         <table className="w-full text-sm">
           <thead className="border-b border-zinc-800 bg-zinc-950 text-left text-xs text-zinc-400">
             <tr>
               <th className="px-3 py-2">股號</th>
-              <th className="px-3 py-2 text-center">分</th>
+              <th className="px-3 py-2 text-center" title="hover 看完整中文分析">分</th>
               <th className="px-3 py-2 text-right">股數</th>
               <th className="px-3 py-2 text-right">均價</th>
               <th className="px-3 py-2 text-right">現價</th>
-              <th className="px-3 py-2 text-right" title="毛市值,未扣手續費/稅">市值</th>
-              <th className="px-3 py-2 text-right" title="稅後預估淨損益:賣出實得 − 含費成本">淨損益(估)</th>
+              <th className="px-3 py-2 text-right">市值</th>
+              <th className="px-3 py-2 text-right" title="稅後預估淨損益">淨損益</th>
               <th className="px-3 py-2 text-right">淨%</th>
               <th className="px-3 py-2 text-right" title="最近一季 EPS YoY">EPS Q-YoY</th>
               <th className="px-3 py-2 text-right">ROE</th>
@@ -186,63 +204,54 @@ function HoldingsAnalysis({ rows }: { rows: HoldingFull[] }) {
               const fcf = fmtFcf(h.fcf_ttm);
               const pegYoy = h.last_q_eps_yoy_pct ?? h.eps_yoy_pct;
               const analysis = analyzeRow(h);
+              const tooltip = buildScoreTooltip(analysis);
               const grossPnl = Number(h.unrealized_pnl);
               const netPnl = Number(h.net_pnl_est);
-              const feeDiff = Number.isFinite(grossPnl) && Number.isFinite(netPnl)
-                ? grossPnl - netPnl : null;
-              const netPnlTip = feeDiff != null
-                ? `毛 ${fmtMoney(grossPnl, 0)} / 手續費+稅 ${fmtMoney(feeDiff, 0)}`
-                : "";
+              const feeDiff =
+                Number.isFinite(grossPnl) && Number.isFinite(netPnl)
+                  ? grossPnl - netPnl
+                  : null;
+              const netPnlTip =
+                feeDiff != null
+                  ? `毛損益 ${fmtMoney(grossPnl, 0)} − 手續費+稅 ${fmtMoney(feeDiff, 0)} = 淨損益 ${fmtMoney(netPnl, 0)}`
+                  : "";
               return (
-                <Fragment key={h.id}>
-                  <tr className="border-t border-zinc-800">
-                    <td className="px-3 py-2 font-mono">
-                      {h.symbol}
-                      {h.stock_type === "etf" && (
-                        <span className="ml-1 rounded bg-blue-900 px-1 text-[10px] text-blue-200">ETF</span>
-                      )}
-                    </td>
-                    <td className="px-3 py-2 text-center">
-                      <span className={`rounded px-2 py-0.5 text-xs font-semibold tabular-nums ${scoreClass(h.score)}`}>
-                        {h.score}/5
-                      </span>
-                    </td>
-                    <td className="px-3 py-2 text-right tabular-nums">{h.qty}</td>
-                    <td className="px-3 py-2 text-right tabular-nums">{fmtMoney(h.avg_cost, 2)}</td>
-                    <td className="px-3 py-2 text-right">
-                      <PriceCell value={h.current_price} isProvisional={h.is_provisional} date={h.price_date} />
-                    </td>
-                    <td className="px-3 py-2 text-right tabular-nums">{fmtMoney(h.market_value, 0)}</td>
-                    <td className={`px-3 py-2 text-right tabular-nums ${pctColor(h.net_pnl_est)}`} title={netPnlTip}>
-                      {fmtMoney(h.net_pnl_est, 0)}
-                    </td>
-                    <td className={`px-3 py-2 text-right tabular-nums ${pctColor(h.net_pct_est)}`}>
-                      {fmtPct(h.net_pct_est)}
-                    </td>
-                    <td className={`px-3 py-2 text-right tabular-nums ${pctColor(pegYoy)}`}>
-                      {fmtPct(pegYoy)}
-                    </td>
-                    <td className="px-3 py-2 text-right tabular-nums">{fmtRoe(h.roe_ttm)}</td>
-                    <td className={`px-3 py-2 text-center font-bold ${fcf.cls}`} title={fcf.title}>
-                      {fcf.text}
-                    </td>
-                    <td className="px-3 py-2 text-right tabular-nums">{fmtMoney(h.pe, 1)}</td>
-                    <td className={`px-3 py-2 text-right tabular-nums ${pbCellClass(h.pb, h.pb_threshold)}`} title={`產業門檻 < ${h.pb_threshold ?? "—"}`}>
-                      {fmtMoney(h.pb, 2)}
-                    </td>
-                  </tr>
-                  <tr className="border-t border-zinc-900/50 bg-zinc-950/40">
-                    <td colSpan={COL_COUNT} className="px-3 py-2 text-xs leading-relaxed text-zinc-400">
-                      <span className="font-semibold text-zinc-200">{analysis.headline}</span>
-                      {analysis.notes.length > 0 && (
-                        <>
-                          <br />
-                          <span className="text-zinc-400">{analysis.notes.join("　·　")}</span>
-                        </>
-                      )}
-                    </td>
-                  </tr>
-                </Fragment>
+                <tr key={h.id} className="border-t border-zinc-800">
+                  <td className="px-3 py-2 font-mono">
+                    {h.symbol}
+                    {h.stock_type === "etf" && (
+                      <span className="ml-1 rounded bg-blue-900 px-1 text-[10px] text-blue-200">ETF</span>
+                    )}
+                  </td>
+                  <td className="px-3 py-2 text-center" title={tooltip}>
+                    <span className={`cursor-help rounded px-2 py-0.5 text-xs font-semibold tabular-nums ${scoreClass(h.score)}`}>
+                      {h.score}/5
+                    </span>
+                  </td>
+                  <td className="px-3 py-2 text-right tabular-nums">{h.qty}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{fmtMoney(h.avg_cost, 2)}</td>
+                  <td className="px-3 py-2 text-right">
+                    <PriceCell value={h.current_price} isProvisional={h.is_provisional} date={h.price_date} />
+                  </td>
+                  <td className="px-3 py-2 text-right tabular-nums">{fmtMoney(h.market_value, 0)}</td>
+                  <td className={`px-3 py-2 text-right tabular-nums ${pctColor(h.net_pnl_est)}`} title={netPnlTip}>
+                    {fmtMoney(h.net_pnl_est, 0)}
+                  </td>
+                  <td className={`px-3 py-2 text-right tabular-nums ${pctColor(h.net_pct_est)}`}>
+                    {fmtPct(h.net_pct_est)}
+                  </td>
+                  <td className={`px-3 py-2 text-right tabular-nums ${pctColor(pegYoy)}`}>
+                    {fmtPct(pegYoy)}
+                  </td>
+                  <td className="px-3 py-2 text-right tabular-nums">{fmtRoe(h.roe_ttm)}</td>
+                  <td className={`px-3 py-2 text-center font-bold ${fcf.cls}`} title={fcf.title}>
+                    {fcf.text}
+                  </td>
+                  <td className="px-3 py-2 text-right tabular-nums">{fmtMoney(h.pe, 1)}</td>
+                  <td className={`px-3 py-2 text-right tabular-nums ${pbCellClass(h.pb, h.pb_threshold)}`} title={`產業門檻 < ${h.pb_threshold ?? "—"}`}>
+                    {fmtMoney(h.pb, 2)}
+                  </td>
+                </tr>
               );
             })}
           </tbody>
@@ -250,7 +259,7 @@ function HoldingsAnalysis({ rows }: { rows: HoldingFull[] }) {
       </div>
       <p className="mt-2 text-xs text-zinc-500">
         評分 0-5:EPS 連 4 季正 / ROE&gt;15% / FCF&gt;0 / PEG&lt;1 / PB&lt;產業門檻 ·
-        淨損益已扣 0.0855% × 2 手續費 + 0.3% 證交稅(ETF 0.1%)
+        淨損益已扣手續費(0.0855%×2)+ 證交稅(現股 0.3%、ETF 0.1%)
       </p>
     </section>
   );

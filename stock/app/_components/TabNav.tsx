@@ -7,6 +7,7 @@ const tabs = [
   { href: "/", label: "Dashboard" },
   { href: "/holdings", label: "持股" },
   { href: "/watchlist", label: "產業" },
+  { href: "/settings", label: "設定" },
 ];
 
 export function TabNav() {

@@ -1,4 +1,3 @@
-import { Fragment } from "react";
 import { createClient } from "@/lib/supabase/server";
 import { fmtMoney, fmtPct, pctColor } from "../_components/Format";
 import { PriceCell } from "../_components/PriceCell";
@@ -89,6 +88,10 @@ function pbCellClass(
   return pbN < thN ? "text-red-400" : "text-zinc-400";
 }
 
+function buildScoreTooltip(analysis: { headline: string; notes: string[] }): string {
+  return [analysis.headline, "", ...analysis.notes].join("\n");
+}
+
 export default async function WatchlistPage() {
   const sb = createClient();
   const { data } = await sb.from("v_industry_picks").select("*");
@@ -115,20 +118,10 @@ export default async function WatchlistPage() {
 
   return (
     <div className="space-y-6">
-      <div className="rounded-lg border border-zinc-700 bg-zinc-900 p-3 text-xs leading-relaxed text-zinc-300">
-        <p className="mb-1 font-semibold text-zinc-200">評分 0-5:依 5 條規則自動計分,每股下方有中文短評</p>
-        <ul className="list-inside list-disc space-y-0.5 text-zinc-400">
-          <li>過去 8 季 EPS 全部為正</li>
-          <li>ROE &gt; 15%(TTM)</li>
-          <li>自由現金流(TTM)為正</li>
-          <li>PEG &lt; 1.0(優先順序:法人預估 → 最近一季 EPS YoY → TTM EPS YoY)</li>
-          <li>P/B &lt; <strong>產業門檻</strong>(IC 設計 8、AI 伺服器 5、車用/記憶體 3、其他 2)</li>
-        </ul>
-        <p className="mt-2 text-zinc-500">
-          要把聯發科這類 forecast-driven 股升上來,在 SQL 跑:
-          <code className="ml-1 rounded bg-zinc-800 px-1 text-zinc-300">
-            update industry_stocks set analyst_forecast_eps_growth_pct = 100 where symbol = &apos;2454&apos;;
-          </code>
+      <div className="flex items-baseline justify-between">
+        <p className="text-xs text-zinc-500">分數 hover 看中文分析 · 同分內依 5 日漲幅</p>
+        <p className="text-xs text-zinc-500">
+          法人預估在 <a href="/settings" className="underline hover:text-zinc-300">設定</a> 改
         </p>
       </div>
 
@@ -156,7 +149,6 @@ function SectorBlock({
   industry: string;
   rows: IndustryPick[];
 }) {
-  const COL_COUNT = 13;
   return (
     <section>
       <h2 className="mb-2 text-lg font-semibold">{industry}</h2>
@@ -166,17 +158,17 @@ function SectorBlock({
             <tr>
               <th className="px-3 py-2">股號</th>
               <th className="px-3 py-2">名稱</th>
-              <th className="px-3 py-2 text-center">分</th>
+              <th className="px-3 py-2 text-center" title="hover 看完整中文分析">分</th>
               <th className="px-3 py-2 text-right">現價</th>
               <th className="px-3 py-2 text-right">5日%</th>
               <th className="px-3 py-2 text-right">20日%</th>
               <th className="px-3 py-2 text-right" title="最近一季 EPS YoY">EPS Q-YoY</th>
               <th className="px-3 py-2 text-right">ROE</th>
               <th className="px-3 py-2 text-center">FCF</th>
-              <th className="px-3 py-2 text-right" title="最近一季毛利率(YoY pp 變化於分析行)">毛利</th>
+              <th className="px-3 py-2 text-right" title="最近一季毛利率(YoY pp 變化於 hover)">毛利</th>
               <th className="px-3 py-2 text-right">PE</th>
-              <th className="px-3 py-2 text-right" title="PB(產業門檻 hover 顯示)">PB</th>
-              <th className="px-3 py-2 text-right" title="PEG / 計算依據(預=forecast、季=last quarter、TTM=trailing)">PEG</th>
+              <th className="px-3 py-2 text-right">PB</th>
+              <th className="px-3 py-2 text-right" title="PEG / 計算依據">PEG</th>
             </tr>
           </thead>
           <tbody>
@@ -184,49 +176,37 @@ function SectorBlock({
               const fcf = fmtFcf(r.fcf_ttm);
               const pegYoy = r.last_q_eps_yoy_pct ?? r.eps_yoy_pct;
               const analysis = analyzeRow(r);
+              const tooltip = buildScoreTooltip(analysis);
               return (
-                <Fragment key={r.id}>
-                  <tr className="border-t border-zinc-800">
-                    <td className="px-3 py-2 font-mono">{r.symbol}</td>
-                    <td className="px-3 py-2 text-sm text-zinc-300">{r.name ?? "—"}</td>
-                    <td className="px-3 py-2 text-center">
-                      <span className={`rounded px-2 py-0.5 text-xs font-semibold tabular-nums ${scoreClass(r.score)}`}>
-                        {r.score}/5
-                      </span>
-                    </td>
-                    <td className="px-3 py-2 text-right">
-                      <PriceCell value={r.current_price} isProvisional={r.is_provisional} date={r.trade_date} />
-                    </td>
-                    <td className={`px-3 py-2 text-right tabular-nums ${pctColor(r.pct_5d)}`}>{fmtPct(r.pct_5d)}</td>
-                    <td className={`px-3 py-2 text-right tabular-nums ${pctColor(r.pct_20d)}`}>{fmtPct(r.pct_20d)}</td>
-                    <td className={`px-3 py-2 text-right tabular-nums ${pctColor(pegYoy)}`}>{fmtPct(pegYoy)}</td>
-                    <td className="px-3 py-2 text-right tabular-nums">{fmtRoe(r.roe_ttm)}</td>
-                    <td className={`px-3 py-2 text-center font-bold ${fcf.cls}`} title={fcf.title}>
-                      {fcf.text}
-                    </td>
-                    <td className="px-3 py-2 text-right tabular-nums" title={`毛利 YoY: ${fmtPct(r.gross_margin_yoy_pp)} pp`}>
-                      {fmtRoe(r.gross_margin_pct)}
-                    </td>
-                    <td className="px-3 py-2 text-right tabular-nums">{fmtMoney(r.pe, 1)}</td>
-                    <td className={`px-3 py-2 text-right tabular-nums ${pbCellClass(r.pb, r.pb_threshold)}`} title={`產業門檻 < ${r.pb_threshold ?? "—"}`}>
-                      {fmtMoney(r.pb, 2)}
-                    </td>
-                    <td className="px-3 py-2 text-right tabular-nums" title={`依據: ${r.peg_basis ?? "—"}`}>
-                      {fmtMoney(r.peg, 2)}
-                    </td>
-                  </tr>
-                  <tr className="border-t border-zinc-900/50 bg-zinc-950/40">
-                    <td colSpan={COL_COUNT} className="px-3 py-2 text-xs leading-relaxed text-zinc-400">
-                      <span className="font-semibold text-zinc-200">{analysis.headline}</span>
-                      {analysis.notes.length > 0 && (
-                        <>
-                          <br />
-                          <span className="text-zinc-400">{analysis.notes.join("　·　")}</span>
-                        </>
-                      )}
-                    </td>
-                  </tr>
-                </Fragment>
+                <tr key={r.id} className="border-t border-zinc-800">
+                  <td className="px-3 py-2 font-mono">{r.symbol}</td>
+                  <td className="px-3 py-2 text-sm text-zinc-300">{r.name ?? "—"}</td>
+                  <td className="px-3 py-2 text-center" title={tooltip}>
+                    <span className={`cursor-help rounded px-2 py-0.5 text-xs font-semibold tabular-nums ${scoreClass(r.score)}`}>
+                      {r.score}/5
+                    </span>
+                  </td>
+                  <td className="px-3 py-2 text-right">
+                    <PriceCell value={r.current_price} isProvisional={r.is_provisional} date={r.trade_date} />
+                  </td>
+                  <td className={`px-3 py-2 text-right tabular-nums ${pctColor(r.pct_5d)}`}>{fmtPct(r.pct_5d)}</td>
+                  <td className={`px-3 py-2 text-right tabular-nums ${pctColor(r.pct_20d)}`}>{fmtPct(r.pct_20d)}</td>
+                  <td className={`px-3 py-2 text-right tabular-nums ${pctColor(pegYoy)}`}>{fmtPct(pegYoy)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{fmtRoe(r.roe_ttm)}</td>
+                  <td className={`px-3 py-2 text-center font-bold ${fcf.cls}`} title={fcf.title}>
+                    {fcf.text}
+                  </td>
+                  <td className="px-3 py-2 text-right tabular-nums" title={`毛利 YoY: ${fmtPct(r.gross_margin_yoy_pp)} pp`}>
+                    {fmtRoe(r.gross_margin_pct)}
+                  </td>
+                  <td className="px-3 py-2 text-right tabular-nums">{fmtMoney(r.pe, 1)}</td>
+                  <td className={`px-3 py-2 text-right tabular-nums ${pbCellClass(r.pb, r.pb_threshold)}`} title={`產業門檻 < ${r.pb_threshold ?? "—"}`}>
+                    {fmtMoney(r.pb, 2)}
+                  </td>
+                  <td className="px-3 py-2 text-right tabular-nums" title={`依據: ${r.peg_basis ?? "—"}`}>
+                    {fmtMoney(r.peg, 2)}
+                  </td>
+                </tr>
               );
             })}
           </tbody>
