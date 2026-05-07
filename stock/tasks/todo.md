@@ -180,22 +180,23 @@
 
 ---
 
-## M3.6(下一輪) — Fundamentals layer 補 Andy 完整篩選條件
+## M3.6 ✅ Fundamentals layer 完成(2026-05-07)
 
-從 FinMind 補財報數據,套 Andy 給的 6 條規則(EPS 10 年成長 / ROE>15% / FCF / PEG / P/B)做評分排序
+- [x] 驗證 FinMind 免費版 datasets:`TaiwanStockFinancialStatements` / `TaiwanStockBalanceSheet` / `TaiwanStockCashFlowsStatement` / `TaiwanStockPER` 全部都能拿,8 季完整資料
+- [x] 新表 `stock_fundamentals_quarterly`(EPS / 淨利 / 權益 / 資產 / OCF / IC / FCF)
+- [x] 新表 `stock_pe_pb_daily`(daily PE/PB/殖利率)
+- [x] Edge Function `fetch-finmind-fundamentals`(3 dataset × 99 symbols = 297 calls)
+- [x] Edge Function `fetch-finmind-valuation`(每天 1 dataset × 99 = 99 calls)
+- [x] pg_cron:fundamentals 週一 03:00 Taipei、valuation 每日 16:30 Taipei
+- [x] `v_stock_score` view:套 5 條規則計分(EPS 連正 / ROE>15% / FCF+ / PEG<1 / PB<2)
+- [x] `v_industry_picks` view:整合動能 + 基本面 + score
+- [x] UI 改 score desc → pct_5d desc 排序,顯示真實 EPS/ROE/PEG/PB
 
-- [ ] 驗證 FinMind 免費版有哪些 datasets:`TaiwanStockFinancialStatements` / `TaiwanStockBalanceSheet` / `TaiwanStockCashFlowsStatement` / `TaiwanStockPER`
-- [ ] 新表 `stock_fundamentals (symbol, period, eps, roe, fcf, pe, pb, ...)`
-- [ ] 新 Edge Function `fetch-finmind-fundamentals`(每週跑,財報季更新慢)
-- [ ] pg_cron schedule:每週一 03:00 UTC 觸發
-- [ ] 改 `v_industry_quotes` → `v_industry_picks`,加分數 / filter:
-  - EPS 10 年連續為正
-  - ROE > 15%
-  - FCF > 0
-  - PEG < 1.0(理想 < 0.66)
-  - P/B < 2
-  - 5 日 / 20 日漲幅(動能加分)
-- [ ] UI 排序改用評分,每個 row 顯示通過幾條條件
+**實測結果:**
+- 99 symbols 過去 8 季完整,791 quarter rows + 480 valuation rows 寫入
+- Score 4 例:廣達 2382(EPS 19.44 / YoY +25.5% / ROE 30.8% / FCF+ / PEG 0.69 / PB 5.44 — 只 PB 失分)
+- Score 1 例:日月光投控 3711(PEG 2.38 過高,FCF- 受 CapEx 影響)
+- 第 6 條「逆勢布局」屬時機判斷,UI 不自動評分
 
 ---
 
