@@ -1055,7 +1055,11 @@ async function loadStockDiagnose(code) {
   // 2. 取個股近期準確度信心倍率，套到 winRate（縮放偏離 50 的幅度）
   const cm = predictions.getConfidenceMultiplier(code);
   const baseWinRate = d.winRate;
-  if (cm.multiplier !== 1.0) {
+  // ★ 強勢突破日（漲停／大紅帶量）跳過此層收縮 — diagnose.js 內已用 override 拉到 ≥62，
+  //    再被本股命中率 ×0.4 又 ×0.7 壓下來等於否決所有極強訊號（雙層收縮）。
+  const hasStrongBreakoutOverride = !!(d.featureUpgrade?.contributions?.limit_up_breakout
+                                    || d.featureUpgrade?.contributions?.strong_breakout);
+  if (cm.multiplier !== 1.0 && !hasStrongBreakoutOverride) {
     d.winRate = Math.round(50 + (baseWinRate - 50) * cm.multiplier);
     // direction 也要跟著調整（避免 winRate 被拉到 50 附近還說 long）
     d.direction = d.winRate >= 55 ? 'long' : d.winRate >= 45 ? 'neutral' : 'short';
@@ -1063,6 +1067,7 @@ async function loadStockDiagnose(code) {
   d.personalAccuracy = {
     multiplier: cm.multiplier,
     reason: cm.reason,
+    overrideSkipped: hasStrongBreakoutOverride,
     baseWinRate,
     samples: cm.stats.samples,
     recentHitRate: cm.stats.recentHitRate,

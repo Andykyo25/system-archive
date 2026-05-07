@@ -670,21 +670,23 @@ export function applyFeatureContributions(features) {
     }
   }
 
-  // ★ 10. 強勢突破組合（解保守問題）— 漲停 / 大紅棒帶量必須給足分
-  // 條件：當日漲幅 > 5% + 量爆 2x+ + 實體大 + 收盤接近最高（不是長上影）
-  if (features.return_1d != null && features.turnover_spike_60d != null && features.body_ratio != null) {
+  // ★ 10. 強勢突破組合（解保守問題）— 漲停 / 大紅棒給足分
+  // 漲停本身就是極強訊號（連續漲停常鎖籌碼、量縮也常見），不該必須跟量爆 AND
+  if (features.return_1d != null && features.body_ratio != null) {
     const isLimit = features.return_1d >= 9;        // 漲停
     const isBigUp = features.return_1d >= 5;        // 大紅棒
-    const isVolBurst = features.turnover_spike_60d > 2;
+    const isVolBurst = features.turnover_spike_60d != null && features.turnover_spike_60d > 2;
     const isCleanBody = features.body_ratio > 0.6;
     const isClosingHigh = features.upper_wick_pct != null && features.upper_wick_pct < 20;
 
-    if (isLimit && isVolBurst) {
-      c.limit_up_breakout = 12; adj += 12;          // 漲停加 12 分（最強訊號）
+    if (isLimit) {
+      c.limit_up_breakout = 12; adj += 12;          // 漲停 +12（最強訊號，不必量爆）
     } else if (isBigUp && isVolBurst && isCleanBody && isClosingHigh) {
       c.strong_breakout = 8; adj += 8;              // 大紅帶量收最高
     } else if (isBigUp && isVolBurst) {
       c.medium_breakout = 5; adj += 5;
+    } else if (isBigUp && isCleanBody) {
+      c.medium_breakout = 3; adj += 3;              // 大紅實體（無量也給 3 分）
     }
   }
 
@@ -1159,7 +1161,13 @@ export function diagnose(k, inst = [], opts = {}) {
   else if (mtfDivergent) mtfMultiplier = 0.75;
   regularizedBase = 50 + (regularizedBase - 50) * mtfMultiplier;
   const finalScore = 50 + (regularizedBase - 50) * economicShrink - penalty;
-  const winRate = Math.round(clamp(finalScore, 15, 78));
+  let winRate = Math.round(clamp(finalScore, 15, 78));
+
+  // ★ 強勢突破 override：漲停 / 大紅帶量收最高 → 強迫 winRate 至少 62（多方明確門檻 60+）
+  // 註：必須在 EV / direction / playbook 之前 reassign，讓三者用同一個值（避免 UI/操作建議矛盾）
+  const hasStrongBreakout = !!(featureContrib.contributions.limit_up_breakout
+                            || featureContrib.contributions.strong_breakout);
+  if (hasStrongBreakout) winRate = Math.max(winRate, 62);
 
   // ─── 期望值 (Expected Value) — 加入賠率思維 ───
   // EV = 勝率 × 上漲空間 − (1−勝率) × 下跌空間
@@ -1186,14 +1194,9 @@ export function diagnose(k, inst = [], opts = {}) {
 
   // ─────── 進場 / 停損 / 目標價已於前面計算（close/atr/support10/support20/stopPrice/target1/target2） ───────
 
-  // ─────── overall / action / playbook 判讀 ───────
-  // ★ 強勢突破 override：當日漲停 / 大紅棒帶量 → 強迫升級為「多方明確」即使 winRate 沒到 60
-  const hasStrongBreakout = featureContrib.contributions.limit_up_breakout
-    || featureContrib.contributions.strong_breakout;
-  const effectiveWinRate = hasStrongBreakout ? Math.max(winRate, 62) : winRate;
-
+  // ─────── overall / action / playbook 判讀（用 winRate，已含 strong-breakout override）───────
   let overall, action, playbook;
-  if (effectiveWinRate >= 60) {  // 由 65 → 60
+  if (winRate >= 60) {  // 由 65 → 60
     overall = '多頭格局・趨勢向上';
     action = [
       `▶ 進場區：${entryLow} ~ ${entryHigh}（現價附近回測 0.5 ATR）`,
@@ -1202,7 +1205,7 @@ export function diagnose(k, inst = [], opts = {}) {
       `▶ 目標：第一停利 ${target1}（+1.5 ATR），第二停利 ${target2}（+3 ATR）`,
     ];
     playbook = `多方明確：可分 3 批進場（首批 50% 立即/${entryLow}~${entryHigh}、回測 20MA ${support20} 加碼 30%、突破前高 ${high60.toFixed(2)} 再加 20%）。停損 ${stopPrice}，達 ${target1} 後停利點上移到成本價，超過 ${target2} 改用 20MA 動態出場。`;
-  } else if (effectiveWinRate >= 50) {   // 由 55 → 50
+  } else if (winRate >=50) {   // 由 55 → 50
     overall = '中期偏多・短線觀察';
     action = [
       `▶ 進場區：等待回測 5MA ${support10} 或 20MA ${support20} 再進場`,
@@ -1211,7 +1214,7 @@ export function diagnose(k, inst = [], opts = {}) {
       `▶ 目標：${target1}（+1.5 ATR）為短線停利點`,
     ];
     playbook = `偏多但需等支撐：${close.toFixed(2)} 不追價，回測 ${support10}（5MA）輕倉 30%、回測 ${support20}（20MA）再加碼 30%。突破 ${high60.toFixed(2)} 才確認轉強。停損 ${stopPrice}，達 ${target1} 先停利一半。`;
-  } else if (effectiveWinRate >= 42) {   // 由 45 → 42
+  } else if (winRate >=42) {   // 由 45 → 42
     overall = '盤整待變・方向未明';
     action = [
       `▶ 觀望優先：${close.toFixed(2)} 在多空交界，避免重押`,
@@ -1220,7 +1223,7 @@ export function diagnose(k, inst = [], opts = {}) {
       `▶ 等待訊號：突破 ${high60.toFixed(2)} 轉多 / 跌破 ${low60.toFixed(2)} 轉空`,
     ];
     playbook = `盤整格局：建議空手或極輕倉（≤10%）。等突破 ${high60.toFixed(2)} 確認多方，或跌破 ${low60.toFixed(2)} 確認空方再做方向。當沖可作 ${support10}~${entryHigh} 區間，但留意流動性。`;
-  } else if (effectiveWinRate >= 30) {
+  } else if (winRate >=30) {
     overall = '中期偏空・反彈逢高減碼';
     action = [
       `▶ 持股減碼：反彈到 ${ma5 != null ? fmt2(ma5) : entryHigh} 即減 50%`,

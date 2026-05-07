@@ -131,21 +131,32 @@ async function fetchAllIndices(tradeDate) {
   }
   const list = await twse.indices();
   if (!Array.isArray(list)) throw new Error('twse indices empty');
-  // MI_INDEX 不同年份欄位略有差，做寬鬆比對
-  const out = [];
+
+  const seen = new Map();
   for (const r of list) {
     const name = String(r.IndexName || r.Name || r.指數名稱 || '').trim();
-    const code = String(r.Code || r.IndexCode || '').trim();
+    if (!name) continue;
     const closeRaw = r.ClosingIndex ?? r.Closing ?? r.收盤指數 ?? r.Close;
     const close = +String(closeRaw ?? '').replace(/,/g, '');
     if (!Number.isFinite(close) || close <= 0) continue;
-    // 命名標準化：發行量加權 → TAIEX、櫃買 → OTC、其餘用原 Name 並去空白
-    let symbol = name;
-    if (/發行量加權|加權股價/.test(name)) symbol = 'TAIEX';
-    else if (/^未含金融保險$|^未含電子$|^未含金融電子$/.test(name)) symbol = `TAIEX_${name}`;
-    else if (/櫃買|店頭/.test(name)) symbol = 'OTC';
-    else symbol = name.replace(/\s+/g, '');
-    out.push({
+
+    // 報酬指數（含股息再投入）跟價格指數要分開存，避免 PK 衝突
+    const isReturn = /報酬/.test(name);
+    let base;
+    if (/^發行量加權股價/.test(name)) base = 'TAIEX';
+    else if (/^未含金融保險/.test(name)) base = 'TAIEX_EX_FIN';
+    else if (/^未含電子(?!金融)/.test(name)) base = 'TAIEX_EX_ELEC';
+    else if (/^未含金融電子/.test(name)) base = 'TAIEX_EX_FIN_ELEC';
+    else if (/櫃買|店頭/.test(name)) base = 'OTC';
+    else if (/^臺灣?50|^台灣50/.test(name)) base = 'TW50';
+    else base = name.replace(/\s+/g, '').replace(/股價指數|指數$/g, '');
+    const symbol = isReturn ? `${base}_RTN` : base;
+    if (!symbol) continue;
+
+    // 同 (symbol, date) 出現多次時保留第一筆（同一 batch 重複會讓 upsert 整批失敗）
+    const key = `${symbol}|${tradeDate}`;
+    if (seen.has(key)) continue;
+    seen.set(key, {
       symbol,
       date: tradeDate,
       open: null, high: null, low: null,
@@ -154,7 +165,7 @@ async function fetchAllIndices(tradeDate) {
       source: 'twse-mi-index',
     });
   }
-  return out;
+  return [...seen.values()];
 }
 
 // ───────────────────────── upsert 工具 ─────────────────────────
