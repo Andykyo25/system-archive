@@ -1,65 +1,181 @@
-import Image from "next/image";
+import { createClient } from "@/lib/supabase/server";
+import { fmtMoney, fmtPct, pctColor } from "./_components/Format";
+import { PriceCell } from "./_components/PriceCell";
+import type { HoldingPnL, PaperPnL, PortfolioSummary } from "@/lib/types";
 
-export default function Home() {
+export const dynamic = "force-dynamic";
+
+export default async function Dashboard() {
+  const sb = createClient();
+  const [{ data: summary }, { data: holdings }, { data: paper }] =
+    await Promise.all([
+      sb.from("v_portfolio_summary").select("*").single(),
+      sb
+        .from("v_holdings_pnl")
+        .select("*")
+        .order("market_value", { ascending: false, nullsFirst: false }),
+      sb.from("v_paper_pnl").select("*"),
+    ]);
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <div className="space-y-8">
+      <SummaryCards summary={summary as PortfolioSummary | null} />
+      <HoldingsSection rows={(holdings as HoldingPnL[] | null) ?? []} />
+      <PaperSection rows={(paper as PaperPnL[] | null) ?? []} />
+    </div>
+  );
+}
+
+function SummaryCards({ summary }: { summary: PortfolioSummary | null }) {
+  if (!summary || Number(summary.positions) === 0) {
+    return (
+      <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-8 text-center">
+        <p className="text-zinc-400">還沒有真實持股</p>
+        <p className="mt-2 text-sm text-zinc-500">到「持股」tab 加一筆</p>
+      </div>
+    );
+  }
+  return (
+    <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+      <Stat label="持股檔數" value={String(summary.positions)} />
+      <Stat label="總成本" value={fmtMoney(summary.total_cost)} />
+      <Stat label="總市值" value={fmtMoney(summary.total_value)} />
+      <Stat
+        label="未實現損益"
+        value={fmtMoney(summary.total_pnl)}
+        sub={fmtPct(summary.total_pct)}
+        color={pctColor(summary.total_pnl)}
+      />
+    </div>
+  );
+}
+
+function Stat({
+  label,
+  value,
+  sub,
+  color = "",
+}: {
+  label: string;
+  value: string;
+  sub?: string;
+  color?: string;
+}) {
+  return (
+    <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
+      <div className="text-xs text-zinc-400">{label}</div>
+      <div className={`mt-1 text-2xl font-semibold tabular-nums ${color}`}>
+        {value}
+      </div>
+      {sub ? (
+        <div className={`text-sm tabular-nums ${color}`}>{sub}</div>
+      ) : null}
+    </div>
+  );
+}
+
+function HoldingsSection({ rows }: { rows: HoldingPnL[] }) {
+  if (rows.length === 0) return null;
+  return (
+    <section>
+      <h2 className="mb-3 text-lg font-semibold">真實持股</h2>
+      <PnLTable rows={rows} keyFn={(r) => r.id} symbolField="symbol" qtyField="qty" />
+    </section>
+  );
+}
+
+function PaperSection({ rows }: { rows: PaperPnL[] }) {
+  if (rows.length === 0) {
+    return (
+      <section>
+        <h2 className="mb-3 text-lg font-semibold">模擬部位</h2>
+        <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-6 text-center text-sm text-zinc-500">
+          沒有模擬部位,到「Paper Trade」tab 下單試試
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+      </section>
+    );
+  }
+  return (
+    <section>
+      <h2 className="mb-3 text-lg font-semibold">模擬部位</h2>
+      <PnLTable rows={rows} keyFn={(r) => r.symbol} symbolField="symbol" qtyField="net_qty" costField="avg_cost" />
+    </section>
+  );
+}
+
+// 通用 PnL 表(holdings 與 paper 都用同一個表頭)
+type PnLRow = {
+  symbol: string;
+  qty?: number;
+  net_qty?: number;
+  avg_cost: number | string | null;
+  current_price: number | string | null;
+  price_date: string | null;
+  is_provisional: boolean | null;
+  market_value: number | string | null;
+  unrealized_pnl: number | string | null;
+  unrealized_pct: number | string | null;
+};
+
+function PnLTable<T extends PnLRow>({
+  rows,
+  keyFn,
+  qtyField,
+}: {
+  rows: T[];
+  keyFn: (r: T) => string | number;
+  symbolField?: keyof T;
+  qtyField: keyof T;
+  costField?: keyof T;
+}) {
+  return (
+    <div className="overflow-x-auto rounded-lg border border-zinc-800 bg-zinc-900">
+      <table className="w-full text-sm">
+        <thead className="border-b border-zinc-800 bg-zinc-950 text-left text-xs text-zinc-400">
+          <tr>
+            <th className="px-3 py-2">股號</th>
+            <th className="px-3 py-2 text-right">股數</th>
+            <th className="px-3 py-2 text-right">均價</th>
+            <th className="px-3 py-2 text-right">現價</th>
+            <th className="px-3 py-2 text-right">市值</th>
+            <th className="px-3 py-2 text-right">損益</th>
+            <th className="px-3 py-2 text-right">%</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={keyFn(r)} className="border-t border-zinc-800">
+              <td className="px-3 py-2 font-mono">{r.symbol}</td>
+              <td className="px-3 py-2 text-right tabular-nums">
+                {String(r[qtyField] ?? "—")}
+              </td>
+              <td className="px-3 py-2 text-right tabular-nums">
+                {fmtMoney(r.avg_cost, 2)}
+              </td>
+              <td className="px-3 py-2 text-right">
+                <PriceCell
+                  value={r.current_price}
+                  isProvisional={r.is_provisional}
+                  date={r.price_date}
+                />
+              </td>
+              <td className="px-3 py-2 text-right tabular-nums">
+                {fmtMoney(r.market_value, 0)}
+              </td>
+              <td
+                className={`px-3 py-2 text-right tabular-nums ${pctColor(r.unrealized_pnl)}`}
+              >
+                {fmtMoney(r.unrealized_pnl, 0)}
+              </td>
+              <td
+                className={`px-3 py-2 text-right tabular-nums ${pctColor(r.unrealized_pct)}`}
+              >
+                {fmtPct(r.unrealized_pct)}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }

@@ -80,3 +80,21 @@
 **做法**:`upsert(rows, { onConflict: '...', ignoreDuplicates: true })` = `ON CONFLICT DO NOTHING`。任何已存在的 (symbol, trade_date) 不被任何 source 覆蓋
 **取捨**:Reconciliation 變難 — 一旦 fallback 先寫(例如主力今天恢復前 fallback 已執行),provisional 就永遠存在。要真的「primary 永遠最終勝出」需另外用 TWSE 單股歷史 endpoint(STOCK_DAY)在 reconcile job 抓回來覆蓋
 **為什麼**:Andy 的硬約束是「不能因為切換 API 導致股價跳來跳去」,first-write-wins 完全保證這點。Reconciliation 是 nice-to-have,不是 must-have
+
+---
+
+## M5 Web UI 實做後
+
+### L12 — Next.js 16 form action 簽章只接受 `Promise<void>`,不能回 `{ error }`
+**問題**:`<form action={addHolding}>` 綁的 server action 必須回 `void | Promise<void>`,任何回傳 object 的版本 TS build 會擋
+**做法**:server action 失敗時直接 `throw new Error(msg)`(Next.js 會走 error boundary);需要顯示錯誤狀態給使用者就改用 `useActionState`(client component)
+**為什麼**:React 19 + Next.js 16 把 form actions 與 useActionState 拆開了 — 直接 bind 走 void 路徑,有 state 走 hook 路徑,別混
+
+### L13 — Postgres NUMERIC 經 supabase-js 回 string,顯示前要轉
+**問題**:`avg_cost numeric(12,4)` 在 SQL view 也是 numeric,supabase-js 為了精度回字串(不是 number),直接 `toLocaleString` 會炸
+**做法**:`Number(value).toLocaleString(...)` 或 helper `fmtMoney(v: string | number | null)` 統一處理
+**為什麼**:JavaScript number 是 double,大數字精度會丟。Postgres driver 預設保留為 string 是合理的,但前端要記得轉
+
+### L14 — Tailwind v4 在 components 直接寫 utility class 比 @apply 簡單
+**做法**:不寫 `.btn { @apply ... }` 抽象。直接在 JSX 用 `className="rounded-md bg-blue-600 ..."`,或用 const 字串複用(如 `const inputCls = "..."`)
+**為什麼**:Tailwind v4 改了 @apply 行為 + JIT 編譯模式,@apply 偶有意外。inline 雖然冗長但 100% 可預期,debug 容易

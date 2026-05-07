@@ -107,14 +107,20 @@
 
 ## M4 — 分析層(1 day)`analyst-deployer`
 
-- [ ] SQL view `v_holdings_pnl`:每檔現價、未實現損益、權重
-- [ ] SQL view `v_portfolio_summary`:總成本、總市值、總損益
-- [ ] SQL view `v_paper_positions`:模擬部位累計(把 `paper_orders` 加總 → 當前持股)
-- [ ] SQL view `v_paper_pnl`:模擬部位用最新 `price_daily.close` 算損益
-- [ ] 技術指標(後端 RPC 或 SQL function):MA20 / MA60 / RSI14 / KD
-- [ ] 警示檢查:每日盤後 1 次 batch 跑,觸發的寫進 `alert_events`(暫不串通知)
+- [x] SQL view `v_holdings_pnl`:每檔現價、未實現損益、權重
+- [x] SQL view `v_portfolio_summary`:總成本、總市值、總損益
+- [x] SQL view `v_paper_positions`:模擬部位累計(把 `paper_orders` 加總 → 當前持股)
+- [x] SQL view `v_paper_pnl`:模擬部位用最新 `price_daily.close` 算損益
+- [x] SQL view `v_latest_price`:每 symbol 最新一筆 close(distinct on)— 給上面兩個 view 用
+- [ ] ~~技術指標 MA20 / MA60 / RSI14 / KD~~ — 延到 M4.5(M5 個股頁需要時再做)
+- [ ] ~~警示檢查 batch~~ — 延到 M4.5(M5 沒做 alerts tab)
 
-**Review**:_(完成後填)_
+**Review**:
+- 5 個 view 全建好(`v_latest_price` / `v_holdings_pnl` / `v_portfolio_summary` / `v_paper_positions` / `v_paper_pnl`)
+- Holdings/Paper PnL 都 LEFT JOIN 最新價,沒抓到價也能顯示 row(current_price=null)
+- Paper position aggregation 用 `sum(case when buy then qty else -qty end)`,`net_qty > 0` 才算當前持有
+- Avg_cost 用 net_invested / net_qty,簡化(不做 FIFO)
+- 技術指標延後:M5 v1 沒做個股 K 線頁,還沒需要
 
 ---
 
@@ -123,18 +129,25 @@
 單頁 tab 結構,無 admin 路由分離。所有 CRUD 直接嵌在主 UI。
 
 ### Tab 結構
-- [ ] **Tab 1 — Dashboard**:真實持股總覽 + 損益 + 權重圓餅 + 「真實 vs 模擬」對照卡
-- [ ] **Tab 2 — 持股**:`holdings` CRUD(列表 + inline 編輯 / 新增 / 刪除)
-- [ ] **Tab 3 — Watchlist**:`watchlist` CRUD
-- [ ] **Tab 4 — Paper Trade**:模擬下單表單 + paper positions 列表
-- [ ] **Tab 5 — 個股**:歷史 K 線 + 技術指標 + 警示歷史(可從其他 tab 點 symbol 跳過來)
-- [ ] **Tab 6 — Alerts**:`alert_rules` CRUD + `alert_events` 歷史
+- [x] **Tab 1 — Dashboard**:portfolio summary cards + 真實持股表 + 模擬部位表
+- [x] **Tab 2 — 持股**:`holdings` 新增 / 刪除(列表)
+- [x] **Tab 3 — Watchlist**:`watchlist` 新增 / 移除
+- [x] **Tab 4 — Paper Trade**:模擬下單表單 + 當前部位表 + 近 50 筆下單紀錄
+- [ ] ~~Tab 5 — 個股~~ — 延後(K 線需要圖表庫,範圍膨脹)
+- [ ] ~~Tab 6 — Alerts~~ — 延後(沒 alert eval batch)
 
 ### 全域
-- [ ] **Provisional 資料明確標示**(角標 / tooltip / 灰字)
-- [ ] 寫入操作走 server actions(用 service_role key)避免前端 bundle key
+- [x] **Provisional 資料明確標示**(⚠ 角標 + 黃字 + tooltip 顯 source/date)
+- [x] 寫入操作走 server actions(用 service_role key)避免前端 bundle key
+- [x] Dark theme + 台股配色慣例(紅 = 漲、綠 = 跌)
+- [x] zh-TW + Noto Sans TC font fallback
 
-**Review**:_(完成後填)_
+**Review**:
+- 4 routes 全 build 過、SSR 200 OK、empty state 正確
+- Server actions 改成 throw-on-error 模式(Next.js 16 form action 簽章只接受 `Promise<void>`,L12 lessons)
+- 沒做 Tab 5/6 的選擇:K 線需要 lightweight-charts 或類似,範圍會大幅膨脹;alerts 還沒 eval batch
+- Stack:Next.js 16 + React 19 + Tailwind v4 + @supabase/supabase-js,4.7s build,標準 standalone output
+- 部署檔案清單:`app/{layout,page}.tsx`、`app/_components/{TabNav,Format,PriceCell}.{tsx,ts}`、3 個 tab page + actions、`lib/{supabase/server,types}.ts`、`globals.css`
 
 ---
 
