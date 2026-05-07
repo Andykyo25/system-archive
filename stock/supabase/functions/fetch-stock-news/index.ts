@@ -1,0 +1,172 @@
+import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+import { createClient } from "jsr:@supabase/supabase-js@2";
+
+const NEWS_BASE = "https://news.google.com/rss/search";
+const MAX_NEWS_PER_SYMBOL = 20;
+const NEWS_RETENTION_DAYS = 30;
+const SYMBOL_THROTTLE_MS = 80;
+
+interface NewsItem {
+  symbol: string;
+  title: string;
+  url: string;
+  published_at: string | null;
+  source: string;
+}
+
+function decodeJwtPayload(jwt: string): Record<string, unknown> {
+  const parts = jwt.split(".");
+  if (parts.length !== 3) throw new Error("invalid jwt shape");
+  const b64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+  const pad = b64 + "=".repeat((4 - b64.length % 4) % 4);
+  return JSON.parse(atob(pad));
+}
+
+function unescapeXml(s: string): string {
+  return s
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'");
+}
+
+interface ParsedItem {
+  title: string;
+  url: string;
+  published: string | null;
+}
+
+function parseRSS(xml: string): ParsedItem[] {
+  const items: ParsedItem[] = [];
+  const itemRegex = /<item>([\s\S]*?)<\/item>/g;
+  let m: RegExpExecArray | null;
+  while ((m = itemRegex.exec(xml)) !== null) {
+    const itemXml = m[1];
+    const titleMatch = itemXml.match(/<title>([\s\S]*?)<\/title>/);
+    const linkMatch = itemXml.match(/<link>([\s\S]*?)<\/link>/);
+    const dateMatch = itemXml.match(/<pubDate>([\s\S]*?)<\/pubDate>/);
+    if (titleMatch && linkMatch) {
+      items.push({
+        title: unescapeXml(titleMatch[1].trim()).slice(0, 500),
+        url: linkMatch[1].trim().slice(0, 1500),
+        published: dateMatch ? dateMatch[1].trim() : null,
+      });
+    }
+  }
+  return items;
+}
+
+async function fetchNewsForSymbol(
+  symbol: string,
+  name: string | null,
+): Promise<NewsItem[]> {
+  const query = name ? `${symbol} ${name}` : `${symbol} 台股`;
+  const url = new URL(NEWS_BASE);
+  url.searchParams.set("q", query);
+  url.searchParams.set("hl", "zh-TW");
+  url.searchParams.set("gl", "TW");
+  url.searchParams.set("ceid", "TW:zh-Hant");
+
+  const r = await fetch(url, {
+    headers: {
+      "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+    },
+  });
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  const xml = await r.text();
+
+  const items = parseRSS(xml).slice(0, MAX_NEWS_PER_SYMBOL);
+  return items.map((it): NewsItem => {
+    let publishedISO: string | null = null;
+    if (it.published) {
+      const d = new Date(it.published);
+      if (!Number.isNaN(d.getTime())) publishedISO = d.toISOString();
+    }
+    return {
+      symbol,
+      title: it.title,
+      url: it.url,
+      published_at: publishedISO,
+      source: "google_news",
+    };
+  });
+}
+
+Deno.serve(async (req: Request) => {
+  const auth = req.headers.get("authorization");
+  if (!auth?.startsWith("Bearer ")) return Response.json({ error: "missing bearer" }, { status: 401 });
+  let role: unknown;
+  try { role = decodeJwtPayload(auth.slice(7)).role; }
+  catch { return Response.json({ error: "invalid jwt" }, { status: 401 }); }
+  if (role !== "service_role") return Response.json({ error: "forbidden", role }, { status: 403 });
+
+  const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  if (!SERVICE_ROLE) return Response.json({ error: "missing SUPABASE_SERVICE_ROLE_KEY env" }, { status: 500 });
+  const supabase = createClient(Deno.env.get("SUPABASE_URL")!, SERVICE_ROLE);
+
+  // 收集所有 target symbol + 中文名(用於搜尋關鍵字)
+  const [holdings, industry, etf] = await Promise.all([
+    supabase.from("holdings").select("symbol").is("closed_at", null),
+    supabase.from("industry_stocks").select("symbol, name").order("symbol"),
+    supabase.from("etf_metadata").select("symbol, name").order("symbol"),
+  ]);
+
+  const nameMap = new Map<string, string | null>();
+  for (const r of industry.data ?? []) {
+    if (!nameMap.has(r.symbol)) nameMap.set(r.symbol, r.name);
+  }
+  for (const r of etf.data ?? []) {
+    if (!nameMap.has(r.symbol)) nameMap.set(r.symbol, r.name);
+  }
+  for (const r of holdings.data ?? []) {
+    if (!nameMap.has(r.symbol)) nameMap.set(r.symbol, null);
+  }
+
+  if (nameMap.size === 0) return Response.json({ skipped: "no_target_symbols" });
+
+  const { data: logRow } = await supabase
+    .from("fetch_log").insert({ source: "google_news" }).select("id").single();
+  const logId = logRow!.id;
+
+  let written = 0;
+  let apiCalls = 0;
+  const errors: string[] = [];
+
+  for (const [symbol, name] of nameMap) {
+    try {
+      apiCalls++;
+      const items = await fetchNewsForSymbol(symbol, name);
+      if (items.length > 0) {
+        const { data, error } = await supabase
+          .from("stock_news")
+          .upsert(items, { onConflict: "symbol,url", ignoreDuplicates: true })
+          .select("id");
+        if (error) throw error;
+        written += data?.length ?? 0;
+      }
+    } catch (e) {
+      errors.push(`${symbol}: ${e instanceof Error ? e.message : String(e)}`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, SYMBOL_THROTTLE_MS));
+  }
+
+  // 清舊資料(NEWS_RETENTION_DAYS 之前 published 的)
+  const cutoff = new Date(Date.now() - NEWS_RETENTION_DAYS * 86400 * 1000).toISOString();
+  await supabase.from("stock_news").delete().lt("published_at", cutoff);
+
+  await supabase.from("fetch_log").update({
+    finished_at: new Date().toISOString(),
+    success: errors.length === 0,
+    rows_written: written,
+    error: errors.length > 0 ? errors.join("; ").slice(0, 1000) : null,
+  }).eq("id", logId);
+
+  return Response.json({
+    target_symbols: nameMap.size,
+    api_calls: apiCalls,
+    written,
+    errors: errors.length,
+  });
+});

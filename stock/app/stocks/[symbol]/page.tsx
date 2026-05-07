@@ -42,6 +42,7 @@ export default async function StockDetailPage({
     { data: industryRow },
     { data: etfRow },
     { data: scoreRow },
+    { data: newsRows },
   ] = await Promise.all([
     sb
       .from("price_daily")
@@ -64,6 +65,12 @@ export default async function StockDetailPage({
       .eq("symbol", symbol)
       .maybeSingle(),
     sb.from("v_industry_picks").select("*").eq("symbol", symbol).limit(1).maybeSingle(),
+    sb
+      .from("stock_news")
+      .select("title, url, published_at, source")
+      .eq("symbol", symbol)
+      .order("published_at", { ascending: false, nullsFirst: false })
+      .limit(20),
   ]);
 
   const rows = (priceRows as PriceRow[] | null) ?? [];
@@ -156,7 +163,53 @@ export default async function StockDetailPage({
           紅 K = 漲(台股慣例)· 底下副圖為成交量 · {rows.length} 筆資料
         </p>
       </section>
+
+      <NewsSection rows={(newsRows as NewsRow[] | null) ?? []} />
     </div>
+  );
+}
+
+interface NewsRow {
+  title: string;
+  url: string;
+  published_at: string | null;
+  source: string | null;
+}
+
+function NewsSection({ rows }: { rows: NewsRow[] }) {
+  return (
+    <section>
+      <h2 className="mb-3 text-lg font-semibold">即時新聞(Google News,每 6 小時更新)</h2>
+      {rows.length === 0 ? (
+        <p className="rounded-lg border border-zinc-800 bg-zinc-900 p-4 text-sm text-zinc-500">
+          尚無新聞,等下次 cron(UTC 0/6/12/18 = Taipei 8/14/20/02)抓回。
+        </p>
+      ) : (
+        <ul className="space-y-2">
+          {rows.map((n, i) => (
+            <li key={i} className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2">
+              <a
+                href={n.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-sm text-zinc-100 hover:text-blue-300 hover:underline"
+              >
+                {n.title}
+              </a>
+              <div className="mt-0.5 text-xs text-zinc-500">
+                {n.published_at
+                  ? new Date(n.published_at).toLocaleString("zh-TW", {
+                      dateStyle: "short",
+                      timeStyle: "short",
+                    })
+                  : "—"}
+                {n.source ? `　·　${n.source}` : ""}
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }
 
