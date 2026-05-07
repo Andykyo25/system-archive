@@ -1,0 +1,25 @@
+# Build artifacts
+node_modules
+.next
+out
+
+# Repo metadata
+.git
+.gitignore
+.gitattributes
+
+# Dev/IDE
+.vscode
+.idea
+.claude
+
+# Env files (Railway 提供 production env)
+.env*
+!.env.example
+
+# 不屬於 Next.js runtime 的東西
+supabase
+tasks
+README.md
+AGENTS.md
+CLAUDE.md
