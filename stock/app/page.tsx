@@ -1,7 +1,8 @@
+import { Fragment } from "react";
 import { createClient } from "@/lib/supabase/server";
 import { fmtMoney, fmtPct, pctColor } from "./_components/Format";
 import { PriceCell } from "./_components/PriceCell";
-import { analyzeRow } from "./_components/Analyze";
+import { analyzeRow, summarizeForRow } from "./_components/Analyze";
 
 export const dynamic = "force-dynamic";
 
@@ -174,11 +175,12 @@ function Stat({
 
 function HoldingsAnalysis({ rows }: { rows: HoldingFull[] }) {
   if (rows.length === 0) return null;
+  const COL_COUNT = 13;
   return (
     <section>
       <div className="mb-2 flex items-baseline justify-between">
         <h2 className="text-lg font-semibold">真實持股</h2>
-        <span className="text-xs text-zinc-500">分數 hover 看分析</span>
+        <span className="text-xs text-zinc-500">分數 hover 看完整分析,下方列出失分項目</span>
       </div>
       <div className="overflow-x-auto rounded-lg border border-zinc-800 bg-zinc-900">
         <table className="w-full text-sm">
@@ -205,6 +207,7 @@ function HoldingsAnalysis({ rows }: { rows: HoldingFull[] }) {
               const pegYoy = h.last_q_eps_yoy_pct ?? h.eps_yoy_pct;
               const analysis = analyzeRow(h);
               const tooltip = buildScoreTooltip(analysis);
+              const summary = summarizeForRow(analysis);
               const grossPnl = Number(h.unrealized_pnl);
               const netPnl = Number(h.net_pnl_est);
               const feeDiff =
@@ -216,7 +219,8 @@ function HoldingsAnalysis({ rows }: { rows: HoldingFull[] }) {
                   ? `毛損益 ${fmtMoney(grossPnl, 0)} − 手續費+稅 ${fmtMoney(feeDiff, 0)} = 淨損益 ${fmtMoney(netPnl, 0)}`
                   : "";
               return (
-                <tr key={h.id} className="border-t border-zinc-800">
+                <Fragment key={h.id}>
+                <tr className="border-t border-zinc-800">
                   <td className="px-3 py-2 font-mono">
                     {h.symbol}
                     {h.stock_type === "etf" && (
@@ -252,6 +256,12 @@ function HoldingsAnalysis({ rows }: { rows: HoldingFull[] }) {
                     {fmtMoney(h.pb, 2)}
                   </td>
                 </tr>
+                <tr className="border-t border-zinc-900/30 bg-zinc-950/30">
+                  <td colSpan={COL_COUNT} className="px-3 pb-2 pt-1 text-[11px] leading-snug text-zinc-500">
+                    {summary}
+                  </td>
+                </tr>
+                </Fragment>
               );
             })}
           </tbody>

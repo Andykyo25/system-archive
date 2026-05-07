@@ -36,6 +36,14 @@ export interface AnalysisOut {
   notes: string[];
 }
 
+// inline 顯示用:headline + 失分項目(✗ 開頭),不顯示 ✓
+// 全行通過時只顯示 headline
+export function summarizeForRow(out: AnalysisOut): string {
+  const fails = out.notes.filter((n) => n.trim().startsWith("✗"));
+  if (fails.length === 0) return out.headline;
+  return `${out.headline}　·　${fails.join("　·　")}`;
+}
+
 function toN(v: number | string | null | undefined): number | null {
   if (v == null) return null;
   const n = Number(v);

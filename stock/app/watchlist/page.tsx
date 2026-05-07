@@ -1,7 +1,8 @@
+import { Fragment } from "react";
 import { createClient } from "@/lib/supabase/server";
 import { fmtMoney, fmtPct, pctColor } from "../_components/Format";
 import { PriceCell } from "../_components/PriceCell";
-import { analyzeRow } from "../_components/Analyze";
+import { analyzeRow, summarizeForRow } from "../_components/Analyze";
 
 export const dynamic = "force-dynamic";
 
@@ -149,6 +150,7 @@ function SectorBlock({
   industry: string;
   rows: IndustryPick[];
 }) {
+  const COL_COUNT = 13;
   return (
     <section>
       <h2 className="mb-2 text-lg font-semibold">{industry}</h2>
@@ -177,8 +179,10 @@ function SectorBlock({
               const pegYoy = r.last_q_eps_yoy_pct ?? r.eps_yoy_pct;
               const analysis = analyzeRow(r);
               const tooltip = buildScoreTooltip(analysis);
+              const summary = summarizeForRow(analysis);
               return (
-                <tr key={r.id} className="border-t border-zinc-800">
+                <Fragment key={r.id}>
+                <tr className="border-t border-zinc-800">
                   <td className="px-3 py-2 font-mono">{r.symbol}</td>
                   <td className="px-3 py-2 text-sm text-zinc-300">{r.name ?? "—"}</td>
                   <td className="px-3 py-2 text-center" title={tooltip}>
@@ -207,6 +211,12 @@ function SectorBlock({
                     {fmtMoney(r.peg, 2)}
                   </td>
                 </tr>
+                <tr className="border-t border-zinc-900/30 bg-zinc-950/30">
+                  <td colSpan={COL_COUNT} className="px-3 pb-2 pt-1 text-[11px] leading-snug text-zinc-500">
+                    {summary}
+                  </td>
+                </tr>
+                </Fragment>
               );
             })}
           </tbody>
