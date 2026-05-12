@@ -117,9 +117,88 @@
         .col-toggle-item:hover { background: #f8f9fa; }
         .col-toggle-item input { cursor: pointer; }
         .col-toggle-item label { cursor: pointer; margin: 0; font-size: 0.88rem; }
+
+        /* ── 訂單進度條(純展示,不鎖定操作) ── */
+        .progress-mini { display: inline-flex; align-items: center; gap: 3px; cursor: help; }
+        .progress-dot { width: 9px; height: 9px; border-radius: 50%; background: #dee2e6; transition: background 0.2s; }
+        .progress-dot.done { background: #198754; }
+        .progress-mini.urgent .progress-dot:not(.done) { background: #ffc107; }
+        .progress-mini.danger .progress-dot:not(.done) { background: #dc3545; }
+        .progress-text { font-size: 0.72rem; color: #6c757d; margin-left: 4px; font-weight: 700; }
+        .progress-mini.full .progress-text { color: #198754; }
+
+        /* 手機卡片用 progress bar */
+        .m-progress { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+        .m-progress-bar { flex: 1; height: 6px; background: #e9ecef; border-radius: 3px; overflow: hidden; }
+        .m-progress-fill { height: 100%; background: #198754; transition: width 0.3s; }
+        .mobile-card.urgent .m-progress-fill { background: #dc3545; }
+        .m-progress-text { font-size: 0.75rem; color: #6c757d; font-weight: 700; min-width: 28px; text-align: right; }
+
+        /* ── Inline edit V 標記 ── */
+        .toggleable-cell { cursor: pointer; transition: background 0.15s; position: relative; }
+        .toggleable-cell:hover { background: rgba(255,193,7,0.20) !important; }
+        .toggleable-cell:active { background: rgba(255,193,7,0.40) !important; }
+
+        /* ── 週視圖行事曆 ── */
+        .week-view-container { background: white; border-radius: 8px; padding: 18px 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.08); margin-bottom: 30px; }
+        .week-nav { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 10px; }
+        .week-nav .week-range { font-size: 1.1rem; font-weight: 700; color: #212529; margin-right: 8px; }
+        .week-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; }
+        .week-cell { border: 1px solid #e9ecef; border-radius: 6px; padding: 8px; background: #fafbfc; min-height: 220px; display: flex; flex-direction: column; }
+        .week-cell.today { border-color: #0d6efd; box-shadow: 0 0 0 2px rgba(13,110,253,0.12); background: #f7fbff; }
+        .week-cell.weekend { background: #fff8f0; }
+        .week-cell.past { opacity: 0.55; }
+        .week-day-header { display: flex; justify-content: space-between; align-items: baseline; padding-bottom: 6px; border-bottom: 1px dashed #dee2e6; margin-bottom: 6px; }
+        .week-day-name { font-weight: 700; font-size: 0.76rem; color: #6c757d; letter-spacing: 0.5px; }
+        .week-day-num  { font-size: 1.05rem; font-weight: 800; color: #212529; }
+        .week-cell.today .week-day-num { color: #0d6efd; }
+        .week-events { flex: 1; display: flex; flex-direction: column; gap: 4px; overflow-y: auto; max-height: 380px; }
+        .week-event { color: white; padding: 5px 8px; border-radius: 4px; cursor: pointer; transition: transform 0.1s, box-shadow 0.1s; font-size: 0.78rem; background: #0d6efd; }
+        .week-event:hover { transform: translateX(2px); box-shadow: 0 3px 8px rgba(0,0,0,0.18); }
+        .week-event-tour { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .week-event-meta { font-size: 0.7rem; opacity: 0.92; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .week-empty { color: #ccc; text-align: center; padding: 14px 0; font-size: 0.85rem; }
+        .week-summary { text-align: center; padding: 8px; background: #f8f9fa; border-radius: 6px; margin-top: 12px; }
+        @media (max-width: 992px) {
+            .week-grid { grid-template-columns: 1fr; gap: 4px; }
+            .week-cell { min-height: auto; }
+            .week-events { max-height: none; }
+        }
+
+        /* 視圖切換:.view-week 時隱藏列表元件、.view-list 時隱藏週曆 */
+        body.view-week #monthTabs,
+        body.view-week #filterChips,
+        body.view-week #summaryPanel,
+        body.view-week .table-container,
+        body.view-week .mobile-card-container { display: none !important; }
+        body.view-list #weekViewContainer { display: none !important; }
+        .view-toggle-btn.active { background: #0d6efd; color: white; }
+
+        /* ── 行程分類 badge ── */
+        .category-badge {
+            display: inline-block; padding: 2px 8px; border-radius: 10px;
+            font-size: 0.72rem; color: white; font-weight: 700;
+            margin-right: 6px; white-space: nowrap; vertical-align: middle;
+        }
+
+        /* ── 批次操作 toolbar ── */
+        .batch-toolbar {
+            position: fixed; bottom: 0; left: 0; right: 0;
+            background: white; border-top: 3px solid #0d6efd;
+            box-shadow: 0 -4px 15px rgba(0,0,0,0.12);
+            padding: 12px 20px; z-index: 1050;
+            display: none; align-items: center; gap: 10px; flex-wrap: wrap;
+            animation: slideUp 0.25s ease;
+        }
+        .batch-toolbar.show { display: flex; }
+        .batch-toolbar .count { font-weight: 700; color: #0d6efd; font-size: 0.95rem; }
+        .batch-toolbar .divider { width: 1px; height: 24px; background: #dee2e6; margin: 0 4px; }
+        @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+        .row-chk { cursor: pointer; transform: scale(1.15); }
+        tr.row-selected { background-color: #e7f1ff !important; }
     </style>
 </head>
-<body>
+<body class="view-list">
 
 <div id="toast-container"></div>
 
@@ -163,7 +242,12 @@
                 </button>
                 <span id="syncStatus" class="me-3 small text-muted fw-bold"></span>
             </div>
-            <div class="d-flex gap-1">
+            <div class="d-flex gap-1 align-items-center">
+                <!-- 視圖切換 -->
+                <div class="btn-group btn-group-sm me-2" role="group">
+                    <button class="btn btn-outline-primary view-toggle-btn active" data-view="list" onclick="switchView('list')"><i class="fas fa-list"></i> 列表</button>
+                    <button class="btn btn-outline-primary view-toggle-btn" data-view="week" onclick="switchView('week')"><i class="fas fa-calendar-week"></i> 週曆</button>
+                </div>
                 <!-- 欄位顯示開關 -->
                 <div class="dropdown">
                     <button class="btn btn-outline-secondary btn-sm dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
@@ -212,7 +296,13 @@
                     <input type="hidden" id="editId" value="">
                     <div class="row g-3">
                         <div class="col-12 col-md-2"><label class="form-label fw-bold">出發日期</label><input type="date" class="form-control" id="f_date" required></div>
-                        <div class="col-12 col-md-4"><label class="form-label fw-bold">行程名稱</label><input type="text" class="form-control" id="f_tour" placeholder="例如：日本五日遊" required></div>
+                        <div class="col-12 col-md-3"><label class="form-label fw-bold">行程名稱</label><input type="text" class="form-control" id="f_tour" placeholder="例如：日本五日遊" required></div>
+                        <div class="col-6 col-md-1"><label class="form-label fw-bold">分類</label>
+                            <input type="text" class="form-control" id="f_category" list="categoryOptions" placeholder="日本">
+                            <datalist id="categoryOptions">
+                                <option value="日本"><option value="韓國"><option value="東南亞"><option value="歐美"><option value="國內"><option value="郵輪"><option value="其他">
+                            </datalist>
+                        </div>
                         <div class="col-6 col-md-2"><label class="form-label fw-bold">客人代表</label><input type="text" class="form-control" id="f_name" required></div>
                         <div class="col-4 col-md-1"><label class="form-label fw-bold">人數</label><input type="number" class="form-control" id="f_pax" required min="1"></div>
                         <div class="col-8 col-md-1"><label class="form-label fw-bold">訂編</label><input type="text" class="form-control" id="f_bookingId"></div>
@@ -251,7 +341,7 @@
     <ul class="nav nav-tabs mb-2" id="monthTabs"></ul>
 
     <!-- 快速狀態篩選 Chips -->
-    <div class="filter-chips">
+    <div class="filter-chips" id="filterChips">
         <span class="small text-muted me-1" style="white-space:nowrap;">快速篩選：</span>
         <button class="chip active" data-filter="" onclick="setStatusFilter(this, '')">全部</button>
         <button class="chip chip-danger" data-filter="no_deposit"  onclick="setStatusFilter(this,'no_deposit')">未收訂金</button>
@@ -262,7 +352,7 @@
     </div>
 
     <!-- 統計面板 -->
-    <div class="summary-panel shadow-sm">
+    <div class="summary-panel shadow-sm" id="summaryPanel">
         <div class="summary-item"><h5>篩選筆數</h5><div class="value text-secondary" id="sumCount">0</div></div>
         <div class="summary-item"><h5>總人數</h5><div class="value" id="sumPax">0</div></div>
         <div class="summary-item"><h5>預估總業績</h5><div class="value text-primary" id="sumEst">0</div></div>
@@ -274,10 +364,12 @@
         <table class="table table-hover table-striped mb-0">
             <thead>
                 <tr>
+                    <th style="width:38px;"><input type="checkbox" id="selectAllChk" onchange="toggleAllSelect(this.checked)" title="全選 / 全不選"></th>
                     <th style="width:120px;">操作</th>
                     <th onclick="sortData('date')">出發日期 <i class="fas fa-sort sort-icon" id="sort-date"></i></th>
                     <th>行程</th>
                     <th>客人</th>
+                    <th title="訂金 / 合約 / 尾款 / 名單 / 行前">進度</th>
                     <th>人數</th>
                     <th class="col-bookingId">訂編</th>
                     <th class="col-tourFee">團費</th>
@@ -303,6 +395,44 @@
 
     <!-- 手機卡片 -->
     <div class="mobile-card-container mb-5" id="mobileCards"></div>
+
+    <!-- 週視圖行事曆 -->
+    <div class="week-view-container" id="weekViewContainer"></div>
+</div>
+
+<!-- 批次操作浮動 toolbar -->
+<div class="batch-toolbar" id="batchToolbar">
+    <span class="count"><i class="fas fa-check-square me-1"></i><span id="batchCount">0</span> 筆選中</span>
+    <div class="divider"></div>
+    <div class="dropdown">
+        <button class="btn btn-sm btn-success dropdown-toggle" data-bs-toggle="dropdown"><i class="fas fa-check"></i> 標記 V</button>
+        <ul class="dropdown-menu">
+            <li><a class="dropdown-item" href="#" onclick="batchUpdate('deposit',true);return false;">訂金 ✓</a></li>
+            <li><a class="dropdown-item" href="#" onclick="batchUpdate('balance',true);return false;">尾款 ✓</a></li>
+            <li><a class="dropdown-item" href="#" onclick="batchUpdate('preTripNotify',true);return false;">行前通知 ✓</a></li>
+            <li><a class="dropdown-item" href="#" onclick="batchUpdate('list',true);return false;">名單 ✓</a></li>
+            <li><a class="dropdown-item" href="#" onclick="batchUpdate('paperSent',true);return false;">寄紙本 ✓</a></li>
+            <li><a class="dropdown-item" href="#" onclick="batchUpdate('contractUploaded',true);return false;">合約上傳 ✓</a></li>
+            <li><a class="dropdown-item" href="#" onclick="batchUpdate('billSent',true);return false;">繳帳單 ✓</a></li>
+        </ul>
+    </div>
+    <div class="dropdown">
+        <button class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown"><i class="fas fa-times"></i> 取消 V</button>
+        <ul class="dropdown-menu">
+            <li><a class="dropdown-item" href="#" onclick="batchUpdate('deposit',false);return false;">取消訂金</a></li>
+            <li><a class="dropdown-item" href="#" onclick="batchUpdate('balance',false);return false;">取消尾款</a></li>
+            <li><a class="dropdown-item" href="#" onclick="batchUpdate('preTripNotify',false);return false;">取消行前通知</a></li>
+            <li><a class="dropdown-item" href="#" onclick="batchUpdate('list',false);return false;">取消名單</a></li>
+            <li><a class="dropdown-item" href="#" onclick="batchUpdate('paperSent',false);return false;">取消寄紙本</a></li>
+            <li><a class="dropdown-item" href="#" onclick="batchUpdate('contractUploaded',false);return false;">取消合約上傳</a></li>
+            <li><a class="dropdown-item" href="#" onclick="batchUpdate('billSent',false);return false;">取消繳帳單</a></li>
+        </ul>
+    </div>
+    <div class="divider"></div>
+    <button class="btn btn-sm btn-outline-danger" onclick="batchDelete()"><i class="fas fa-trash"></i> 批次刪除</button>
+    <div class="ms-auto">
+        <button class="btn btn-sm btn-link text-secondary" onclick="clearSelection()"><i class="fas fa-times"></i> 取消選取</button>
+    </div>
 </div>
 
 <!-- 通知 Modal -->
@@ -348,9 +478,16 @@ const TOGGLEABLE_COLS = [
     { key: 'note',             label: '備註' },
 ];
 
+// boolean 欄位中文 label(toast / confirm 顯示用)
+const FIELD_LABELS = {
+    deposit:'訂金', balance:'尾款', preTripNotify:'行前通知', list:'名單',
+    paperSent:'寄紙本', contractUploaded:'合約上傳', billSent:'繳帳單',
+    room:'分房', simCard:'網卡',
+};
+
 // 草稿需要儲存的表單欄位 IDs
 const FORM_FIELD_IDS = [
-    'f_date','f_tour','f_name','f_pax','f_bookingId',
+    'f_date','f_tour','f_category','f_name','f_pax','f_bookingId',
     'f_tourFee','f_estRev','f_actRev','f_ticketingDate',
     'f_contract','f_contractUploaded','f_paperSent','f_preTripNotify',
     'f_deposit','f_balance','f_billSent','f_list','f_room','f_simCard','f_note'
@@ -365,8 +502,24 @@ let sortAsc     = false;  // 預設降序:近期出團排最上面
 let searchQuery = '';
 let statusFilter = '';
 let hiddenCols  = new Set(JSON.parse(localStorage.getItem('hiddenCols') || '[]'));
+let selectedIds = new Set();  // 批次操作選取的 row id
+let currentView = localStorage.getItem('currentView') || 'list';  // 'list' | 'week'
+let weekStart  = startOfWeek(new Date());
 let _debounceTimer = null;
 let performanceChartInstance = null;
+
+// 週首日(週一)
+function startOfWeek(d) {
+    const r = new Date(d);
+    const day = r.getDay();              // 0=Sun, 1=Mon, ...
+    const diff = day === 0 ? -6 : 1 - day;
+    r.setDate(r.getDate() + diff);
+    r.setHours(0,0,0,0);
+    return r;
+}
+function fmtYMD(d) {
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
 
 // ══════════════════════════════════════════════
 //  工具函式
@@ -378,6 +531,44 @@ function escapeHtml(str) {
 function money(v)   { return v ? parseInt(v).toLocaleString() : '0'; }
 function statusV(v) { return v === true ? 'status-v' : ''; }
 function boolStr(v) { return v === true ? 'V' : ''; }  // boolean → CSV 顯示用
+
+// ── 行程分類顏色:用簡單 string hash 對應 HSL,同名永遠同色 ──
+function categoryColor(name) {
+    if (!name) return null;
+    let h = 0;
+    for (let i = 0; i < name.length; i++) h = (h<<5) - h + name.charCodeAt(i);
+    return `hsl(${Math.abs(h) % 360}, 60%, 45%)`;
+}
+function categoryBadge(name) {
+    if (!name) return '';
+    return `<span class="category-badge" style="background:${categoryColor(name)}">${escapeHtml(name)}</span>`;
+}
+
+// ── 進度條(純展示,不鎖定操作)──
+// 5 milestone:訂金 → 合約上傳 → 尾款 → 名單 → 行前通知
+const PROGRESS_STEPS = [
+    { key:'deposit',          label:'訂金'     },
+    { key:'contractUploaded', label:'合約'     },
+    { key:'balance',          label:'尾款'     },
+    { key:'list',             label:'名單'     },
+    { key:'preTripNotify',    label:'行前通知' },
+];
+function calcProgress(row) {
+    const steps = PROGRESS_STEPS.map(s => ({ ...s, done: row[s.key] === true }));
+    return { done: steps.filter(s=>s.done).length, total: steps.length, steps };
+}
+function progressDotsHTML(row) {
+    const { done, total, steps } = calcProgress(row);
+    const today = new Date(); today.setHours(0,0,0,0);
+    const diff  = row.date ? (new Date(row.date)-today)/86400000 : Infinity;
+    let cls = '';
+    if (done === total) cls = 'full';
+    else if (diff>=0 && diff<=3) cls = 'danger';
+    else if (diff>=0 && diff<=7) cls = 'urgent';
+    const tip = steps.map(s=>`${s.done?'✓':'○'} ${s.label}`).join(' / ');
+    const dots = steps.map(s=>`<span class="progress-dot ${s.done?'done':''}"></span>`).join('');
+    return `<div class="progress-mini ${cls}" title="${tip}">${dots}<span class="progress-text">${done}/${total}</span></div>`;
+}
 
 function showToast(msg, type = 'success', duration = 3000) {
     const el = document.createElement('div');
@@ -408,7 +599,15 @@ window.onload = async function() {
 };
 
 function showLogin() { document.getElementById('login-container').style.display='flex'; document.getElementById('app-container').style.display='none'; }
-function showApp(email) { document.getElementById('login-container').style.display='none'; document.getElementById('app-container').style.display='block'; document.getElementById('user-email').textContent=email; }
+function showApp(email) {
+    document.getElementById('login-container').style.display='none';
+    document.getElementById('app-container').style.display='block';
+    document.getElementById('user-email').textContent=email;
+    // 套用上次的視圖偏好
+    document.body.classList.toggle('view-week', currentView === 'week');
+    document.body.classList.toggle('view-list', currentView === 'list');
+    document.querySelectorAll('.view-toggle-btn').forEach(b => b.classList.toggle('active', b.dataset.view === currentView));
+}
 
 async function handleLogin() {
     const btn = document.getElementById('login-btn');
@@ -501,6 +700,7 @@ function applyFilters() {
     currentData = filtered;
     renderAll();
     calculateSummary();
+    if (currentView === 'week') renderWeekView();
 }
 
 // ══════════════════════════════════════════════
@@ -529,13 +729,14 @@ function renderTabs() {
     sel.value = (prev&&years.includes(prev)) ? prev : (years.includes(curYear)?curYear:(years[0]||''));
 }
 
-function switchTab(tab) { currentTab=tab; renderTabs(); applyFilters(); }
+function switchTab(tab) { currentTab=tab; clearSelection(false); renderTabs(); applyFilters(); }
 
 // ══════════════════════════════════════════════
 //  狀態快速篩選
 // ══════════════════════════════════════════════
 function setStatusFilter(btn, filter) {
     statusFilter = filter;
+    clearSelection(false);
     document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
     btn.classList.add('active');
     applyFilters();
@@ -570,7 +771,7 @@ function renderAll() {
     renderCustomerAnalysis();
 
     if (!currentData.length) {
-        const visibleCols = 21 - hiddenCols.size;  // 21 = 表頭總欄數
+        const visibleCols = 23 - hiddenCols.size;  // 23 = 表頭總欄數(含 checkbox + 進度欄)
         tbody.innerHTML  = `<tr><td colspan="${visibleCols}" class="text-center p-5 text-muted">此月份無資料或查無結果</td></tr>`;
         mCards.innerHTML = '<div class="text-center p-5 text-muted">無資料</div>';
         return;
@@ -583,15 +784,18 @@ function renderAll() {
         const urgent = diff>=0 && diff<=3;
 
         // ── PC 列 ──
-        tRows.push(`<tr class="${urgent?'highlight-row':''}">
+        const isSel = selectedIds.has(String(row.id));
+        tRows.push(`<tr class="${urgent?'highlight-row':''} ${isSel?'row-selected':''}">
+            <td><input type="checkbox" class="row-chk" ${isSel?'checked':''} onclick="event.stopPropagation()" onchange="toggleRowSelect('${e(row.id)}',this.checked,this)"></td>
             <td>
                 <button class="btn btn-sm btn-outline-primary p-1 px-2" title="編輯"   onclick="editRecord('${e(row.id)}')"><i class="fas fa-edit"></i></button>
                 <button class="btn btn-sm btn-outline-success p-1 px-2" title="複製"   onclick="duplicateRecord('${e(row.id)}')"><i class="fas fa-copy"></i></button>
                 <button class="btn btn-sm btn-outline-danger  p-1 px-2" title="刪除"   onclick="deleteRecord('${e(row.id)}','${e(row.name)}')"><i class="fas fa-trash"></i></button>
             </td>
             <td>${e(row.date)}</td>
-            <td class="text-left fw-bold text-truncate" style="max-width:180px;" title="${e(row.tour)}">${e(row.tour)}</td>
+            <td class="text-left fw-bold text-truncate" style="max-width:240px;" title="${e(row.tour)}">${categoryBadge(row.category)}${e(row.tour)}</td>
             <td>${e(row.name)}</td>
+            <td>${progressDotsHTML(row)}</td>
             <td class="fw-bold text-primary">${e(row.pax)}</td>
             <td class="col-bookingId">${e(row.bookingId)}</td>
             <td class="col-tourFee">${money(row.tourFee)}</td>
@@ -599,22 +803,22 @@ function renderAll() {
             <td class="fw-bold text-success">${money(row.actRev)}</td>
             <td class="text-danger small fw-bold">${e(row.ticketingDate)}</td>
             <td class="col-contract">${e(row.contract)}</td>
-            <td class="col-contractUploaded"><span class="${statusV(row.contractUploaded)}">${boolStr(row.contractUploaded)}</span></td>
-            <td class="col-paperSent"><span class="${statusV(row.paperSent)}">${boolStr(row.paperSent)}</span></td>
-            <td><span class="${statusV(row.deposit)}">${boolStr(row.deposit)}</span></td>
-            <td><span class="${statusV(row.balance)}">${boolStr(row.balance)}</span></td>
-            <td><span class="${statusV(row.preTripNotify)}">${boolStr(row.preTripNotify)}</span></td>
-            <td class="col-billSent"><span class="${statusV(row.billSent)}">${boolStr(row.billSent)}</span></td>
-            <td><span class="${statusV(row.list)}">${boolStr(row.list)}</span></td>
-            <td class="col-room"><span class="${statusV(row.room)}">${boolStr(row.room)}</span></td>
-            <td class="col-simCard"><span class="${statusV(row.simCard)}">${boolStr(row.simCard)}</span></td>
+            <td class="col-contractUploaded toggleable-cell" onclick="toggleField('${e(row.id)}','contractUploaded')" title="點擊切換"><span class="${statusV(row.contractUploaded)}">${boolStr(row.contractUploaded)}</span></td>
+            <td class="col-paperSent toggleable-cell" onclick="toggleField('${e(row.id)}','paperSent')" title="點擊切換"><span class="${statusV(row.paperSent)}">${boolStr(row.paperSent)}</span></td>
+            <td class="toggleable-cell" onclick="toggleField('${e(row.id)}','deposit')" title="點擊切換"><span class="${statusV(row.deposit)}">${boolStr(row.deposit)}</span></td>
+            <td class="toggleable-cell" onclick="toggleField('${e(row.id)}','balance')" title="點擊切換"><span class="${statusV(row.balance)}">${boolStr(row.balance)}</span></td>
+            <td class="toggleable-cell" onclick="toggleField('${e(row.id)}','preTripNotify')" title="點擊切換"><span class="${statusV(row.preTripNotify)}">${boolStr(row.preTripNotify)}</span></td>
+            <td class="col-billSent toggleable-cell" onclick="toggleField('${e(row.id)}','billSent')" title="點擊切換"><span class="${statusV(row.billSent)}">${boolStr(row.billSent)}</span></td>
+            <td class="toggleable-cell" onclick="toggleField('${e(row.id)}','list')" title="點擊切換"><span class="${statusV(row.list)}">${boolStr(row.list)}</span></td>
+            <td class="col-room toggleable-cell" onclick="toggleField('${e(row.id)}','room')" title="點擊切換"><span class="${statusV(row.room)}">${boolStr(row.room)}</span></td>
+            <td class="col-simCard toggleable-cell" onclick="toggleField('${e(row.id)}','simCard')" title="點擊切換"><span class="${statusV(row.simCard)}">${boolStr(row.simCard)}</span></td>
             <td class="col-note text-muted text-truncate" style="max-width:120px;" title="${e(row.note)}">${e(row.note)}</td>
         </tr>`);
 
         // ── 手機卡片 ──
         mCardArr.push(`<div class="mobile-card ${urgent?'urgent':''}">
             <div class="d-flex justify-content-between align-items-start">
-                <div class="m-title">${e(row.tour)}</div>
+                <div class="m-title">${categoryBadge(row.category)}${e(row.tour)}</div>
                 <span class="badge bg-primary">${e(row.date)}</span>
             </div>
             <div class="row g-2 small">
@@ -625,6 +829,13 @@ function renderAll() {
                 <div class="col-6 text-primary">預估：<b>${money(row.estRev)}</b></div>
                 <div class="col-6 text-end text-success">實際：<b>${money(row.actRev)}</b></div>
             </div>
+            ${(() => {
+                const { done, total } = calcProgress(row);
+                return `<div class="m-progress" title="完成步驟">
+                    <div class="m-progress-bar"><div class="m-progress-fill" style="width:${(done/total)*100}%"></div></div>
+                    <span class="m-progress-text">${done}/${total}</span>
+                </div>`;
+            })()}
             <div class="m-badge-row">
                 ${row.deposit      ===true?'<span class="badge bg-success-subtle text-success border border-success">訂金V</span>':''}
                 ${row.balance      ===true?'<span class="badge bg-success-subtle text-success border border-success">尾款V</span>':''}
@@ -641,6 +852,90 @@ function renderAll() {
 
     tbody.innerHTML  = tRows.join('');
     mCards.innerHTML = mCardArr.join('');
+    syncSelectAllState();
+}
+
+// ══════════════════════════════════════════════
+//  批次操作
+// ══════════════════════════════════════════════
+function toggleRowSelect(id, checked, el) {
+    if (checked) selectedIds.add(String(id)); else selectedIds.delete(String(id));
+    if (el) el.closest('tr')?.classList.toggle('row-selected', checked);
+    updateBatchToolbar();
+    syncSelectAllState();
+}
+
+function toggleAllSelect(checked) {
+    if (checked) currentData.forEach(r => selectedIds.add(String(r.id)));
+    else         currentData.forEach(r => selectedIds.delete(String(r.id)));
+    renderAll();
+    updateBatchToolbar();
+}
+
+function syncSelectAllState() {
+    const chk = document.getElementById('selectAllChk');
+    if (!chk || !currentData.length) { if (chk) { chk.checked=false; chk.indeterminate=false; } return; }
+    const allSel  = currentData.every(r => selectedIds.has(String(r.id)));
+    const someSel = currentData.some (r => selectedIds.has(String(r.id)));
+    chk.checked = allSel;
+    chk.indeterminate = !allSel && someSel;
+}
+
+function updateBatchToolbar() {
+    const toolbar = document.getElementById('batchToolbar');
+    const n = selectedIds.size;
+    document.getElementById('batchCount').textContent = n;
+    toolbar.classList.toggle('show', n > 0);
+}
+
+function clearSelection(rerender = true) {
+    selectedIds.clear();
+    updateBatchToolbar();
+    if (rerender) renderAll();
+}
+
+async function batchUpdate(field, value) {
+    const ids = [...selectedIds];
+    if (!ids.length) return;
+    const fieldLabel = FIELD_LABELS[field] || field;
+    if (!confirm(`要將 ${ids.length} 筆紀錄的「${fieldLabel}」設為 ${value?'V':'空'} 嗎?`)) return;
+
+    updateSync(true, '批次更新中...');
+    // Optimistic:本地先改
+    ids.forEach(id => {
+        const row = allData.find(r => String(r.id)===String(id));
+        if (row) row[field] = value;
+    });
+    applyFilters();
+
+    const { error } = await sb.from(TABLE_NAME).update({ [field]: value }).in('id', ids);
+    if (error) {
+        showToast(`❌ 批次更新失敗:${error.message}`, 'error');
+        await loadData();  // 失敗就重抓回正確狀態
+        return;
+    }
+    updateSync(false);
+    showToast(`✅ 已更新 ${ids.length} 筆「${fieldLabel}」`);
+    clearSelection();
+    fetchNotifications();
+}
+
+async function batchDelete() {
+    const ids = [...selectedIds];
+    if (!ids.length) return;
+    if (!confirm(`⚠️ 確定要刪除 ${ids.length} 筆紀錄?此操作不可復原。`)) return;
+
+    updateSync(true, '刪除中...');
+    const { error } = await sb.from(TABLE_NAME).delete().in('id', ids);
+    if (error) {
+        showToast(`❌ 批次刪除失敗:${error.message}`, 'error');
+        updateSync(false, '失敗');
+        return;
+    }
+    showToast(`🗑️ 已刪除 ${ids.length} 筆紀錄`, 'info');
+    clearSelection(false);
+    await loadData();
+    fetchNotifications();
 }
 
 // ══════════════════════════════════════════════
@@ -652,7 +947,9 @@ async function saveRecord() {
     const getV = id => document.getElementById(id).value;
 
     const record = {
-        date: getV('f_date'), tour: getV('f_tour'), name: getV('f_name'),
+        date: getV('f_date'), tour: getV('f_tour'),
+        category: (getV('f_category')||'').trim() || null,
+        name: getV('f_name'),
         pax: Number(getV('f_pax'))||0, bookingId: getV('f_bookingId'),
         tourFee: Number(getV('f_tourFee'))||0, estRev: Number(getV('f_estRev'))||0,
         actRev: Number(getV('f_actRev'))||0, ticketingDate: getV('f_ticketingDate')||null,
@@ -736,6 +1033,36 @@ async function deleteRecord(id, name) {
         await loadData(); fetchNotifications();
     } else {
         showToast('❌ 刪除失敗：'+error.message, 'error');
+    }
+}
+
+// ── Inline edit:點 V 欄位直接 toggle ──
+// Optimistic UI:先改本地 → render → API → 失敗回滾
+async function toggleField(id, field) {
+    // 編輯中禁用 inline toggle 避免衝突
+    if (document.getElementById('editId').value) {
+        showToast('⚠️ 編輯模式中,請先儲存或取消編輯', 'warn');
+        return;
+    }
+    const row = allData.find(r => String(r.id) === String(id));
+    if (!row) return;
+    const oldVal = row[field] === true;
+    const newVal = !oldVal;
+
+    // Optimistic:先改 + 重 render
+    row[field] = newVal;
+    applyFilters();
+    updateSync(true, '更新中...');
+
+    const { error } = await sb.from(TABLE_NAME).update({ [field]: newVal }).eq('id', id);
+    if (error) {
+        row[field] = oldVal;  // 回滾
+        applyFilters();
+        updateSync(false, '更新失敗');
+        showToast(`❌ 更新失敗:${error.message}`, 'error');
+    } else {
+        updateSync(false);
+        fetchNotifications();
     }
 }
 
@@ -920,11 +1247,110 @@ function setupRealtime() {
       }).subscribe();
 }
 
+// ══════════════════════════════════════════════
+//  視圖切換(列表 / 週曆)
+// ══════════════════════════════════════════════
+function switchView(view) {
+    currentView = view;
+    localStorage.setItem('currentView', view);
+    document.body.classList.toggle('view-week', view === 'week');
+    document.body.classList.toggle('view-list', view === 'list');
+    document.querySelectorAll('.view-toggle-btn').forEach(b => b.classList.toggle('active', b.dataset.view === view));
+    if (view === 'week') renderWeekView();
+}
+
+function navWeek(deltaDays) {
+    weekStart = new Date(weekStart);
+    weekStart.setDate(weekStart.getDate() + deltaDays);
+    renderWeekView();
+}
+
+function gotoThisWeek() {
+    weekStart = startOfWeek(new Date());
+    renderWeekView();
+}
+
+function renderWeekView() {
+    const container = document.getElementById('weekViewContainer');
+    if (!container) return;
+
+    // 該週 7 天
+    const days = [];
+    for (let i = 0; i < 7; i++) {
+        const d = new Date(weekStart);
+        d.setDate(d.getDate() + i);
+        days.push(d);
+    }
+    const today = new Date(); today.setHours(0,0,0,0);
+
+    // 該週每天的團(用字串日期比對,避開 timezone)
+    const dayMap = {};
+    days.forEach(d => dayMap[fmtYMD(d)] = []);
+    allData.forEach(r => {
+        if (r.date && dayMap[r.date]) dayMap[r.date].push(r);
+    });
+
+    // Header
+    const startStr = `${days[0].getFullYear()}/${String(days[0].getMonth()+1).padStart(2,'0')}/${String(days[0].getDate()).padStart(2,'0')}`;
+    const endStr   = `${String(days[6].getMonth()+1).padStart(2,'0')}/${String(days[6].getDate()).padStart(2,'0')}`;
+    const weekDays = ['週一','週二','週三','週四','週五','週六','週日'];
+
+    let html = `
+        <div class="week-nav">
+            <button class="btn btn-outline-secondary btn-sm" onclick="navWeek(-7)"><i class="fas fa-chevron-left"></i> 上週</button>
+            <div>
+                <span class="week-range">${startStr} ~ ${endStr}</span>
+                <button class="btn btn-sm btn-link" onclick="gotoThisWeek()">本週</button>
+            </div>
+            <button class="btn btn-outline-secondary btn-sm" onclick="navWeek(7)">下週 <i class="fas fa-chevron-right"></i></button>
+        </div>
+        <div class="week-grid">`;
+
+    days.forEach((d, idx) => {
+        const dStr = fmtYMD(d);
+        const isToday   = d.getTime() === today.getTime();
+        const isWeekend = idx >= 5;
+        const isPast    = d.getTime() < today.getTime();
+        const events   = dayMap[dStr] || [];
+        const cls = ['week-cell'];
+        if (isToday) cls.push('today');
+        if (isWeekend) cls.push('weekend');
+        if (isPast && !isToday) cls.push('past');
+
+        const eventsHTML = events.map(r => {
+            const color = categoryColor(r.category) || '#0d6efd';
+            const { done, total } = calcProgress(r);
+            const e = escapeHtml;
+            return `<div class="week-event" style="background:${color}" onclick="editRecord('${e(r.id)}')" title="${e(r.tour)} - ${e(r.name)} (進度 ${done}/${total})">
+                <div class="week-event-tour">${e(r.tour)}</div>
+                <div class="week-event-meta">${e(r.name)} · ${e(r.pax)}人 · ${done}/${total}</div>
+            </div>`;
+        }).join('');
+
+        html += `
+            <div class="${cls.join(' ')}">
+                <div class="week-day-header">
+                    <span class="week-day-name">${weekDays[idx]}</span>
+                    <span class="week-day-num">${d.getMonth()+1}/${d.getDate()}</span>
+                </div>
+                <div class="week-events">${eventsHTML || '<div class="week-empty">—</div>'}</div>
+            </div>`;
+    });
+    html += '</div>';
+
+    // 摘要
+    const flatEvents = Object.values(dayMap).flat();
+    const totalPax = flatEvents.reduce((s,r)=>s+(Number(r.pax)||0),0);
+    html += `<div class="week-summary small text-muted">本週共 <b class="text-dark">${flatEvents.length}</b> 團 · <b class="text-dark">${totalPax}</b> 人出發</div>`;
+
+    container.innerHTML = html;
+}
+
 function exportToCSV() {
     const esc = v => `"${String(v==null?'':v).replace(/"/g,'""')}"`;
-    const headers = ['出發日期','行程','客人代表','人數','訂編','團費','預估業績','實際業績','開票日','合約狀態','合約上傳','寄紙本','行前通知','訂金','尾款','繳帳單','名單','分房','網卡','備註'];
+    const headers = ['出發日期','分類','行程','客人代表','人數','訂編','團費','預估業績','實際業績','開票日','合約狀態','合約上傳','寄紙本','行前通知','訂金','尾款','繳帳單','名單','分房','網卡','備註'];
     const rows = currentData.map(r=>[
-        esc(r.date),esc(r.tour),esc(r.name),esc(r.pax),
+        esc(r.date),esc(r.category),esc(r.tour),esc(r.name),esc(r.pax),
         esc(r.bookingId),esc(r.tourFee),esc(r.estRev),esc(r.actRev),
         esc(r.ticketingDate),esc(r.contract),
         boolStr(r.contractUploaded),boolStr(r.paperSent),boolStr(r.preTripNotify),
