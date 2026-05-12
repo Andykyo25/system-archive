@@ -1,8 +1,9 @@
 import { createClient } from "@/lib/supabase/server";
-import { addBuyTransaction, deleteTransaction } from "./actions";
+import { addBuyTransaction } from "./actions";
 import { fmtMoney, fmtPct, pctColor } from "../_components/Format";
 import { PriceCell } from "../_components/PriceCell";
 import { SellDialog } from "./SellDialog";
+import { DeleteTxnButton } from "./DeleteTxnButton";
 
 export const dynamic = "force-dynamic";
 
@@ -428,9 +429,12 @@ function RealizedSection({ rows }: { rows: RealizedRow[] }) {
 function TransactionLogSection({ rows }: { rows: Transaction[] }) {
   return (
     <section>
-      <details className="rounded-lg border border-zinc-800 bg-zinc-900">
+      <details open className="rounded-lg border border-zinc-800 bg-zinc-900">
         <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-zinc-200">
           全部交易紀錄 ({rows.length})
+          <span className="ml-2 text-xs font-normal text-zinc-500">
+            — 輸入錯了可在這裡刪除
+          </span>
         </summary>
         {rows.length === 0 ? (
           <p className="px-4 py-3 text-sm text-zinc-500">無紀錄</p>
@@ -482,12 +486,10 @@ function TransactionLogSection({ rows }: { rows: Transaction[] }) {
                       {t.note ?? "—"}
                     </td>
                     <td className="px-3 py-2 text-right">
-                      <form action={deleteTransaction}>
-                        <input type="hidden" name="id" value={t.id} />
-                        <button className="text-xs text-zinc-500 hover:text-red-400">
-                          刪
-                        </button>
-                      </form>
+                      <DeleteTxnButton
+                        id={t.id}
+                        label={`${t.symbol} ${t.txn_type === "BUY" ? "買入" : "賣出"} ${t.qty} 股 @ ${fmtMoney(t.price, 2)}(${t.txn_date})`}
+                      />
                     </td>
                   </tr>
                 ))}
