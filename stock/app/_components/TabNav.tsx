@@ -8,6 +8,7 @@ const tabs = [
   { href: "/holdings", label: "持股" },
   { href: "/watchlist", label: "產業" },
   { href: "/etf", label: "ETF" },
+  { href: "/rank", label: "排名" },
   { href: "/settings", label: "設定" },
 ];
 

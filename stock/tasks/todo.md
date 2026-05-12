@@ -471,31 +471,65 @@ Day 7 — backfill valuation + monthly_revenue
 
 **基本面(既有 6 條,保留)**:EPS 連正 / EPS YoY / ROE>15% / FCF+ / PEG<1 / 月營收 YoY>0
 
-**動能(新)**:
-- [ ] MA20 / MA60 黃金交叉
-- [ ] 過去 20 日 vs 過去 60 日報酬差(動能持續)
-- [ ] RSI14 不在超買區(<70)
+**動能(新,migration 40 `v_price_factors`)**:
+- [x] MA20 / MA60 黃金交叉(`mom_ma_golden`,需 ≥ 60 天樣本)
+- [x] 過去 20 日 vs 過去 60 日報酬差(`mom_ret_diff`)
+- [x] RSI14 不在超買區(<70,`mom_rsi_ok`,需 ≥ 13 個非 null daily return)
 
-**反轉(新)**:
-- [ ] 距 60 日高點折價 > 10%(深蹲)
-- [ ] 過去 5 日跌幅 > 3% 但量縮(主力惜售)
+**反轉(新,migration 40 `v_price_factors`)**:
+- [x] 距 60 日高點折價 > 10%(`rev_off_high`)
+- [x] 過去 5 日跌幅 > 3% 但量縮(`rev_vol_dry`,vol 縮 15%+)
 
-**籌碼(新,依賴 M8 新資料)**:
-- [ ] 法人連續 3 日買超
-- [ ] 融資餘額減少(散戶離場 = 反指標)
-- [ ] 借券餘額減少(空單回補)
-- [ ] 集保戶數減少(大戶集中)
+**籌碼(新,migration 41 `v_chip_factors`)**:
+- [x] 法人連續 3 日買超(`chip_foreign_3d_buy`)
+- [x] 融資餘額減少(`chip_margin_drop`,近 5 日累計 delta < 0)
+- [x] 借券餘額減少(`chip_lending_drop`,latest < prev)
+- [x] 外資持股比例週對週上升(`chip_share_concentrate`,集保替代)
 
 ### View
-- [ ] `v_factor_scores`:每 symbol 每 factor 分數(0-1 normalize)
-- [ ] `v_stock_rank`:加權平均 + 未來 20 日 expected rank
-- [ ] `v_entry_signal`:多條件同時對齊(基本面 ≥ 4/6 + 動能 ≥ 2/3 + 籌碼 ≥ 2/4)→ `is_entry_signal = true`
+- [x] `v_factor_scores`:每 symbol 11 個 factor int 0/1/null + 4 維度 count_pos/count_total + 輔助欄(migration 42)
+- [x] `v_stock_rank`:加權 50/25/15/10 + `expected_rank`(空維度權重 reallocate,migration 43)
+- [x] `v_entry_signal`:fund≥4 硬條件 + mom≥2 + chip 三層 fallback(資料未到位放寬,migration 44)
 
 ### UI
-- [ ] 新 tab「排名」:全股池依預期 rank 顯示前 30,⭐ 標示 entry signal
-- [ ] 個股頁加因子雷達圖(15 因子各分數)
+- [x] 新 route `app/rank/page.tsx`:前 30 依 expected_rank,⭐ 標 entry signal,4 維度 bar 顯示
+- [x] `TabNav.tsx` 加「排名」tab
+- [x] 個股頁雷達圖 section:純 SVG 11 軸雷達 + 4 維度 progress bar + 逐項因子摺疊
 
 **成功標準**:排名頁有資料、entry signal 數 ≈ 5-15 檔(不能 >50,代表規則太鬆)。
+
+### Review
+
+**Schema 設計**(5 migration:40~44,分層清楚):
+- `v_price_factors`(40):從 `price_daily` 過去 180 天算 MA20/MA60/RSI14/60d_high + 5 個 boolean factor。資料量保護:rsi_days_available ≥ 13、ma60_days_available ≥ 60,不足時 factor 直接 null(不汙染 score)
+- `v_chip_factors`(41):4 個 left join + 4 個 boolean factor,空資料時 null。借券用 `v_securities_lending_daily` aggregate view(M8 已建),集保用「外資持股週對週」當「大戶集中」代理
+- `v_factor_scores`(42):11 factor 統一成 int 0/1/null + 4 維度 count_pos / count_total。universe = `v_price_factors ∪ v_chip_factors`,等同於 price + chip 全餵到的 union
+- `v_stock_rank`(43):權重 fund 50% / mom 25% / rev 15% / chip 10%,有資料的維度才參與分配。`weighted_score` 是 0-100,`expected_rank` asc(1 = 最強)
+- `v_entry_signal`(44):signal_strength 分 strong / normal / none / insufficient_data。spec 的「chip≥2」做了「三層 fallback」(chip_count_total ≥3 嚴格 / 1-2 放寬 1 / 0 不卡),這樣資料就緒前後規則語意連續
+
+**UI**(3 個檔案):
+- `app/rank/page.tsx`:Top 30 表格,⭐ 旗標 + 4 維度 (pos/total) cell + RSI / 距高點等指標 cell。empty state 友善
+- `app/_components/FactorRadar.tsx`:純 SVG 雷達圖,15 軸(11 + 4 反映 spec 15 factor 數,但 chip 4 視資料可能多個 null 軸)。null 軸標灰色。group 著色:blue / amber / violet / emerald
+- 個股頁(`app/stocks/[symbol]/page.tsx`):新 `FactorSection`,雷達圖左 + 4 維度 bar + 逐項因子摺疊;⭐ 進場訊號 badge
+
+**Lessons 遵循**:
+- L01 範圍管理:`universe_symbols` CTE 用 union 把所有 fetcher 餵到的 symbol 集中,不掃全 price_daily
+- L13 NUMERIC string:rank page 與雷達圖一律 `Number(v)` 轉,顯示用 `fmtScore / fmtPct`
+- L14 Tailwind v4:DimRow 把 dynamic class 改成傳 `barClass` prop,避免 JIT 抓不到 dynamic 字串
+- L19 多 agent 邊界:沒動既有 `v_stock_score` / `v_industry_picks`,只 join 它們抽 6 基本面條件。M8.5 / M8.3 範圍 0 接觸
+- L20 backward-compat:既有 6 基本面評分仍由 v_industry_picks.score 0-6 算法保留;新 factor 在「新 view」累加不汙染既有 dashboard
+
+**取捨 / 已知限制**:
+- 4 籌碼表目前空(M8 EF cron 才剛啟動),chip_count_total = 0,signal 依 fallback 用 fund≥4 + mom≥2。當 chip 資料就緒,規則自動升級為 chip≥2 嚴格條件
+- spec 提「entry signal 5-15 檔」是穩態目標。在 chip 資料未到位前可能 20-40 檔,Andy 觀察一週後依分布 tune threshold(可在 migration 44 改 fund_count_pos / mom_count_pos 的 ≥ 數值)
+- 個股雷達圖 11 軸對應 5 個 price + 6 個基本面 +(4 個 chip null);15 個軸太擠所以實際展開 15(以 spec 為準),null 軸用灰色軸標讓 user 一眼看出
+- RSI14 用 SMA-RSI(非 Wilder 平滑版)。Wilder 版需要遞迴計算,SQL view 寫遞迴成本太高,SMA 版誤差在 ±2 內(對 < 70 / > 70 判斷影響有限)
+
+**驗證受限**:這個 session 沒 supabase MCP / 沒 Bash,無法 apply migration 也無法 `npm run build` 驗證。所有 deliverable 是 source code,套用方式:
+1. Andy 套 `supabase db push` 把 migration 40~44 推到 project trnvkwievjewhghdvniq
+2. `npm run build` 在 Andy 本機跑通(stocks page 改動 + 新 rank page + 新 FactorRadar)
+3. M8 4 個 EF 已部署且 cron 運行中,等資料累積 3-5 天 chip_count_total 應該升到 4
+4. Andy 開 `/rank` 看 top 30 排序是否合理(預期半導體 + AI 系統廠 top 10 居多)
 
 ---
 

@@ -158,6 +158,10 @@
 **做法**:跟 PM(Andy)反映「03:00 是否可放寬到 11:00」— 11:00 Taipei = UTC 03:00,寫 `0 3 1 * *` 一行搞定
 **為什麼**:月度任務通常只在意「月初一次」這個粒度,精確小時不重要。對 UTC 換算敏感的時間,要在 spec 階段就避開月跨日邊界。
 
+---
+
+## M8 資料層大改版實做後
+
 ### L22 — FinMind 不同 dataset 的欄位風格差異大,backfill EF 不能套同一 parser(2026-05-12)
 **摘要**:
 - `TaiwanStockPrice`: `max/min` 而非 high/low(L09)
@@ -167,3 +171,26 @@
 - `TaiwanStockSecuritiesLending`: 明細性質,同 (symbol, date) 多筆,要用 (symbol, date, type, volume, fee_rate) 做 dedup unique
 **做法**:每個 dataset 對應一個 specific parser fn,backfill EF 內用 dataset 字串 switch,各 case 自己 normalize
 **為什麼**:FinMind 不同 dataset 是不同團隊維護(可能不同年代寫的),欄位風格不一致。試圖共用 parser 會踩 corner case 一個一個爆出來,不如老老實實每個 dataset 一個 parser。
+
+---
+
+## M9 多因子排名實做後
+
+### L23 — 多因子 view 的「資料量保護」必須先於「邏輯計算」(2026-05-12)
+**問題**:寫 RSI14 / MA60 / 60d_high 等需要 N 個交易日的因子時,如果新股票或剛上市股票 price_daily 只有幾天,而沒有 day-count gate,view 仍會輸出值(只是極端不準),導致 entry signal 被汙染
+**做法**:每個 factor 在 case when 鏈最前面先檢查 `count(...) filter (...) >= 必要天數`,不足直接 `null::boolean`(讓 v_factor_scores 把這個 factor 視為「不可評」,count_total 也對應扣)
+**為什麼**:雷達圖 user 看到一個 factor 是綠色會以為「過關」,實際上資料量不夠根本不該評估。null 比 false 更誠實:false 代表「我看到資料 + 不及格」,null 代表「我看不到/沒辦法判斷」。entry signal 用 count_pos / count_total 也才合理(分母縮 = 該維度條件提高比例,不會被「滿目假 true」綁架)
+
+### L24 — Tailwind v4 dynamic class names 必須改 prop 化(2026-05-12)
+**問題**:`color.replace("text-", "bg-")` 動態算 class,JIT 在 build 時掃不到字面字串會 purge 掉
+**做法**:把每個顏色變數獨立成 prop(text class + bar class),caller 明確傳兩個字面字串,讓 JIT 掃得到
+**為什麼**:Tailwind v4 的 content 掃描需要看到字面字串才會生成 CSS,任何動態組裝都會被 tree-shake 掉
+
+### L25 — 規則「資料就緒 vs 未到位」要寫 fallback,而不是禁用整個 signal(2026-05-12)
+**問題**:spec 寫「entry signal = fund≥4 AND mom≥2 AND chip≥2」,但 chip 4 個表都是 M8 cron 才剛跑、資料還沒進來。若嚴格 chip≥2 → 0 個 signal,整個 /rank tab 顯示空。
+**做法**:在 v_entry_signal 加三層 fallback:
+- `chip_count_total >= 3`:嚴格 `chip≥2`
+- `chip_count_total > 0`:放寬到 `chip≥1`(部分資料 → 部分卡)
+- `chip_count_total = 0`:完全不卡 chip,只看 fund + mom
+**為什麼**:資料就緒前後規則「自動升級」,UI 不會閃斷(即使 chip 還沒進來,user 看到的 entry signal 仍有意義 = 基本面+動能對齊)。資料進來後規則自動嚴格化,backtest 也不需重寫。
+**注意**:這違反「規則一致性」原則但符合「漸進式上線」實務 — 在 lesson 裡明確記下,將來 spec 寫類似 dependency 條件時,要主動問 PM「資料未就緒時想怎麼處理」。

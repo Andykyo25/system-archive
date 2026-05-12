@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { KLineChart, type OHLCV } from "@/app/_components/KLineChart";
-import { fmtMoney, fmtPct, pctColor } from "@/app/_components/Format";
+import { fmtPct, pctColor } from "@/app/_components/Format";
 import { PriceCell } from "@/app/_components/PriceCell";
+import { FactorRadar, type FactorAxis } from "@/app/_components/FactorRadar";
 
 export const dynamic = "force-dynamic";
 
@@ -43,6 +44,8 @@ export default async function StockDetailPage({
     { data: etfRow },
     { data: scoreRow },
     { data: newsRows },
+    { data: factorRow },
+    { data: entryRow },
   ] = await Promise.all([
     sb
       .from("price_daily")
@@ -71,6 +74,12 @@ export default async function StockDetailPage({
       .eq("symbol", symbol)
       .order("published_at", { ascending: false, nullsFirst: false })
       .limit(20),
+    sb.from("v_stock_rank").select("*").eq("symbol", symbol).maybeSingle(),
+    sb
+      .from("v_entry_signal")
+      .select("symbol, is_entry_signal, signal_strength, weighted_score, expected_rank")
+      .eq("symbol", symbol)
+      .maybeSingle(),
   ]);
 
   const rows = (priceRows as PriceRow[] | null) ?? [];
@@ -164,9 +173,236 @@ export default async function StockDetailPage({
         </p>
       </section>
 
+      <FactorSection
+        rank={factorRow as FactorRankRow | null}
+        signal={entryRow as EntrySignalRow | null}
+      />
+
       <NewsSection rows={(newsRows as NewsRow[] | null) ?? []} />
     </div>
   );
+}
+
+interface FactorRankRow {
+  symbol: string;
+  weighted_score: number | string | null;
+  expected_rank: number;
+  fund_count_pos: number;
+  fund_count_total: number;
+  mom_count_pos: number;
+  mom_count_total: number;
+  rev_count_pos: number;
+  rev_count_total: number;
+  chip_count_pos: number;
+  chip_count_total: number;
+  fund_eps_pos: number | null;
+  fund_eps_yoy: number | null;
+  fund_roe_high: number | null;
+  fund_fcf_pos: number | null;
+  fund_peg_low: number | null;
+  fund_rev_yoy: number | null;
+  mom_ma_golden: number | null;
+  mom_ret_diff: number | null;
+  mom_rsi_ok: number | null;
+  rev_off_high: number | null;
+  rev_vol_dry: number | null;
+  chip_foreign_3d_buy: number | null;
+  chip_margin_drop: number | null;
+  chip_lending_drop: number | null;
+  chip_share_concentrate: number | null;
+}
+
+interface EntrySignalRow {
+  is_entry_signal: boolean;
+  signal_strength: "strong" | "normal" | "none" | "insufficient_data";
+  weighted_score: number | string | null;
+  expected_rank: number;
+}
+
+function FactorSection({
+  rank,
+  signal,
+}: {
+  rank: FactorRankRow | null;
+  signal: EntrySignalRow | null;
+}) {
+  if (!rank) {
+    return (
+      <section>
+        <h2 className="mb-3 text-lg font-semibold">因子分析</h2>
+        <p className="rounded-lg border border-zinc-800 bg-zinc-900 p-4 text-sm text-zinc-500">
+          尚未產生因子資料(可能 universe 還沒包含此股,或資料量不足 60 個交易日)
+        </p>
+      </section>
+    );
+  }
+
+  const axes = buildFactorAxes(rank);
+  const isEntry = signal?.is_entry_signal ?? false;
+  const strength = signal?.signal_strength ?? "none";
+
+  return (
+    <section>
+      <div className="mb-3 flex items-baseline justify-between">
+        <h2 className="text-lg font-semibold">因子分析</h2>
+        <div className="text-sm text-zinc-400">
+          排名 <span className="font-semibold text-zinc-200 tabular-nums">#{rank.expected_rank}</span>
+          {" · "}
+          總分{" "}
+          <span className="font-semibold text-zinc-200 tabular-nums">
+            {fmtScore(rank.weighted_score)}
+          </span>
+          {isEntry && (
+            <span
+              className={`ml-2 rounded px-2 py-0.5 text-xs font-semibold ${
+                strength === "strong"
+                  ? "bg-yellow-700 text-yellow-100"
+                  : "bg-yellow-900 text-yellow-200"
+              }`}
+            >
+              ⭐ 進場訊號 ({strength === "strong" ? "強" : "標準"})
+            </span>
+          )}
+        </div>
+      </div>
+
+      <div className="grid gap-4 rounded-lg border border-zinc-800 bg-zinc-900 p-4 md:grid-cols-2">
+        <div>
+          <FactorRadar axes={axes} size={320} />
+        </div>
+        <div className="space-y-3 text-sm">
+          <DimRow
+            label="基本面"
+            pos={rank.fund_count_pos}
+            total={rank.fund_count_total}
+            color="text-blue-400"
+            barClass="bg-blue-400"
+          />
+          <DimRow
+            label="動能"
+            pos={rank.mom_count_pos}
+            total={rank.mom_count_total}
+            color="text-amber-400"
+            barClass="bg-amber-400"
+          />
+          <DimRow
+            label="反轉"
+            pos={rank.rev_count_pos}
+            total={rank.rev_count_total}
+            color="text-violet-400"
+            barClass="bg-violet-400"
+          />
+          <DimRow
+            label="籌碼"
+            pos={rank.chip_count_pos}
+            total={rank.chip_count_total}
+            color="text-emerald-400"
+            barClass="bg-emerald-400"
+          />
+          <FactorList axes={axes} />
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function buildFactorAxes(r: FactorRankRow): FactorAxis[] {
+  // 順序:基本面 6 → 動能 3 → 反轉 2 → 籌碼 4 = 15 個軸,但 spec 是 11(個股雷達圖以 dimension 顯示 11)
+  // 用 group 著色,軸標短中文
+  const mk = (key: string, label: string, v: number | null, group: FactorAxis["group"]): FactorAxis => ({
+    key,
+    label,
+    value: v === 1 ? 1 : v === 0 ? 0 : null,
+    group,
+  });
+  return [
+    mk("fund_eps_pos", "EPS 連正", r.fund_eps_pos, "fund"),
+    mk("fund_eps_yoy", "EPS YoY", r.fund_eps_yoy, "fund"),
+    mk("fund_roe_high", "ROE>15%", r.fund_roe_high, "fund"),
+    mk("fund_fcf_pos", "FCF+", r.fund_fcf_pos, "fund"),
+    mk("fund_peg_low", "PEG<1", r.fund_peg_low, "fund"),
+    mk("fund_rev_yoy", "月營收+", r.fund_rev_yoy, "fund"),
+    mk("mom_ma_golden", "黃金交叉", r.mom_ma_golden, "mom"),
+    mk("mom_ret_diff", "動能加速", r.mom_ret_diff, "mom"),
+    mk("mom_rsi_ok", "RSI<70", r.mom_rsi_ok, "mom"),
+    mk("rev_off_high", "深蹲", r.rev_off_high, "rev"),
+    mk("rev_vol_dry", "量縮跌", r.rev_vol_dry, "rev"),
+    mk("chip_foreign_3d_buy", "法人3日買", r.chip_foreign_3d_buy, "chip"),
+    mk("chip_margin_drop", "融資減", r.chip_margin_drop, "chip"),
+    mk("chip_lending_drop", "借券減", r.chip_lending_drop, "chip"),
+    mk("chip_share_concentrate", "外資升", r.chip_share_concentrate, "chip"),
+  ];
+}
+
+function DimRow({
+  label,
+  pos,
+  total,
+  color,
+  barClass,
+}: {
+  label: string;
+  pos: number;
+  total: number;
+  color: string;
+  barClass: string;
+}) {
+  if (total === 0) {
+    return (
+      <div className="flex items-baseline justify-between">
+        <span className={color}>{label}</span>
+        <span className="text-xs text-zinc-600">— 無資料</span>
+      </div>
+    );
+  }
+  const pct = (pos / total) * 100;
+  return (
+    <div>
+      <div className="flex items-baseline justify-between">
+        <span className={color}>{label}</span>
+        <span className="text-xs tabular-nums text-zinc-400">
+          {pos}/{total} ({pct.toFixed(0)}%)
+        </span>
+      </div>
+      <div className="mt-1 h-1.5 rounded bg-zinc-800">
+        <div
+          className={`h-full rounded ${barClass}`}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function FactorList({ axes }: { axes: FactorAxis[] }) {
+  return (
+    <details className="rounded border border-zinc-800 bg-zinc-950 p-2 text-xs">
+      <summary className="cursor-pointer text-zinc-400">逐項因子狀態</summary>
+      <ul className="mt-2 grid grid-cols-2 gap-1">
+        {axes.map((a) => (
+          <li
+            key={a.key}
+            className={
+              a.value === 1
+                ? "text-green-400"
+                : a.value === 0
+                ? "text-zinc-500"
+                : "text-zinc-600 italic"
+            }
+          >
+            {a.value === 1 ? "✓" : a.value === 0 ? "✗" : "?"} {a.label}
+          </li>
+        ))}
+      </ul>
+    </details>
+  );
+}
+
+function fmtScore(n: string | number | null | undefined): string {
+  if (n == null) return "—";
+  const v = Number(n);
+  if (!Number.isFinite(v)) return "—";
+  return v.toFixed(1);
 }
 
 interface NewsRow {
