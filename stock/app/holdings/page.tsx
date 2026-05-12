@@ -313,6 +313,8 @@ function CurrentHoldingsSection({
                         value={h.current_price}
                         isProvisional={h.is_provisional}
                         date={h.price_date}
+                        asOfTs={h.as_of_ts}
+                        source={h.price_source}
                       />
                     </td>
                     <td className="px-3 py-2 text-right tabular-nums">

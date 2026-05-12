@@ -18,6 +18,9 @@ interface EtfPick {
   current_price: string | number | null;
   trade_date: string | null;
   is_provisional: boolean | null;
+  as_of_ts: string | null;
+  price_source: string | null;
+  market_state: string | null;
   pct_5d: string | number | null;
   pct_20d: string | number | null;
   dividend_yield: string | number | null;
@@ -215,7 +218,13 @@ function CategoryBlock({ category, rows }: { category: string; rows: EtfPick[] }
                     </span>
                   </td>
                   <td className="px-3 py-2 text-right">
-                    <PriceCell value={r.current_price} isProvisional={r.is_provisional} date={r.trade_date} />
+                    <PriceCell
+                      value={r.current_price}
+                      isProvisional={r.is_provisional}
+                      date={r.trade_date}
+                      asOfTs={r.as_of_ts}
+                      source={r.price_source}
+                    />
                   </td>
                   <td className={`px-3 py-2 text-right tabular-nums ${pctColor(r.pct_5d)}`}>{fmtPct(r.pct_5d)}</td>
                   <td className={`px-3 py-2 text-right tabular-nums ${pctColor(r.pct_20d)}`}>{fmtPct(r.pct_20d)}</td>

@@ -209,3 +209,22 @@
 - `chip_count_total = 0`:完全不卡 chip,只看 fund + mom
 **為什麼**:資料就緒前後規則「自動升級」,UI 不會閃斷(即使 chip 還沒進來,user 看到的 entry signal 仍有意義 = 基本面+動能對齊)。資料進來後規則自動嚴格化,backtest 也不需重寫。
 **注意**:這違反「規則一致性」原則但符合「漸進式上線」實務 — 在 lesson 裡明確記下,將來 spec 寫類似 dependency 條件時,要主動問 PM「資料未就緒時想怎麼處理」。
+
+---
+
+## M11 UI 整合 + 收尾後
+
+### L28 — 「現價 + timestamp」一行容易擠,改用兩行(主價 + 次行 timestamp)(2026-05-12)
+**問題**:M8.3 後 view 多吐 `as_of_ts` / `price_source`,要把「15min ago · twse_mis」之類塞進 PriceCell。塞同一行會把主數字擠歪 + 對齊壞,塞 tooltip 又看不到
+**做法**:
+1. 用 `inline-flex flex-col items-end` 兩行:主價 + 灰色小字 timestamp(text-[10px] text-zinc-500)
+2. 主價的 right-align tabular-nums 保持不變,不影響欄寬
+3. 一個 helper `formatPriceTimestamp(asOfTs, source, fallbackDate)` 統一格式:`15 min ago · twse_mis` / `今日收盤` / `YYYY-MM-DD 收盤` / `YYYY-MM-DD · FinMind`
+4. helper return `{ text, tooltip, provisional }`:provisional flag 從 source=finmind 推導,UI 端不用各自判斷
+**為什麼**:dashboard 表格欄已經很多(10-13 欄),時間戳塞 inline 行高會炸;兩行版本在視覺重量上「主價在上 + 時間在下」很自然,也讓 user 知道「同一個數字在不同行/頁時間戳一致 = 一致來源」
+**注意**:不要把 timestamp 顏色做太搶眼 — text-zinc-500 + 10px 是「附註資訊」,主價才是焦點
+
+### L29 — Edge Function 個數從 12 漲到 15 後,「現價」query 從 view join 改成獨立 SELECT 比較清楚(2026-05-12)
+**摘要**:個股頁原本從 `price_daily` 90 天歷史最後一筆當「現價」,M8.3 後該值不是即時(可能晚 1 天)。改成多 query 一筆 `v_latest_price_realtime` 拿即時,fallback 才用 historical
+**做法**:不要為了「省一筆 query」把 latest 和歷史 K 線塞同一個 SELECT;前者要 surface `as_of_ts/source`,後者要時序連續,兩個取數邏輯本來就不同
+**為什麼**:Promise.all 內多加一筆 query 邊際成本 ≈ 0(parallel),程式碼可讀性卻提升大量。N+1 心智成本 > query latency

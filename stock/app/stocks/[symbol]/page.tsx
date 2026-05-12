@@ -46,6 +46,7 @@ export default async function StockDetailPage({
     { data: newsRows },
     { data: factorRow },
     { data: entryRow },
+    { data: latestPriceRow },
   ] = await Promise.all([
     sb
       .from("price_daily")
@@ -80,6 +81,11 @@ export default async function StockDetailPage({
       .select("symbol, is_entry_signal, signal_strength, weighted_score, expected_rank")
       .eq("symbol", symbol)
       .maybeSingle(),
+    sb
+      .from("v_latest_price_realtime")
+      .select("current_price, as_of_ts, trade_date, source, is_provisional")
+      .eq("symbol", symbol)
+      .maybeSingle(),
   ]);
 
   const rows = (priceRows as PriceRow[] | null) ?? [];
@@ -108,6 +114,13 @@ export default async function StockDetailPage({
   const score = (scoreRow as { score: number } | null)?.score;
   const pct5d = (scoreRow as { pct_5d: string | number | null } | null)?.pct_5d;
   const pct20d = (scoreRow as { pct_20d: string | number | null } | null)?.pct_20d;
+  const lp = latestPriceRow as {
+    current_price: number | string | null;
+    as_of_ts: string | null;
+    trade_date: string | null;
+    source: string | null;
+    is_provisional: boolean | null;
+  } | null;
 
   return (
     <div className="space-y-6">
@@ -139,7 +152,15 @@ export default async function StockDetailPage({
           <Stat
             label="現價"
             value={
-              latest ? (
+              lp?.current_price != null ? (
+                <PriceCell
+                  value={lp.current_price}
+                  isProvisional={lp.is_provisional}
+                  date={lp.trade_date}
+                  asOfTs={lp.as_of_ts}
+                  source={lp.source}
+                />
+              ) : latest ? (
                 <PriceCell
                   value={Number(latest.close)}
                   isProvisional={latest.is_provisional}

@@ -621,10 +621,36 @@ Day 7 — backfill valuation + monthly_revenue
 
 ## M11 — UI 整合 + 收尾(1 天)`analyst-deployer`
 
-- [ ] 排名 tab + Backtest tab + 個股因子雷達圖
-- [ ] Dashboard 加「今日進場訊號」widget
-- [ ] 每個顯示價的地方加 timestamp 標示
-- [ ] README.md 重寫:架構圖、env、Edge Function 部署、cron 表、backtest 解讀
+> 純 UI + docs。沒有 migration 編號需求(不動 schema、不動 EF)。
+
+- [x] 排名 tab + Backtest tab + 個股因子雷達圖(已在 M9/M10 完成,M11 確認狀態 OK)
+- [x] Dashboard 加「今日進場訊號」widget:讀 `v_entry_signal` 排序 `weighted_score desc`,top 10,name 從 industry_stocks / stock_universe / etf_metadata join;empty state 寫「factor 資料累積中」
+- [x] Format.ts 加 `formatPriceTimestamp(asOfTs, source)` helper(15min ago · twse_mis / 今日收盤 · twse_today / etc.)
+- [x] PriceCell 接收 `asOfTs` / `source` props,角落顯示小字 timestamp
+- [x] Dashboard `v_holdings_full`、Holdings `v_holdings_pnl`、Watchlist `v_industry_picks`、ETF `v_etf_picks`:在 PriceCell 傳 `asOfTs` / `source`,UI 顯示 timestamp
+- [x] 個股頁 header「現價」:同步補 timestamp(latest 那筆 close 是 historical,不用即時 source)
+- [x] README.md 重寫:架構圖、env 清單、Edge Function 清單(11 個)、cron 表、操作指引、已知限制
+- [x] `npm run build` 通過
+
+### Review
+
+**3 個檔案改 + 1 個新增**:
+- 改 `app/_components/Format.ts` 加 `formatPriceTimestamp`(處理 yahoo / twse_mis / twse_today / twse_yesterday / null 各種 source + 計算「N min ago」)
+- 改 `app/_components/PriceCell.tsx` 接 `asOfTs` / `source` 兩個 props,timestamp 顯示在價格下面一小行(避免擠壓主要數字)
+- 改 `app/page.tsx`:加 `EntrySignalWidget`,讀 `v_entry_signal` where `is_entry_signal=true` 排序 weighted_score desc limit 10,join name(industry_stocks / stock_universe / etf_metadata 三層 fallback);HoldingFull interface 補 `as_of_ts` / `price_source` 並餵進 PriceCell
+- 改 `app/holdings/page.tsx`:CurrentHolding interface 已有 as_of_ts / price_source(M8.3 預留),只需餵 PriceCell
+- 改 `app/watchlist/page.tsx`:IndustryPick interface 加 `as_of_ts` / `price_source` 並餵 PriceCell
+- 改 `app/etf/page.tsx`:EtfPick interface 加 `as_of_ts` / `price_source` 並餵 PriceCell
+- 改 `app/stocks/[symbol]/page.tsx`:header 現價也餵 PriceCell 的 timestamp 標示(顯示歷史收盤 + trade_date)
+- 改 `README.md`(原本 create-next-app 樣板)→ 全 rewrite 涵蓋架構 / env / EF / cron / 操作 / 已知限制
+- `npm run build` 通過
+
+**驗證**:
+- build 用 winget 路徑下 npm 跑;新檔通過 typecheck
+- empty state(目前 v_entry_signal 多半 insufficient_data)會跑 EntrySignalWidget 的 empty section 顯示「factor 資料累積中」
+- timestamp 顯示用 hover tooltip 區隔來源,inline 顯示精簡(避免行高炸)
+
+**Lesson 新增**(L28):見 lessons.md
 
 ---
 

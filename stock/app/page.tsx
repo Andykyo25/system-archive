@@ -26,6 +26,9 @@ interface HoldingFull {
   current_price: number | string | null;
   price_date: string | null;
   is_provisional: boolean | null;
+  as_of_ts: string | null;
+  price_source: string | null;
+  market_state: string | null;
   unrealized_pnl: number | string | null;
   unrealized_pct: number | string | null;
   market_value: number | string | null;
@@ -53,6 +56,19 @@ interface HoldingFull {
   latest_revenue: number | string | null;
   latest_revenue_yoy_pct: number | string | null;
   score: number;
+}
+
+interface EntrySignalSummary {
+  symbol: string;
+  weighted_score: number | string | null;
+  expected_rank: number;
+  signal_strength: "strong" | "normal" | "none" | "insufficient_data";
+  fund_count_pos: number;
+  fund_count_total: number;
+  mom_count_pos: number;
+  mom_count_total: number;
+  chip_count_pos: number;
+  chip_count_total: number;
 }
 
 function scoreClass(score: number): string {
@@ -102,20 +118,181 @@ function buildScoreTooltip(analysis: { headline: string; notes: string[] }): str
 
 export default async function Dashboard() {
   const sb = createClient();
-  const [{ data: summary }, { data: holdings }] = await Promise.all([
-    sb.from("v_portfolio_summary").select("*").single(),
-    sb
-      .from("v_holdings_full")
-      .select("*")
-      .order("market_value", { ascending: false, nullsFirst: false }),
-  ]);
+  const [{ data: summary }, { data: holdings }, { data: signals }] =
+    await Promise.all([
+      sb.from("v_portfolio_summary").select("*").single(),
+      sb
+        .from("v_holdings_full")
+        .select("*")
+        .order("market_value", { ascending: false, nullsFirst: false }),
+      sb
+        .from("v_entry_signal")
+        .select(
+          "symbol, weighted_score, expected_rank, signal_strength, fund_count_pos, fund_count_total, mom_count_pos, mom_count_total, chip_count_pos, chip_count_total, is_entry_signal",
+        )
+        .eq("is_entry_signal", true)
+        .order("weighted_score", { ascending: false, nullsFirst: false })
+        .limit(10),
+    ]);
+
+  const signalRows = (signals as EntrySignalSummary[] | null) ?? [];
+  const signalSymbols = signalRows.map((s) => s.symbol);
+  const nameMap: Record<string, string | null> = {};
+  if (signalSymbols.length > 0) {
+    const [is, su, em] = await Promise.all([
+      sb
+        .from("industry_stocks")
+        .select("symbol, name")
+        .in("symbol", signalSymbols),
+      sb
+        .from("stock_universe")
+        .select("symbol, name")
+        .in("symbol", signalSymbols),
+      sb.from("etf_metadata").select("symbol, name").in("symbol", signalSymbols),
+    ]);
+    for (const r of (em.data as { symbol: string; name: string | null }[] | null) ?? []) {
+      if (r.name) nameMap[r.symbol] = r.name;
+    }
+    for (const r of (su.data as { symbol: string; name: string | null }[] | null) ?? []) {
+      if (!nameMap[r.symbol] && r.name) nameMap[r.symbol] = r.name;
+    }
+    for (const r of (is.data as { symbol: string; name: string | null }[] | null) ?? []) {
+      if (!nameMap[r.symbol] && r.name) nameMap[r.symbol] = r.name;
+    }
+  }
 
   return (
     <div className="space-y-6">
       <SummaryCards summary={summary as PortfolioSummary | null} />
+      <EntrySignalWidget rows={signalRows} nameMap={nameMap} />
       <HoldingsAnalysis rows={(holdings as HoldingFull[] | null) ?? []} />
     </div>
   );
+}
+
+function EntrySignalWidget({
+  rows,
+  nameMap,
+}: {
+  rows: EntrySignalSummary[];
+  nameMap: Record<string, string | null>;
+}) {
+  return (
+    <section>
+      <div className="mb-2 flex items-baseline justify-between">
+        <h2 className="text-lg font-semibold">
+          今日進場訊號{" "}
+          <span className="text-sm font-normal text-zinc-500">
+            ({rows.length} 檔)
+          </span>
+        </h2>
+        <Link
+          href="/rank"
+          className="text-xs text-zinc-500 hover:text-zinc-300"
+        >
+          看完整排名 →
+        </Link>
+      </div>
+
+      {rows.length === 0 ? (
+        <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-6 text-center text-sm text-zinc-500">
+          <p>目前沒有進場訊號</p>
+          <p className="mt-1 text-xs text-zinc-600">
+            factor 資料累積中(籌碼 / 動能 / 基本面對齊條件)。
+            等 cron 連跑 3-5 天後此區會自動填入。
+          </p>
+        </div>
+      ) : (
+        <div className="overflow-x-auto rounded-lg border border-zinc-800 bg-zinc-900">
+          <table className="w-full text-sm">
+            <thead className="border-b border-zinc-800 bg-zinc-950 text-left text-xs text-zinc-400">
+              <tr>
+                <th className="px-3 py-2 text-right">#</th>
+                <th className="px-3 py-2">股號</th>
+                <th className="px-3 py-2">名稱</th>
+                <th className="px-3 py-2 text-right">總分</th>
+                <th className="px-3 py-2 text-center">強度</th>
+                <th className="px-3 py-2 text-right">基本面</th>
+                <th className="px-3 py-2 text-right">動能</th>
+                <th className="px-3 py-2 text-right">籌碼</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((s) => {
+                const strong = s.signal_strength === "strong";
+                return (
+                  <tr key={s.symbol} className="border-t border-zinc-800">
+                    <td className="px-3 py-2 text-right tabular-nums text-zinc-500">
+                      {s.expected_rank}
+                    </td>
+                    <td className="px-3 py-2 font-mono">
+                      <Link
+                        href={`/stocks/${s.symbol}`}
+                        className="text-blue-400 hover:text-blue-300 hover:underline"
+                      >
+                        {s.symbol}
+                      </Link>
+                    </td>
+                    <td className="px-3 py-2 text-zinc-300">
+                      {nameMap[s.symbol] ?? "—"}
+                    </td>
+                    <td className="px-3 py-2 text-right tabular-nums">
+                      <span className="rounded bg-zinc-800 px-2 py-0.5 text-xs font-semibold">
+                        {fmtScore(s.weighted_score)}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2 text-center">
+                      <span
+                        title={`進場訊號:${s.signal_strength}`}
+                        className={`rounded px-2 py-0.5 text-xs font-semibold ${
+                          strong
+                            ? "bg-red-900/40 text-red-200"
+                            : "bg-amber-900/40 text-amber-200"
+                        }`}
+                      >
+                        {strong ? "⭐ 強" : "標準"}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2 text-right tabular-nums text-blue-400">
+                      <span title={`基本面 ${s.fund_count_pos}/${s.fund_count_total}`}>
+                        {s.fund_count_pos}
+                        <span className="text-zinc-600">/{s.fund_count_total}</span>
+                      </span>
+                    </td>
+                    <td className="px-3 py-2 text-right tabular-nums text-amber-400">
+                      <span title={`動能 ${s.mom_count_pos}/${s.mom_count_total}`}>
+                        {s.mom_count_pos}
+                        <span className="text-zinc-600">/{s.mom_count_total}</span>
+                      </span>
+                    </td>
+                    <td className="px-3 py-2 text-right tabular-nums text-emerald-400">
+                      <span title={`籌碼 ${s.chip_count_pos}/${s.chip_count_total}`}>
+                        {s.chip_count_total === 0 ? (
+                          <span className="text-zinc-600">—</span>
+                        ) : (
+                          <>
+                            {s.chip_count_pos}
+                            <span className="text-zinc-600">/{s.chip_count_total}</span>
+                          </>
+                        )}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function fmtScore(n: string | number | null | undefined): string {
+  if (n == null) return "—";
+  const v = Number(n);
+  if (!Number.isFinite(v)) return "—";
+  return v.toFixed(1);
 }
 
 function SummaryCards({ summary }: { summary: PortfolioSummary | null }) {
@@ -241,7 +418,13 @@ function HoldingsAnalysis({ rows }: { rows: HoldingFull[] }) {
                   <td className="px-3 py-2 text-right tabular-nums">{h.qty}</td>
                   <td className="px-3 py-2 text-right tabular-nums">{fmtMoney(h.avg_cost, 2)}</td>
                   <td className="px-3 py-2 text-right">
-                    <PriceCell value={h.current_price} isProvisional={h.is_provisional} date={h.price_date} />
+                    <PriceCell
+                      value={h.current_price}
+                      isProvisional={h.is_provisional}
+                      date={h.price_date}
+                      asOfTs={h.as_of_ts}
+                      source={h.price_source}
+                    />
                   </td>
                   <td className="px-3 py-2 text-right tabular-nums">{fmtMoney(h.market_value, 0)}</td>
                   <td className={`px-3 py-2 text-right tabular-nums ${pctColor(h.net_pnl_est)}`} title={netPnlTip}>

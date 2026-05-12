@@ -1,27 +1,45 @@
-import { fmtMoney } from "./Format";
+import { fmtMoney, formatPriceTimestamp } from "./Format";
 
-// 顯示價格,若 is_provisional 則加角標 + 變色提醒「來源是備案」
+// 顯示價格 + 來源 timestamp。
+// is_provisional → 黃字 + ⚠
+// asOfTs / source → 第二行顯示「N min ago · twse_mis」「今日收盤」「YYYY-MM-DD 收盤」
+//
+// 若沒傳 asOfTs / source,fallback 用 date(舊呼叫端 backward-compat)。
 export function PriceCell({
   value,
   isProvisional,
   date,
+  asOfTs,
+  source,
+  digits = 2,
 }: {
   value: string | number | null | undefined;
   isProvisional?: boolean | null;
   date?: string | null;
+  asOfTs?: string | null;
+  source?: string | null;
+  digits?: number;
 }) {
-  const tip = isProvisional
-    ? `備案資料 (FinMind) ${date ?? ""}`
-    : date
-      ? `主力資料 (TWSE/TPEX) ${date}`
-      : undefined;
+  const ts = formatPriceTimestamp(asOfTs, source, date);
+  const showProv = isProvisional || ts.provisional;
+
   return (
-    <span
-      className={`tabular-nums ${isProvisional ? "text-amber-400" : ""}`}
-      title={tip}
-    >
-      {fmtMoney(value, 2)}
-      {isProvisional ? <span className="ml-1 text-xs">⚠</span> : null}
+    <span className="inline-flex flex-col items-end leading-tight">
+      <span
+        className={`tabular-nums ${showProv ? "text-amber-400" : ""}`}
+        title={ts.tooltip}
+      >
+        {fmtMoney(value, digits)}
+        {showProv ? <span className="ml-1 text-xs">⚠</span> : null}
+      </span>
+      {ts.text !== "—" && (
+        <span
+          className="text-[10px] text-zinc-500"
+          title={ts.tooltip}
+        >
+          {ts.text}
+        </span>
+      )}
     </span>
   );
 }
