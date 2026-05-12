@@ -281,15 +281,15 @@ function toMaybeNeg(n: string | number | null | undefined): string | number | nu
 function Legend() {
   return (
     <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-4 text-xs text-zinc-400">
-      <div className="mb-1 font-semibold text-zinc-300">因子說明(共 17 條)</div>
+      <div className="mb-1 font-semibold text-zinc-300">因子說明(共 18 條)</div>
       <ul className="grid grid-cols-1 gap-1 md:grid-cols-2">
         <li>
-          <span className="text-blue-400">基本面 (7)</span>:EPS 連 4 季正 / EPS YoY+ / ROE&gt;15% /
+          <span className="text-blue-400">基本面 (7)</span>:EPS 連 4 季正 / EPS YoY+ / ROE&gt;10% /
           FCF+ / PEG&lt;1.2 / 月營收 YoY+ / 毛利率 YoY+
         </li>
         <li>
-          <span className="text-amber-400">動能 (3)</span>:MA20&gt;MA60 黃金交叉 / 20 日 vs 60 日報酬加速 /
-          RSI14&gt;50 轉強
+          <span className="text-amber-400">動能 (4)</span>:MA20&gt;MA60 黃金交叉 / 20 日 vs 60 日報酬加速 /
+          RSI14&gt;50 轉強 / 20 日新高+量增 2x 突破
         </li>
         <li>
           <span className="text-violet-400">反轉 (2)</span>:距 60 日高點折價&gt;10% / 5 日跌幅&gt;3% 且量縮
@@ -300,7 +300,7 @@ function Legend() {
         </li>
       </ul>
       <div className="mt-2 text-zinc-500">
-        進場訊號:月營收 YoY 必過 + 基本面 ≥ 3/7 + 動能 ≥ 2/3 + 籌碼三層 fallback(≥4 條 → 過 3 / &gt;0 → 過 1 / =0 → 不卡)
+        進場訊號:月營收 YoY 必過 + 基本面 ≥ 3/7 + 動能 ≥ 2/4 + 籌碼三層 fallback(≥4 條 → 過 3 / &gt;0 → 過 1 / =0 → 不卡)
       </div>
     </div>
   );

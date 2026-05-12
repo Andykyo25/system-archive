@@ -1,12 +1,12 @@
 // SVG 雷達圖,純 server-render(無 client 互動)
-// axes 給 M9.1 17 個 factor(7 fund + 3 mom + 2 rev + 5 chip)
+// axes 給 M9.2 18 個 factor(7 fund + 4 mom + 2 rev + 5 chip)
 // 每軸 0..1(true=1 / false=0 / null=不評,標灰色)
 //
 // 設計:
 //   - 黑底 / 淺色軸線 / 藍色雷達面(填透明 + 邊框)
 //   - null 軸標灰色,告訴 user 該 factor 沒資料
 //   - viewBox 比例固定,size 由 caller 用 className 控制
-//   - component 本身不寫死 axes 數,由 caller 控(buildFactorAxes 在 page 寫死 17)
+//   - component 本身不寫死 axes 數,由 caller 控(buildFactorAxes 在 page 寫死 18)
 
 export interface FactorAxis {
   key: string;

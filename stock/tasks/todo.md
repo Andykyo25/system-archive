@@ -794,6 +794,111 @@ Wave 4:M11(依賴 M9 + M10)
 
 ---
 
+## M9.2 — 加突破因子 + ROE 門檻微調(2026-05-12)`analyst-deployer`
+
+> Migration 編號區段:`20260512000066 ~ 20260512000070`
+
+### 動機
+華新科 2492 5/11+5/12 連兩根漲停過去 5 天 +36%,系統排名 33,主因:
+1. ROE 4.7% 卡 15% 門檻(被動元件業 ROE 天生低)
+2. PEG 1.76 卡 1.2 門檻
+3. `mom_ma_golden=false`(過去 60 天 MA20 在 MA60 上一直沒「剛交叉」)
+
+分析師建議:加「突破因子」(20 日新高 + 量增 2x)抓飆股 + ROE 放寬 15% → 10%。
+
+### 變更要點
+- **ROE 門檻**:從 hardcode 15% 改為 `app_settings.roe_threshold`(預設 10)
+- **新動能 factor `mom_breakout`**:`latest_close >= high_20d × 0.99` AND `vol_latest > vol_5d_avg × 2`
+  - 20 日新高 + 留 1% buffer(避免漲停打到開盤新高但收盤 -1% 被排除)
+  - 當日量 > 5 日均量 2 倍(放量突破)
+- 動能 factor 從 3 → 4 條(加 mom_breakout)
+- 因子總數 17 → 18(7 fund + 4 mom + 2 rev + 5 chip)
+- v_entry_signal:`strong` 規則 `mom_count_pos >= 3`(原 3/3 = 100%,現在 3/4 = 75%)
+- normal 規則 mom≥2 相對放寬(50% 而非原 67%)— 這是預期(更敏銳)
+
+### Migration
+- [x] **66_factor_settings_roe**:app_settings 加 roe_threshold = 10
+- [x] **67_v_price_factors_v3**:agg CTE 內加 `high_20d` + `vol_latest`(rn=1 時的 volume),新 factor `mom_breakout`
+- [x] **68_v_factor_scores_v3**:動能改 4 條(加 mom_breakout)+ ROE factor 改讀 settings.roe_threshold + 新欄位 pass-through + count_pos/total 動能改算 4 條
+- [x] **69_v_stock_rank_and_entry_signal_v3**:pass-through 加 mom_breakout + entry signal strong 改 mom≥3(配合 4 條)
+- [x] **70_score_universe_at_v3**:同步 18 factor + ROE settings
+
+### UI 改動(4 檔)
+- [x] `app/_components/AdviceWidget.tsx`:header 文字「17 因子」→「18 因子」、動能 3 → 4(加突破)
+- [x] `app/_components/FactorRadar.tsx`:更新註解 17 → 18(component 本身已 dynamic axes)
+- [x] `app/rank/page.tsx`:Legend 因子說明改 7/4/2/5 + 加 mom_breakout 描述
+- [x] `app/stocks/[symbol]/page.tsx`:`FactorRankRow` interface 加 `mom_breakout` + `buildFactorAxes` 17 → 18 軸
+
+### 驗證(本 session bash 被 sandbox 鎖,host claude 用 supabase MCP 驗證)
+- [ ] 5 個 migration apply(66 → 67 → 68 → 69 → 70 順序)
+- [ ] SQL:`select * from v_stock_rank where symbol='2492'` 確認 mom_breakout 值
+- [ ] SQL:`select count(*) filter (where is_entry_signal=true) from v_entry_signal` 比 M9.1 略多
+- [ ] `npm run build` pass(本 session 被擋,host 跑)
+- [ ] Stage 不 commit(由 host 跑)
+
+### Review
+
+**5 個 migration + 4 UI 檔改動**:
+- 66 `app_settings` 加 roe_threshold=10(ON CONFLICT DO UPDATE,重跑安全)
+- 67 `v_price_factors`:agg CTE 加 `high_20d`(max close rn 1-20)+ `vol_latest`(rn=1 的 volume),新 factor `mom_breakout`(close >= high_20d × 0.99 AND vol_latest > vol_5d_avg × 2)
+- 68 `v_factor_scores`:加 mom_breakout pass-through + 動能 count 改 4 條;fund_roe_high 改用 settings.roe_threshold(cross join settings CTE 多拿 roe_threshold)
+- 69 `v_stock_rank` 加 mom_breakout pass-through;`v_entry_signal` strong 規則 mom_count_pos≥3(4 條制下這仍是 75% 達標,比 M9.1 100% 略寬)
+- 70 `score_universe_at`:整段 function rewrite 同步 18 factor + ROE settings + high_20d + vol_latest
+
+**UI 改動**:
+- `AdviceWidget.tsx`:header 文字「18 因子 / 動能 ≥ 2/4」(動能總數 4 ≥ 2 改成 50% 門檻)
+- `rank/page.tsx`:Legend 改 7/4/2/5,動能新增「20日新高+量增2x 突破」項
+- `stocks/[symbol]/page.tsx`:interface 補 mom_breakout,buildFactorAxes 18 軸,加「突破」label
+- `FactorRadar.tsx`:component 本身完全動態,只改開頭註解
+
+**Dashboard(`app/page.tsx`)不需動**:
+- 它只 select `fund_count_pos / mom_count_pos / chip_count_pos` 等 count,沒讀 individual factor
+- `mom_count_total` 自動從 3 → 4,UI 顯示 X/3 變 X/4 自然受惠
+- `fund_count_pos >= 5` filter 仍合理(7 條中過 5 = 71%)
+- 不在 spec「4 UI 檔」清單內是正確的
+
+**設計決策**:
+1. **mom_breakout 邏輯字面解讀**:`close >= high_20d × 0.99` 是分析師 spec 的「buffer 1%」,避免漲停爆量打到 20 日新高但 close 微跌就漏掉(漲停股很常 high 噴到接近上限,close 卻略低於 high)。實務上漲停的 close 通常 ≈ 漲停價 ≈ 當日 high,所以 0.99 倍率很合理
+2. **vol_latest 必須是「當日量」**:從 ranked CTE rn=1 取(max(case when rn=1 then volume)),不是 5 日均量。spec 寫「vol_latest > vol_5d_avg × 2」明確要當日量 vs 5 日均量
+3. **mom_count_total 4 條後 entry signal**:強訊號從「3/3 全過」放寬「3/4 過 3」是必要的 — 因 mom_breakout 是稀有事件(漲停飆股才會過),硬要 4/4 全過會吃零 strong signal。3/4 = 75% 在 backtest 容易被驗證
+4. **華新科 2492 的預期**:即使 mom_breakout 過(5/12 量 4137 萬 vs 5 日均 3000 萬 = 1.38 倍,不過 2x → 預期仍 mom_breakout=0),且 ROE 4.7% 仍卡(< 10%)。系統不會被漲停股牽著走 — 這是「分析師認知的」結果,M9.2 重點不是把 2492 拉進 top,是讓有「強動能 + 基本面」的飆股更容易進 strong signal
+5. **不動 v_stock_score**(M3.6 那組,ROE 計算仍 hardcode 15%)— v_industry_picks 用 v_stock_score 算 0-6 score,跟 v_factor_scores ROE 門檻獨立,不會互相干擾。Andy 之後若想 unify 再說
+
+**Lessons 遵循**:
+- L01 範圍管理:universe 仍維持 stock_universe ∪ industry_stocks ∪ watchlist ∪ holdings_transactions ∪ etf_metadata(視 view 而定),沒掃全市場
+- L13 NUMERIC string:新欄位 mom_breakout 是 boolean → int 0/1,UI 接受 number | null,顯示直接 0/1 → ✓/✗
+- L14 Tailwind v4:新 label「突破」直接 inline 字面字串,沒新增 dynamic class
+- L19 多 agent 邊界:沒動 M8 / M8.3 / M8.5 範圍 view(holdings_*、realtime_price 等),沒動 M3.6 v_stock_score / v_industry_picks
+- L20 backward-compat:既有 view drop cascade,但 cascade 只動 v_factor_scores / v_stock_rank / v_entry_signal 下游(都重建)
+- L23 資料量保護:mom_breakout 需要 high_20d / vol_latest / vol_5d_avg 都非空(20 日完整資料),不足時 null
+- L32 score_universe_at 必同步:5 個 migration 內 70 號 score_universe_at 整段 rewrite,18 factor + ROE settings 完整對齊
+- L33 settings 改變影響 backtest 結果:roe_threshold 改變後新 backtest 立刻吃新值,符合 v1 簡化策略
+
+**取捨 / 已知限制**:
+- mom_breakout 沒做「跨日量縮確認」(漲停翌日量縮代表停板成交,但 v1 簡化先看當日)
+- ROE 門檻雖然放寬到 10%,但部分傳統產業(被動元件、紡織、橡膠等)的 ROE 5-9% 仍不過,屬於有意保留(它們的轉機要靠 EPS YoY 或月營收 YoY 來體現)
+- 跟 M9.1 一樣,settings change 不 retroactive — backtest 重跑同一個 run 名稱結果會不一樣,Andy 自己把 weights/roe_threshold 寫進 backtest_runs.name 標籤
+
+**驗證受限**:
+- 本 session bash 沙箱鎖 → 無法 `npm run build` 也無法 supabase MCP apply migration
+- 套用順序:host claude / Andy 用 supabase MCP 套 66 → 67 → 68 → 69 → 70
+  (或 `supabase db push` 自動依字典序套)
+- 跑完先 SQL 驗:
+  ```sql
+  -- 1. settings 有 roe_threshold
+  select * from app_settings where key='roe_threshold';
+  -- 2. 華新科 mom_breakout(spec 預期 vol 1.4x 不過 2x → 0)
+  select symbol, mom_breakout, mom_ma_golden, mom_ret_diff, mom_rsi_strong,
+         mom_count_pos, mom_count_total, fund_roe_high, fund_count_pos
+  from v_stock_rank where symbol='2492';
+  -- 3. entry signal 數量(比 M9.1 略多)
+  select signal_strength, count(*) from v_entry_signal group by signal_strength;
+  -- 4. score_universe_at 歷史視角 sanity check
+  select count(*) from score_universe_at(current_date - interval '7 days');
+  ```
+
+---
+
 ## 後續可考慮(M8-M11 範圍外)
 
 - 自動下單(券商 API 串接)
