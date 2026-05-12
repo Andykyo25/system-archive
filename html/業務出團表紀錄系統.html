@@ -361,7 +361,7 @@ let allData     = [];
 let currentData = [];
 let currentTab  = 'ALL';
 let sortColumn  = 'date';
-let sortAsc     = true;
+let sortAsc     = false;  // 預設降序:近期出團排最上面
 let searchQuery = '';
 let statusFilter = '';
 let hiddenCols  = new Set(JSON.parse(localStorage.getItem('hiddenCols') || '[]'));
@@ -565,11 +565,13 @@ function renderAll() {
     const mCards = document.getElementById('mobileCards');
     const today  = new Date(); today.setHours(0,0,0,0);
 
+    updateSortIcons();
     renderPerformanceDashboard();
     renderCustomerAnalysis();
 
     if (!currentData.length) {
-        tbody.innerHTML  = '<tr><td colspan="21" class="text-center p-5 text-muted">此月份無資料或查無結果</td></tr>';
+        const visibleCols = 21 - hiddenCols.size;  // 21 = 表頭總欄數
+        tbody.innerHTML  = `<tr><td colspan="${visibleCols}" class="text-center p-5 text-muted">此月份無資料或查無結果</td></tr>`;
         mCards.innerHTML = '<div class="text-center p-5 text-muted">無資料</div>';
         return;
     }
@@ -620,6 +622,8 @@ function renderAll() {
                 <div class="col-6 text-end">人數：<b>${e(row.pax)}</b></div>
                 <div class="col-6">訂編：<b>${e(row.bookingId)}</b></div>
                 <div class="col-6 text-end text-danger">開票：${e(row.ticketingDate)}</div>
+                <div class="col-6 text-primary">預估：<b>${money(row.estRev)}</b></div>
+                <div class="col-6 text-end text-success">實際：<b>${money(row.actRev)}</b></div>
             </div>
             <div class="m-badge-row">
                 ${row.deposit      ===true?'<span class="badge bg-success-subtle text-success border border-success">訂金V</span>':''}
@@ -776,10 +780,7 @@ async function fetchNotifications() {
 
     const { data, error } = await sb.from(TABLE_NAME)
         .select('name,tour,date,ticketingDate,deposit,balance,preTripNotify,list,contractUploaded')
-        .or(
-            `and(date.gte.${todayStr},date.lte.${d3Str},or(deposit.is.false,balance.is.false,preTripNotify.is.false,contractUploaded.is.false))`,
-            `and(ticketingDate.gte.${todayStr},ticketingDate.lte.${d3Str},list.is.false,date.gte.${todayStr})`
-        );
+        .or(`and(date.gte.${todayStr},date.lte.${d3Str},or(deposit.is.false,balance.is.false,preTripNotify.is.false,contractUploaded.is.false)),and(ticketingDate.gte.${todayStr},ticketingDate.lte.${d3Str},list.is.false)`);
     if (error) { console.error('待辦讀取失敗:', error); return; }
 
     const list = document.getElementById('notifList');
@@ -831,7 +832,8 @@ function renderPerformanceDashboard() {
 
     const monthly = Array(12).fill(0).map(()=>({est:0,act:0}));
     allData.filter(r=>r.date&&r.date.startsWith(selectedYear)).forEach(r => {
-        const m = new Date(r.date).getMonth();
+        const m = parseInt(r.date.substring(5,7),10) - 1;  // 避開 timezone:直接從 YYYY-MM-DD 切片
+        if (m<0||m>11) return;
         monthly[m].est += Number(r.estRev)||0;
         monthly[m].act += Number(r.actRev)||0;
     });
@@ -857,7 +859,8 @@ function renderPerformanceDashboard() {
 
 function renderCustomerAnalysis() {
     const map = {};
-    currentData.forEach(r => {
+    // 用 allData 取全局客戶排行,與業績圖表行為一致(不受 Tab / chips 篩選影響)
+    allData.forEach(r => {
         if (!r.name) return;
         const n = r.name.trim();
         if (!map[n]) map[n]={count:0,revenue:0};
@@ -895,12 +898,15 @@ function debounceSearch() {
     _debounceTimer = setTimeout(()=>{ searchQuery=document.getElementById('searchInput').value.trim(); applyFilters(); }, 300);
 }
 
+function updateSortIcons() {
+    document.querySelectorAll('.sort-icon').forEach(el=>el.className='fas fa-sort sort-icon');
+    const icon = document.getElementById('sort-'+sortColumn);
+    if (icon) icon.className = sortAsc?'fas fa-sort-up sort-icon sort-active':'fas fa-sort-down sort-icon sort-active';
+}
+
 function sortData(col) {
     if (sortColumn===col) sortAsc=!sortAsc; else { sortColumn=col; sortAsc=true; }
-    document.querySelectorAll('.sort-icon').forEach(el=>el.className='fas fa-sort sort-icon');
-    const icon = document.getElementById('sort-'+col);
-    if (icon) icon.className = sortAsc?'fas fa-sort-up sort-icon sort-active':'fas fa-sort-down sort-icon sort-active';
-    applyFilters();
+    applyFilters();  // applyFilters → renderAll → updateSortIcons
 }
 
 function openNotificationModal() { new bootstrap.Modal(document.getElementById('notificationModal')).show(); }
