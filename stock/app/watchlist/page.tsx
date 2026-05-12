@@ -21,7 +21,7 @@ interface IndustryPick {
   eps_ttm: string | number | null;
   eps_yoy_pct: string | number | null;
   last_q_eps_yoy_pct: string | number | null;
-  forecast_eps_yoy_pct: string | number | null;
+  avg_q_eps_yoy_pct: string | number | null;
   roe_ttm: string | number | null;
   fcf_ttm: string | number | null;
   eps_pos_quarters: number | null;

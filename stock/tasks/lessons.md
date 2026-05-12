@@ -122,3 +122,48 @@
 2. fetch-daily-prices 寫入流程:`DELETE WHERE (symbol IN ...) AND trade_date=X AND is_provisional=true` → `UPSERT ignoreDuplicates`。被刪的 provisional 會被新主力填位,殘留的主力不動
 3. 觀察 1-2 天 TWSE endpoint 是否會在當日晚上更新成當日資料(若會,加 22:00 / UTC 14:00 第二次 cron)
 **為什麼**:即時報價 vs 最終正確收盤是兩種需求。TWSE 收盤檔遲到的話,fallback 補當日 provisional 給 user 看,等主力到再升級為 final。這就是 L11 提到的真正 reconcile 機制
+
+---
+
+## M8.3 Yahoo Finance 即時報價實做後
+
+### L18 — `price_intraday_cache` 是「即時快取」,跟 `price_daily` 的 lock 邏輯完全不同
+**摘要**:
+- `price_daily`:first-write-wins,主力可覆蓋 provisional,**永不覆蓋主力**(L17)— 因為「收盤價是 ground truth,不能跳」
+- `price_intraday_cache`:**每次 fetch 都 ON CONFLICT DO UPDATE 覆寫**,因為「即時報價必然會被下一秒的 quote 覆蓋,這是 cache 本質」
+- PK 設計差異:`price_daily(symbol, trade_date)` 每天一格 / `price_intraday_cache(symbol, quoted_at)` 每筆 quote 一格
+**做法**:EF 寫入用 `upsert(rows, { onConflict: 'symbol,quoted_at', ignoreDuplicates: false })`
+**為什麼**:同一個 symbol 一秒之內可能來自不同 batch(若有 retry / partial overlap),同一 PK 出現多次要選最新版本,DO UPDATE 是正確語意
+
+### L19 — 多個 subagent 並行寫 migration 時的 ordering 衝突
+**問題**:M8.5 範圍(編號 30-39)寫的 migration 33 重建 `v_holdings_pnl` 時用了舊版 `v_latest_price`,因為 M8.5 並行時 `v_latest_price_realtime`(M8.3 範圍 22 號)還沒拍板。
+**做法**:
+1. 邊界寫得「**X agent 不能動 Y 範圍**」太硬,需多一條「**Y 內若引用 X 改動的 schema,要保持同步**」
+2. 實務上 X agent(M8.3 data-pipeline)發現 Y 範圍 migration 內引用了 X 已 deprecated 的 view 時,**有權直接 patch Y 內 migration** 的 join source(不動 schema 邏輯),並在 todo review 明確標註
+3. 並行設計可考慮:把 view 拆成 layered(layer 1 = price 來源、layer 2 = 業務邏輯),讓底層 view 升級時上層自動 cascade,不需要每個 agent 自己改 join 路徑
+**為什麼**:嚴守邊界 = 最終狀態不一致(M8.5 33 號用舊 view 跑完,即時報價沒有意義)。Spec 內「Y 會處理新建的」這個高層意圖優先於字面分割。
+**例外**:這只適用「**修補引用**」,不能動其他 agent 的 schema 結構 / 表設計 / 新邏輯。
+
+---
+
+## M8 資料層大改版實做後
+
+### L20 — 「砍欄位」spec 在多 subagent 並行時要解讀為「永遠 null」而非物理 drop column(2026-05-12)
+**問題**:M8 spec 寫「砍 forecast_eps_yoy_pct」。我若 `drop column ... cascade` 砍掉物理 column,M8.5 已預先寫好的 migration 33 內 `select ss.forecast_eps_yoy_pct` 會 fail
+**做法**:v_stock_score 重建時保留欄位輸出但永遠 null(`null::numeric as forecast_eps_yoy_pct`),業務語意上「砍了」,物理 schema backward-compat
+**為什麼**:多 subagent 並行 + migration 編號區段切分後,上下游 dependency 容易壞。物理 schema 越穩定越好,改業務邏輯就行。對外宣告「砍掉」實際是「不再計算」。
+
+### L21 — Cron Taipei 月初早時段轉 UTC 困難,放寬到「月初任一非交易時段」(2026-05-12)
+**問題**:spec 寫「每月 1 號 03:00 Taipei」對應 UTC 是「上月最後一天 19:00」,但月底 28/29/30/31 變動 → pg_cron 沒 `L`,寫成 `0 19 28-31 * *` 會月底跑 1-4 次(浪費 quota / log noise)
+**做法**:跟 PM(Andy)反映「03:00 是否可放寬到 11:00」— 11:00 Taipei = UTC 03:00,寫 `0 3 1 * *` 一行搞定
+**為什麼**:月度任務通常只在意「月初一次」這個粒度,精確小時不重要。對 UTC 換算敏感的時間,要在 spec 階段就避開月跨日邊界。
+
+### L22 — FinMind 不同 dataset 的欄位風格差異大,backfill EF 不能套同一 parser(2026-05-12)
+**摘要**:
+- `TaiwanStockPrice`: `max/min` 而非 high/low(L09)
+- `TaiwanStockInstitutionalInvestorsBuySell`: long format,每 (date, stock_id) 多 row,欄位 `name` 區分法人,需 pivot
+- `TaiwanStockMarginPurchaseShortSale`: wide format,駝峰命名(`MarginPurchaseTodayBalance`)
+- `TaiwanStockShareholding`: 駝峰 + 中文長欄位(`ForeignInvestmentSharesRatio`)
+- `TaiwanStockSecuritiesLending`: 明細性質,同 (symbol, date) 多筆,要用 (symbol, date, type, volume, fee_rate) 做 dedup unique
+**做法**:每個 dataset 對應一個 specific parser fn,backfill EF 內用 dataset 字串 switch,各 case 自己 normalize
+**為什麼**:FinMind 不同 dataset 是不同團隊維護(可能不同年代寫的),欄位風格不一致。試圖共用 parser 會踩 corner case 一個一個爆出來,不如老老實實每個 dataset 一個 parser。

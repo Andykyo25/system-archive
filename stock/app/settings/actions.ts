@@ -23,39 +23,6 @@ export async function updateSetting(formData: FormData): Promise<void> {
   revalidatePath("/etf");
 }
 
-export async function updateForecasts(formData: FormData): Promise<void> {
-  const text = String(formData.get("forecasts") ?? "").trim();
-  const lines = text.split(/\r?\n/);
-  const parsed: { symbol: string; value: number | null }[] = [];
-  for (const line of lines) {
-    const t = line.trim();
-    if (!t || t.startsWith("#")) continue;
-    const m = t.match(/^([A-Za-z0-9\-]+)\s*[=:= ]\s*([^#]+?)(\s*#.*)?$/);
-    if (!m) throw new Error(`無法解析:${t}`);
-    const symbol = m[1].trim();
-    const valStr = m[2].trim();
-    if (valStr === "" || valStr === "-" || valStr === "null") {
-      parsed.push({ symbol, value: null });
-    } else {
-      const v = Number(valStr);
-      if (!Number.isFinite(v)) throw new Error(`${symbol} 的值不是數字:${valStr}`);
-      parsed.push({ symbol, value: v });
-    }
-  }
-
-  const sb = createClient();
-  for (const { symbol, value } of parsed) {
-    const { error } = await sb
-      .from("industry_stocks")
-      .update({ analyst_forecast_eps_growth_pct: value })
-      .eq("symbol", symbol);
-    if (error) throw new Error(`更新 ${symbol} 失敗:${error.message}`);
-  }
-  revalidatePath("/settings");
-  revalidatePath("/");
-  revalidatePath("/watchlist");
-}
-
 // ETF metadata CRUD
 export async function upsertEtf(formData: FormData): Promise<void> {
   const symbol = String(formData.get("symbol") ?? "").trim();

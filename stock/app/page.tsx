@@ -20,9 +20,8 @@ interface PortfolioSummary {
 }
 
 interface HoldingFull {
-  id: number;
   symbol: string;
-  qty: number;
+  qty: number | string;
   avg_cost: number | string;
   current_price: number | string | null;
   price_date: string | null;
@@ -40,7 +39,7 @@ interface HoldingFull {
   eps_ttm: number | string | null;
   eps_yoy_pct: number | string | null;
   last_q_eps_yoy_pct: number | string | null;
-  forecast_eps_yoy_pct: number | string | null;
+  avg_q_eps_yoy_pct?: number | string | null;
   roe_ttm: number | string | null;
   fcf_ttm: number | string | null;
   gross_margin_pct: number | string | null;
@@ -224,7 +223,7 @@ function HoldingsAnalysis({ rows }: { rows: HoldingFull[] }) {
                   ? `毛損益 ${fmtMoney(grossPnl, 0)} − 手續費+稅 ${fmtMoney(feeDiff, 0)} = 淨損益 ${fmtMoney(netPnl, 0)}`
                   : "";
               return (
-                <Fragment key={h.id}>
+                <Fragment key={h.symbol}>
                 <tr className="border-t border-zinc-800">
                   <td className="px-3 py-2 font-mono">
                     <Link href={`/stocks/${h.symbol}`} className="text-blue-400 hover:text-blue-300 hover:underline">

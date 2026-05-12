@@ -11,7 +11,7 @@ export interface AnalyzeInput {
   eps_ttm?: number | string | null;
   eps_yoy_pct?: number | string | null;
   last_q_eps_yoy_pct?: number | string | null;
-  forecast_eps_yoy_pct?: number | string | null;
+  avg_q_eps_yoy_pct?: number | string | null;
   roe_ttm?: number | string | null;
   fcf_ttm?: number | string | null;
   gross_margin_pct?: number | string | null;
@@ -91,8 +91,8 @@ export function analyzeRow(r: AnalyzeInput): AnalysisOut {
   // PEG
   const peg = toN(r.peg);
   const basisLabel =
-    r.peg_basis === "forecast"
-      ? "法人預估"
+    r.peg_basis === "avg_q_yoy"
+      ? "近 4 季 YoY 中位數"
       : r.peg_basis === "last_q_yoy"
         ? "近季 YoY"
         : r.peg_basis === "ttm_yoy"

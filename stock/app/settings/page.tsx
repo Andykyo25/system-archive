@@ -1,7 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import {
   updateSetting,
-  updateForecasts,
   upsertEtf,
   deleteEtf,
 } from "./actions";
@@ -13,12 +12,6 @@ interface AppSetting {
   value: number | string;
   description: string | null;
   updated_at: string;
-}
-
-interface IndustryStockForecast {
-  symbol: string;
-  name: string | null;
-  analyst_forecast_eps_growth_pct: number | string | null;
 }
 
 interface EtfMeta {
@@ -42,35 +35,14 @@ const btnDangerCls =
 
 export default async function SettingsPage() {
   const sb = createClient();
-  const [{ data: settings }, { data: forecasts }, { data: etfs }] =
+  const [{ data: settings }, { data: etfs }] =
     await Promise.all([
       sb.from("app_settings").select("*").order("key"),
-      sb
-        .from("industry_stocks")
-        .select("symbol, name, analyst_forecast_eps_growth_pct")
-        .order("symbol"),
       sb.from("etf_metadata").select("*").order("symbol"),
     ]);
 
   const settingsList = (settings as AppSetting[] | null) ?? [];
-  const allForecasts = (forecasts as IndustryStockForecast[] | null) ?? [];
   const etfList = (etfs as EtfMeta[] | null) ?? [];
-
-  const seen = new Set<string>();
-  const uniqueForecasts = allForecasts.filter((r) => {
-    if (seen.has(r.symbol)) return false;
-    seen.add(r.symbol);
-    return true;
-  });
-  const withForecast = uniqueForecasts.filter(
-    (r) => r.analyst_forecast_eps_growth_pct != null,
-  );
-  const forecastsText = withForecast
-    .map(
-      (r) =>
-        `${r.symbol}=${r.analyst_forecast_eps_growth_pct}  # ${r.name ?? ""}`,
-    )
-    .join("\n");
 
   return (
     <div className="space-y-10">
@@ -84,27 +56,6 @@ export default async function SettingsPage() {
             <SettingRow key={s.key} setting={s} />
           ))}
         </div>
-      </section>
-
-      <section>
-        <h2 className="mb-1 text-lg font-semibold">法人 EPS 成長預估(批次)</h2>
-        <p className="mb-1 text-xs text-zinc-500">
-          覆蓋 PEG 計算優先序:有填這個就用 forecast,沒填就 fallback 到「最近一季 EPS YoY」。
-        </p>
-        <p className="mb-4 text-xs text-zinc-500">
-          格式:每行一筆 <code className="rounded bg-zinc-800 px-1">股號=百分比</code>。
-          清掉用 <code className="rounded bg-zinc-800 px-1">股號=null</code>。# 後為註解。
-        </p>
-        <form action={updateForecasts} className="space-y-3">
-          <textarea
-            name="forecasts"
-            rows={Math.max(8, withForecast.length + 2)}
-            defaultValue={forecastsText}
-            placeholder={"# 範例\n2454=100  # 聯發科 法人預估 2027 EPS YoY 100%"}
-            className={`${inputCls} w-full font-mono`}
-          />
-          <button className={btnCls}>儲存所有預估值</button>
-        </form>
       </section>
 
       <section>

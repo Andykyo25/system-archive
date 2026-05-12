@@ -133,7 +133,7 @@
 - [x] **Tab 2 — 持股**:`holdings` 新增 / 刪除(列表)
 - [x] **Tab 3 — Watchlist**:`watchlist` 新增 / 移除
 - [x] **Tab 4 — Paper Trade**:模擬下單表單 + 當前部位表 + 近 50 筆下單紀錄
-- [ ] ~~Tab 5 — 個股~~ — 延後(K 線需要圖表庫,範圍膨脹)
+- [x] **Tab 5 — 個股**(`/stocks/[symbol]`)— 見下方 Phase 2 / Phase 3
 - [ ] ~~Tab 6 — Alerts~~ — 延後(沒 alert eval batch)
 
 ### 全域
@@ -153,11 +153,13 @@
 
 ## M6 — 部署上線收尾(0.5 day)`analyst-deployer`
 
-- [ ] Railway 環境變數設齊(`SUPABASE_URL` / `SUPABASE_ANON_KEY` / `SUPABASE_SERVICE_ROLE_KEY` / `FINMIND_TOKEN`)
-- [ ] Production smoke test:從 0 連到 prod URL → 看到 dashboard → 在持股 tab 改一筆 → 看到改動
-- [ ] README.md 寫部署/環境變數說明
+- [x] Railway 環境變數設齊(`SUPABASE_URL` / `SUPABASE_ANON_KEY` / `SUPABASE_SERVICE_ROLE_KEY` / `FINMIND_TOKEN`)
+- [x] Production smoke test:Andy 已實際使用中(M3.6 後續 patch / Phase 1-3 都基於線上回饋)
+- [ ] README.md 寫部署/環境變數說明(目前還是 create-next-app 預設樣板)
 
-**Review**:_(完成後填)_
+**Review**:
+- 環境變數 + Railway 部署都過了(commit `9e8f67c` 修掉 `supabase/` 不該打包進 image 後就跑起來,之後沒再壞過)
+- 唯一 todo:README.md 重寫(部署步驟、env 清單、Edge Function deploy 流程、cron 表)
 
 ---
 
@@ -200,11 +202,344 @@
 
 ---
 
-## 後續可考慮(目前不在範圍)
+## Phase 1 ✅ 月營收 YoY 加進 score(2026-05-08,commit `e9fe5eb`)
 
-- 自動策略執行 / 回測引擎
+- [x] 新表 `stock_monthly_revenue`(symbol + revenue_year + revenue_month 唯一)
+- [x] Edge Function `fetch-finmind-monthly-revenue`(dataset `TaiwanStockMonthRevenue`)
+- [x] pg_cron 週一 04:00 Taipei(UTC Sunday 20:00)
+- [x] view 三件套重建:`v_stock_score` / `v_industry_picks` / `v_holdings_full`,加 `latest_revenue_period` / `latest_revenue` / `latest_revenue_yoy_pct`
+- [x] 第 6 條規則「最近月營收 YoY > 0」上線,score 從 0-5 → 0-6
+- [x] `Analyze.ts` 加月營收 note;headline 顯示 X/6
+- [x] ETF score 不變(規則不同,仍 0-5)
+
+**Review**:
+- 首次 trigger 時當日 quota 已 600/600,EF 部署但無法手動跑;之後 cron reset 抓 ~25 個月歷史回填
+- UI 規則描述同步更新
+
+---
+
+## Phase 2 ✅ K 線圖個股頁(2026-05-08,commit `047eddb`)
+
+- [x] `npm install lightweight-charts@5`
+- [x] `KLineChart.tsx` client component:台股配色(紅 K = 漲、綠 K = 跌)+ 成交量副圖
+- [x] 新 route `app/stocks/[symbol]/page.tsx`(server component):
+  - Header:股號 / 名稱 / 產業 / 分數
+  - 4 小卡:現價 / 5 日 % / 20 日 % / K 線範圍
+  - 過去 ~90 天 OHLCV
+- [x] Dashboard / Watchlist / ETF 表格的 symbol cell 變 `Link` 跳到 `/stocks/[symbol]`
+- [x] 共用 ETF 與個股(ETF 沒基本面 score 顯 null)
+
+---
+
+## Phase 3 ✅ Google News 個股新聞(2026-05-08,commit `8e34be0`)
+
+- [x] 新表 `stock_news`,`(symbol, url)` unique
+- [x] Edge Function `fetch-stock-news`:
+  - Google News RSS `news.google.com/rss/search?q=symbol+name&hl=zh-TW`
+  - 自寫 RSS regex parser(Deno 沒內建 XML)+ CDATA 解碼 + HTML entity 處理
+  - 每 symbol 最近 20 筆,`ON CONFLICT DO NOTHING`
+  - 30 天前舊新聞自動清掉
+- [x] pg_cron 每 6 小時(UTC 0/6/12/18 = Taipei 2/8/14/20)
+- [x] `/stocks/[symbol]` 加新聞 section,點開原始連結
+
+**Review**:
+- 首次 trigger:1589 篇 / 80 個 symbol(EF 跑到 110 個其中 80 個 之後 Cloudflare 520 timeout,剩 30 下次 cron 補)
+- 來源品質:中央社、聯合、今周刊、TechNews、Yahoo、鉅亨
+
+---
+
+---
+
+# 大改版(2026-05-12 拍板)— M8 ~ M11
+
+**動機**:TWSE 官方 OpenAPI T+1 延遲,目前報價不夠即時 → 無法用即時報價做交易決策。改用「歷史大數據 + 多因子排名」預測「未來 5-20 日 top-N」,加 backtest 驗證,並把所有需手動 key 的欄位自動化。
+
+**5 個拍板的核心決策(這次 plan 的硬約束):**
+1. **預測目標**:未來 5-20 日中線排名 + 「進場訊號」⭐(多條件對齊才亮)
+2. **股池**:擴到 ~200 檔(MSCI Taiwan 成分股 + holdings + watchlist)
+3. **手動欄全砍**:`forecast_eps_yoy_pct` / `etf_metadata` / `industry_stocks` 全自動化
+4. **新資料源全接**:法人 / 融資券 / 集保 / 借券(全 FinMind 免費)
+5. **方法**:純統計多因子排名(SQL view + cron),先做 backtest 證明有效再考慮 ML
+
+**新需求(2026-05-12 補充):**
+- 持股要記錄賣出,算已實現 / 未實現損益,不能單筆刪除
+- Yahoo Finance quote API 補即時報價(15 分鐘延遲)解決未實現損益不準的問題
+
+---
+
+## M8 — 資料層大改版(2 天)`data-pipeline`
+
+> Migration 編號區段:`20260512000001 ~ 20260512000019`(實際只用到 009)
+
+### 砍手動欄位 / 全自動化
+- [x] 移除 `forecast_eps_yoy_pct` 欄位(物理上仍輸出為永遠 null,backward-compat M8.5),`v_stock_score` 改用「近 4 季 quarterly EPS YoY 中位數」(percentile_cont(0.5))估
+- [x] `etf_metadata` 自動化:Edge Function `fetch-etf-metadata`(從 FinMind TaiwanStockInfo 篩 industry_category 含 ETF)+ 每週日 cron
+- [x] `industry_stocks` 自動化:Edge Function `reselect-industry-stocks` + 每月 1 號 11:00 Taipei cron(原 spec 03:00 → UTC 換算困難,改用 11:00 等價於月初一次)
+
+### 擴股池
+- [x] 擴到 ~150 檔(`stock_universe` 表,seed 153 檔 含半導體鏈/AI/金融/航運/生技/EMS 等;Andy 後續可 SQL insert 補)
+- [x] 所有新 fetcher targetSymbols 改成 `v_holdings_current(M8.5 view) ∪ watchlist ∪ industry_stocks ∪ stock_universe`,
+      若 v_holdings_current 還沒建,fallback 到舊 holdings 表(graceful degrade)
+
+### 4 個新 dataset(FinMind 免費)
+- [x] `stock_institutional`(`TaiwanStockInstitutionalInvestorsBuySell`,EF 內 pivot long→wide,四種法人 net 合計)
+- [x] `stock_margin`(`TaiwanStockMarginPurchaseShortSale`,融資+融券餘額/限額/delta)
+- [x] `stock_shareholding`(`TaiwanStockShareholding`,週,外資持股比例為主)
+- [x] `stock_securities_lending`(`TaiwanStockSecuritiesLending`,明細表 + v_securities_lending_daily aggregate view)
+
+### 歷史回填(3 年 = 2023-01 至今)
+- [x] 寫 `fetch-finmind-backfill` EF(支援 8 個 dataset:price / institutional / margin / monthly_revenue / fundamentals / valuation / shareholding / lending),吃 `dataset + start_date + end_date + symbols + symbol_offset/limit` 參數
+- [ ] 手動分批 trigger(由 Andy 或 host Claude 透過 MCP `invoke_edge_function` 跑) — 詳見下方執行指南
+
+### Cron 排程更新(編號 009 一個 migration 內 6 個 cron)
+- [x] 每日 17:00 / 17:05 / 17:10 Taipei:法人 / 融資券 / 借券(錯 5 分鐘避免 quota 同時打)
+- [x] 每週日 03:00 Taipei:集保戶數 / 每週日 04:00 Taipei:ETF metadata
+- [x] 每月 1 號 11:00 Taipei:industry_stocks 自動重選(spec 是 03:00,改 11:00 因 UTC 換算簡單)
+
+### 歷史回填執行指南(由 host Claude 觸發 MCP 或 Andy 直接 curl)
+
+預估每日 quota 用量(FinMind free tier 600/day):
+- 200 檔 × 1 dataset 一次 = 200 calls,夠跑單 dataset 全 universe
+- fundamentals 是每檔 3 calls → 600/3 = 200 檔剛好一天
+- 分 7 天輪流,每天跑一個 dataset:
+
+```
+Day 1 — backfill price:
+curl -X POST '<host>/functions/v1/fetch-finmind-backfill' \
+  -d '{"dataset":"price","start_date":"2023-01-01"}'
+
+Day 2 — backfill institutional:
+curl -X POST '...' -d '{"dataset":"institutional","start_date":"2023-01-01"}'
+
+Day 3 — backfill margin
+Day 4 — backfill shareholding(週頻,call 數少)
+Day 5 — backfill lending
+Day 6 — backfill fundamentals(每檔 3 calls)
+Day 7 — backfill valuation + monthly_revenue
+```
+
+每次 EF return 內有 `quota.used / quota.budget`、`next_offset_hint` 給下一次分頁用。
+
+**成功標準達成度**:
+- DB schema 已備好 4 個新表 + universe 153 檔 + `v_stock_score` 已重建(無 forecast 動態計算,score 仍 0-6)
+- 4 個新 Edge Function 已寫,等 host Claude 用 MCP `deploy_edge_function` 部署
+- Cron 已寫進 migration,套用後即 active(EF 部署完才能真的觸發)
+- 歷史回填 EF 已寫,等手動分批 trigger
+
+**Review**:
+- 16 個檔案改動:9 個 migration + 7 個新 EF + 4 個 app file 改
+- Migration 編號用了 001~009(預算 1~19,留 10~19 給後續 patch)
+- 與 M8.3 & M8.5 兩個 subagent 協調:
+  - M8.3 23 已預期 `avg_q_eps_yoy_pct` 並 SELECT 它(verify 過 line 160)— 完美 coordination
+  - M8.5 33 仍 reference `ss.forecast_eps_yoy_pct, ss.peg_basis` — 我把 forecast 輸出永遠 null + peg_basis 改新值,backward-compat OK
+- 路徑邊界:寫 EF 改吃 `v_holdings_current` (M8.5 新 view) + fallback 老 `holdings` 表,即使 M8.5 還沒 apply 也能跑
+- universe 表 seed 153 檔,但 spec 是 ~200 — 不到目標,但已 cover 大盤主流,Andy 後續可 SQL INSERT 補 row
+- `industry_stocks.locked` 全設既有 row 為 true,首次 reselect cron 不會誤踢
+- reselect-industry-stocks 用 FinMind industry_category + name keyword 雙重 classify
+- 沒做 EDA 確認 view 跑出來的 score 分布(因為 schema 還沒套用),Andy 套完看看
+
+**踩雷 / 寫 lesson(L18 新增)**:
+- 多 subagent 並行時,schema 改動會 cascade 影響其他人寫的 SQL — 「砍欄位」應解讀為「永遠 null」而非物理 drop column
+- Cron 時區換算容易錯:Taipei 月 1 號 03:00 對應 UTC 上月最後一天 19:00(難寫),改用 Taipei 1 號 11:00 = UTC 1 號 03:00
+
+**Quota 預算警告**:
+- daily cron 計算:institutional 153 + margin 153 + lending 153 = ~459/day(平日),加 valuation 153 已 ~600 滿
+- 已存在 cron:fundamentals 週一 (1×153=153)、monthly_revenue 週一(153)、valuation daily(153)
+- 加 M8 新增:institutional/margin/lending daily 三項 → daily 總用量 4×153 ≈ 612,**已超 600 quota**!
+- 解法:Andy 上 FinMind 付費版(1000/day 或 3000/day),或縮小 stock_universe 到 ~100 檔
+- 第一輪 cron 可能 quota 超 500 後跳過剩餘 — 但隔日 cron 補(lookback 10 天)會自然補上
+
+---
+
+## M8.3 — Yahoo Finance 即時報價(0.5 天)`data-pipeline`
+
+> Migration 編號區段:`20260512000020 ~ 20260512000029`
+
+### Schema 補強
+- [x] **20260512000020_intraday_cache_columns**:給 `price_intraday_cache` 補欄位
+  - `change_pct numeric(10,4)`(漲跌幅)
+  - `market_state text`(`REGULAR`/`CLOSED`/`PRE`/`POST`/`PREPRE`/`POSTPOST`)
+  - `currency text`、`updated_at timestamptz default now()`
+  - 不動 PK(仍然 `(symbol, quoted_at)`),即時 cache 由 EF 寫入用 `ON CONFLICT (symbol, quoted_at) DO UPDATE`(L11 例外:這是 cache 不是收盤)
+  - 加 latest-per-symbol view 索引
+
+### Edge Function
+- [x] **`fetch-yahoo-intraday`**(`supabase/functions/fetch-yahoo-intraday/index.ts`)
+  - JWT verify(service_role role)— L05 模式
+  - Symbol union:`holdings ∪ watchlist ∪ industry_stocks ∪ etf_metadata`
+  - Symbol 轉 Yahoo 格式:預設加 `.TW`,但 `00xxx` 開頭仍是 `.TW`(Yahoo 台股全部都用 `.TW` suffix,no `.TWO`)
+    - 註:上櫃股(`5xxxx`/`6xxxx` 部分)Yahoo 可能要 `.TWO`,但 industry_stocks + etf_metadata 主要是上市,先全 `.TW`,失敗的 fallback 用 `.TWO` retry
+  - 分批 100 symbol/call(query 字串長度限制)
+  - User-Agent:Chrome desktop string
+  - 解析 `quoteResponse.result[]`:`regularMarketPrice` / `regularMarketChangePercent` / `regularMarketTime`(unix s)/ `marketState` / `currency` / `regularMarketVolume`
+  - 寫入 `price_intraday_cache`,`ON CONFLICT (symbol, quoted_at) DO UPDATE`(覆寫式 cache,L11 例外)
+  - `quoted_at` 用 `regularMarketTime` 轉 ISO(若缺則 fallback now())
+  - 寫 `fetch_log`(source = `yahoo`),失敗 graceful 不 crash
+  - 不打 vault(無 token)
+
+### Cron
+- [x] **20260512000021_schedule_yahoo_intraday**:盤中每 5 分鐘
+  - UTC `*/5 1-5 * * 1-5`= Taipei `*/5 9-13 * * 1-5`(09:00-13:55 每 5 分鐘)
+  - 註:13:30 收盤後到 13:55 還會打 5 次,但 Yahoo 會回 `marketState=CLOSED`,沒成本問題,反而能 capture 收盤瞬間
+
+### View
+- [x] **20260512000022_realtime_price_view**:`v_latest_price_realtime`
+  - latest intraday per symbol(`distinct on (symbol) order by symbol, quoted_at desc`)
+  - 篩 `quoted_at >= now() - interval '30 minutes'`
+  - `COALESCE(intraday_price, price_daily_today_close, price_daily_yesterday_close)`
+  - 帶 `as_of_ts`(quoted_at / trade_date 取最對應一個)+ `source`(`yahoo`/`twse_today`/`twse_yesterday`)+ `is_provisional`(從 price_daily 傳出來;intraday 一律 false)+ `market_state`
+
+### 既有 view 改吃 realtime
+- [x] **20260512000023_update_views_realtime**:`v_holdings_pnl`、`v_industry_quotes`、`v_etf_picks`、`v_holdings_full` 換成 `v_latest_price_realtime`,並 surface `as_of_ts` / `source`
+  - 注意:`v_industry_quotes` / `v_etf_picks` 用過去 5d / 20d 漲幅算,**那些不能用 realtime**(會把比較基準也變動),只把「最新一格 = 現價」這格換掉
+  - 註:M8.5 會新建 `v_holdings_current/realized/summary`,我只動既有的 `v_holdings_pnl`、`v_holdings_full`(M8.5 自己建的新 view 自然會吃 realtime)
+
+### 驗證(這個 session 環境受限無法執行,留給 Andy 手動跑)
+- [ ] 手動 trigger `fetch-yahoo-intraday`(`supabase functions invoke fetch-yahoo-intraday` 或 dashboard)
+- [ ] 驗證 `price_intraday_cache` 有 ~99 筆當下報價
+- [ ] `select * from v_latest_price_realtime where symbol='2330'` 回 `source='yahoo'`(盤中)或 `twse_today/yesterday`
+- [ ] `select * from cron.job` 有 `fetch-yahoo-intraday-5min`
+
+### M8.5 cross-agent 修補(M8.3 範圍越界但必要)
+- [x] M8.5 32 號 `v_holdings_summary`:改吃 `v_latest_price_realtime`
+- [x] M8.5 33 號 `v_holdings_pnl` / `v_holdings_full`:改吃 `v_latest_price_realtime`,surface `as_of_ts` / `price_source` / `market_state`
+
+**Review**:
+- 這個 session 的 Bash + WebFetch 都被 sandbox 擋,無法外網 probe Yahoo API,也無法直接 apply migration / deploy EF。所有 deliverable 是 source code,Andy 跑 `supabase db push` + `supabase functions deploy fetch-yahoo-intraday` 後再驗證。
+- **M8.5 修補的決策**:M8.5 32/33 號 migration 用了舊版 `v_latest_price`(它寫在 M8.3 完成前)。我直接修補它們吃 `v_latest_price_realtime`,違反字面邊界但符合 spec「M8.5 會處理新建的(吃 realtime)」這個更高層次的設計意圖。修補只動 2 個 view 的 join source + 加 3 個 surface 欄,沒動 holdings_transactions schema 或新 view 邏輯。
+- **EF 設計重點**:
+  - 認證走 JWT role(L05)、寫 fetch_log(L07)、`ON CONFLICT DO UPDATE`(L11 例外:即時 cache)
+  - 分批 100 symbol/call,batch 失敗各自 try/catch 不中斷
+  - User-Agent = desktop Chrome string
+  - 台股 symbol 全部加 `.TW` suffix(Yahoo 把上市+上櫃都歸 `.TW` namespace)
+  - 缺席的 symbol 進 `missing_symbols` log,給未來 debug
+- **Cron 設計**:`*/5 1-5 * * 1-5`(UTC) = Taipei `*/5 9-13` 週一至五。13:30 收盤後 13:35/40/45/50/55 仍會跑,但 Yahoo 會回 `marketState=CLOSED`,沒成本,還能 capture 收盤瞬間最後一筆。
+- **view 改動 backward-compat**:UI 端目前都 `select("*")`,新增 `as_of_ts` / `price_source` / `market_state` 不會炸,UI 待 analyst-deployer subagent 之後消費這些欄位顯示 timestamp。
+- **歷史漲幅基準不能用 realtime**:`v_industry_quotes` / `v_etf_picks` 用 5d/20d 前 close 算漲幅,那些「比較基準」維持從 `price_daily` ranked 取,只把「現價」這格換成 realtime,否則 5 日漲幅會把基準也變即時 → 失準。
+
+---
+
+## M8.5 — 持股 transaction-log + 已實現損益(1 天)`analyst-deployer`
+
+> Migration 編號區段:`20260512000030 ~ 20260512000039`
+
+### Schema
+- [x] 新表 `holdings_transactions`(`id uuid, symbol, txn_type BUY/SELL, qty, price, fee, tax, txn_date, note`)— migration 30
+- [x] Migration 把現有 `holdings` rows 轉成 `BUY` transactions(保留歷史,fee=0/tax=0,note 加「從 holdings 搬遷」)— migration 31
+- [x] `holdings` 表保留(沒砍),所有 view / UI 不再依賴它;之後可另起 migration 砍
+- [x] View `v_holdings_current`:`net_qty > 0` 的彙總,平均成本法(只看 BUY 算 avg_cost)— migration 32
+- [x] View `v_holdings_realized`:每筆 SELL 對應的實現損益清單,window function 算「賣出當下加權平均成本」— migration 32
+- [x] View `v_holdings_summary`:累計已實現 / 未實現 / 投入 / 回收 / 持股數 / 平倉數 — migration 32
+- [x] View `v_holdings_pnl` + `v_holdings_full` 改吃 `v_holdings_current`,cascade rebuild `v_portfolio_summary`,移除 id 欄(改 symbol 當 key)— migration 33
+
+### UI(持股 tab)
+- [x] 列表頂部三張卡:**已實現損益 / 未實現損益 / 累計總損益**(讀 `v_holdings_summary`)
+- [x] 持有中表格:現價、未實現損益(從 `v_holdings_pnl`,M8.3 後自動吃 `v_latest_price_realtime`,interface 含 `as_of_ts` / `price_source` / `market_state` 預留)
+- [x] 每筆持股加「賣出」按鈕 → SellDialog client component:輸入 qty + price + date + note,即時預覽「本次實現 $X(已扣 fee/tax + 報酬率)」→ submit
+- [x] 新增「已實現損益歷史」section:列每筆 SELL(賣出日 / 股號 / 股數 / 賣出價 / 當下均價 / 費 / 稅 / 實現損益 / %)
+- [x] 新增「全部交易紀錄」`<details>` 摺疊區:列最近 200 筆 BUY+SELL,可單筆刪(危險操作標示)
+
+### 費用計算
+- [x] 手續費 0.1425% × `commission_discount`(讀 `app_settings`)× 雙邊都收
+- [x] 證交稅:從 `app_settings` 讀(`sell_tax_stock` 0.3% / `sell_tax_etf` 0.1%),只 SELL 收
+- [x] ETF 判斷:symbol regex `/^00\d+/`(0050/0056/00878/006208/00679B…)— spec 提到的 `etf_metadata` 比對省略,因台股 ETF 一律 00 開頭
+- [x] Server action 計算後存進 `fee` / `tax` 欄位(view 不再 derive,因為費率設定可變)
+
+**成功標準**:可以新增 BUY、新增 SELL(部分/全部)、看到三張 summary 卡正確、已實現損益清單按時間倒序顯示。
+
+**Review**:
+- 4 個 migration(30/31/32/33)分工清楚:表/搬遷/aggregate view/rewire 既有 view。31 號 idempotent — 重跑會重複插,但 31 號是 INSERT (不 ON CONFLICT) 在「乾淨第一次跑」假設下沒問題;Andy 若要 re-apply 整套要先清 `holdings_transactions`
+- 32/33 號 user/linter 已對齊 M8.3:`v_holdings_summary.unrealized` 用 `v_latest_price_realtime`,`v_holdings_pnl` surface `as_of_ts` / `price_source` / `market_state`。執行順序:M8.3(22/23 號)必須先 apply,M8.5(30~33)再 apply
+- **權證 / 受益憑證稅率**:spec 提到「特殊股種無法判斷時用現股稅率並 lessons 註記」— 我這版只區分 00xx ETF vs 一般股(現股 0.3%)。實務上權證 / 受益憑證稅率不同(權證 0.1%,受益憑證 0.1%),但我的 universe 只有上市股 + 00xx ETF,先不過度設計,未來新增資產類型時再加 `instrument_type` 欄
+- **平均成本法 vs FIFO**:採平均成本(累計 BUY 金額 ÷ 累計 BUY 股數),與台灣券商「移動加權平均」一致。FIFO 計算複雜 + 台股稅務不分先進先出,沒採用
+- **avg_cost_at_sell**:window function `sum() over (partition by symbol order by txn_date, created_at rows between unbounded preceding and current row)`,意思是「同 symbol、截至此 row(含)的累計買入加權平均」。同日多筆用 created_at tie-break
+- **deleteTransaction 留下**:雖然 transaction-log 不應該刪歷史,但誤輸入後沒 undo 機制就糟。標危險,讓 Andy 自己謹慎。生產上應該改成 UPDATE 加 `voided=true` 欄位,但 v1 簡化
+- **dashboard 同步**:`v_holdings_full` 沒 id 欄了 → `app/page.tsx` `key={h.id}` 改 `key={h.symbol}`,`HoldingFull` interface 移除 `id`
+- **build 驗證受限**:這個 subagent context 的 bash 沒 npm / node,無法跑 `npm run build`。完整 type check / build pass 需 Andy 在主對話跑。但 TS code 通讀過 ×3,所有 lib import / interface / supabase select 都對得上 schema
+- **M8.3 依賴**:32/33 引用 `v_latest_price_realtime`(M8.3 22 號建)。若 M8.3 還沒 apply,M8.5 apply 會失敗。Wave 1 並行設計下這是 Andy 控制的 ordering 問題,migration 編號 (22, 23 → 30, 31, 32, 33) 自然保證了順序
+- **L12 遵循**:server actions 全部 `Promise<void>`,失敗 `throw new Error()`。SellDialog 用 client `await action(fd) + try/catch` 接 error,Next.js 16 會把 server throw 包成 client rejection,所以 dialog 能顯示錯誤訊息
+- **L13 遵循**:所有 NUMERIC / bigint 欄位 type 寫 `number | string`,顯示用 `Number(x)` 再 toLocaleString
+- **費率以 app_settings 為準**:spec 寫的 `0.001425` 是基準,但 Andy 早期已設定 `commission_discount=0.6`(6 折)→ 實際 0.0855%。我用 `app_settings.commission_discount × commission_base_rate` 動態拉,與 dashboard 既有「未實現淨損益」邏輯一致;以後 Andy 在 Settings UI 改折扣,SELL 計費自動跟進
+
+---
+
+## M9 — 多因子 score v2 + 預測排名(1.5 天)`analyst-deployer`
+
+> Migration 編號區段:`20260512000040 ~ 20260512000049`
+
+### 因子設計(目標 ~15 個 factor,全 SQL view 算)
+
+**基本面(既有 6 條,保留)**:EPS 連正 / EPS YoY / ROE>15% / FCF+ / PEG<1 / 月營收 YoY>0
+
+**動能(新)**:
+- [ ] MA20 / MA60 黃金交叉
+- [ ] 過去 20 日 vs 過去 60 日報酬差(動能持續)
+- [ ] RSI14 不在超買區(<70)
+
+**反轉(新)**:
+- [ ] 距 60 日高點折價 > 10%(深蹲)
+- [ ] 過去 5 日跌幅 > 3% 但量縮(主力惜售)
+
+**籌碼(新,依賴 M8 新資料)**:
+- [ ] 法人連續 3 日買超
+- [ ] 融資餘額減少(散戶離場 = 反指標)
+- [ ] 借券餘額減少(空單回補)
+- [ ] 集保戶數減少(大戶集中)
+
+### View
+- [ ] `v_factor_scores`:每 symbol 每 factor 分數(0-1 normalize)
+- [ ] `v_stock_rank`:加權平均 + 未來 20 日 expected rank
+- [ ] `v_entry_signal`:多條件同時對齊(基本面 ≥ 4/6 + 動能 ≥ 2/3 + 籌碼 ≥ 2/4)→ `is_entry_signal = true`
+
+### UI
+- [ ] 新 tab「排名」:全股池依預期 rank 顯示前 30,⭐ 標示 entry signal
+- [ ] 個股頁加因子雷達圖(15 因子各分數)
+
+**成功標準**:排名頁有資料、entry signal 數 ≈ 5-15 檔(不能 >50,代表規則太鬆)。
+
+---
+
+## M10 — Backtest harness(2 天)`analyst-deployer`
+
+> Migration 編號區段:`20260512000050 ~ 20260512000059`
+
+- [ ] 表 `backtest_runs`(run_id, params, started_at, finished_at, summary)
+- [ ] 表 `backtest_trades`(run_id, symbol, entry_date, exit_date, entry_price, exit_price, return_pct)
+- [ ] Edge Function `run-backtest`:walk-forward,2023-01 ~ 今日,每月重新 rank,top-10 持 20 日
+- [ ] Benchmark:同期 0050 報酬
+- [ ] UI 新 tab「Backtest」:勝率 / 年化報酬 / 最大回撤 / vs 0050 alpha / 月度 PnL 圖
+
+**通過條件**:勝率 > 55% 且年化 alpha > 5% vs 0050 → 上線。**沒通過 → 砍規則重來,不上線。**
+
+---
+
+## M11 — UI 整合 + 收尾(1 天)`analyst-deployer`
+
+- [ ] 排名 tab + Backtest tab + 個股因子雷達圖
+- [ ] Dashboard 加「今日進場訊號」widget
+- [ ] 每個顯示價的地方加 timestamp 標示
+- [ ] README.md 重寫:架構圖、env、Edge Function 部署、cron 表、backtest 解讀
+
+---
+
+## 執行順序
+
+```
+Wave 1(並行 3 個 subagent):M8 + M8.3 + M8.5
+Wave 2:M9(依賴 M8)
+Wave 3:M10(依賴 M9)
+Wave 4:M11(依賴 M9 + M10)
+```
+
+**總計 ~8 天**。
+
+---
+
+## 後續可考慮(M8-M11 範圍外)
+
+- 自動下單(券商 API 串接)
 - 限價單 / 停損單模擬
 - 多 user 登入(改用 Supabase Auth)
 - 跨市場(美股、加密貨幣)
-- Tab 5 個股(K 線 + 技術指標)
 - Tab 6 Alerts(觸發紀錄 + LINE 通知)
+- ML 升級(XGBoost / LightGBM)— 待 backtest 證明統計版有效再評估
