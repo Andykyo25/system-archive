@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import { TabNav } from "./_components/TabNav";
+import { Sidebar } from "./_components/Sidebar";
+import { TopBar } from "./_components/TopBar";
 
 export const metadata: Metadata = {
   title: "持股戰情室",
-  description: "個人持股 + 模擬部位分析",
+  description: "個人持股 + 多因子分析",
 };
 
 export default function RootLayout({
@@ -15,13 +16,13 @@ export default function RootLayout({
   return (
     <html lang="zh-TW" className="h-full antialiased">
       <body className="min-h-full bg-zinc-950 text-zinc-100">
-        <header className="border-b border-zinc-800 bg-zinc-900">
-          <div className="mx-auto max-w-6xl">
-            <h1 className="px-4 pt-4 text-xl font-semibold">持股戰情室</h1>
-            <TabNav />
+        <div className="flex min-h-screen">
+          <Sidebar />
+          <div className="flex min-w-0 flex-1 flex-col">
+            <TopBar />
+            <main className="flex-1 px-4 py-6 md:px-8">{children}</main>
           </div>
-        </header>
-        <main className="mx-auto max-w-6xl p-4">{children}</main>
+        </div>
       </body>
     </html>
   );

@@ -228,3 +228,17 @@
 **摘要**:個股頁原本從 `price_daily` 90 天歷史最後一筆當「現價」,M8.3 後該值不是即時(可能晚 1 天)。改成多 query 一筆 `v_latest_price_realtime` 拿即時,fallback 才用 historical
 **做法**:不要為了「省一筆 query」把 latest 和歷史 K 線塞同一個 SELECT;前者要 surface `as_of_ts/source`,後者要時序連續,兩個取數邏輯本來就不同
 **為什麼**:Promise.all 內多加一筆 query 邊際成本 ≈ 0(parallel),程式碼可讀性卻提升大量。N+1 心智成本 > query latency
+
+---
+
+## Phase 1 Admin Dashboard Layout 後
+
+### L30 — flex layout 內 main column 必須 `min-w-0` 否則 overflow content 撐爆 sibling(2026-05-12)
+**問題**:把 root layout 從 `<header> + <main>` 改成 `<aside> + <main>` flex 結構後,內含 `overflow-x-auto` 的 table(holdings analysis)會把 main column 撐到 table 全部寬度,Sidebar 因此被擠出 viewport / 整個頁面出現橫向卷軸
+**做法**:main column wrapper 一定要寫 `flex min-w-0 flex-1 flex-col`,`min-w-0` 是 flex children 預設 min-width: auto 的關鍵覆寫,讓 overflow content 能在 column 內自己卷,不撐出去
+**為什麼**:CSS 規範 flex item 預設 `min-width: auto`(根據 content),這對 sidebar + main 這種 1:N 比例 layout 是不友善的 default。`min-w-0` 改成 0 強制 column 收縮,內部 overflow 自己處理
+
+### L31 — Dashboard 多 widget 並排不如直列(2026-05-12)
+**問題**:Dashboard 同時放 Performance widget + Entry signal widget + Advice widget 時,想把它們 `grid-cols-2/3/5` 切分視覺更緊湊,但 Entry signal table 8 column + Advice 4 區 + Performance 大數字三張卡,任一個塞到 narrow column 都會擠壓
+**做法**:全部 widget 全寬直列堆疊,內部各自有 `md:grid-cols-2/3` 把 narrow row 用 in-component 拆分。Dashboard 主軸是「向下捲」不是「左右並排」
+**為什麼**:Admin dashboard 普遍認知是直向 timeline / feed,不是 multi-pane workspace。給 widget 全寬還能在內部按需切 column 是更彈性的設計,Dashboard component 只負責順序不負責 layout 細節

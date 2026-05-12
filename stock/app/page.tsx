@@ -4,6 +4,15 @@ import { createClient } from "@/lib/supabase/server";
 import { fmtMoney, fmtPct, pctColor } from "./_components/Format";
 import { PriceCell } from "./_components/PriceCell";
 import { analyzeRow, summarizeForRow } from "./_components/Analyze";
+import {
+  PerformanceWidget,
+  type PerfRealizedRow,
+  type PerfSummary,
+} from "./_components/PerformanceWidget";
+import {
+  AdviceWidget,
+  type AdvicePickRow,
+} from "./_components/AdviceWidget";
 
 export const dynamic = "force-dynamic";
 
@@ -118,37 +127,83 @@ function buildScoreTooltip(analysis: { headline: string; notes: string[] }): str
 
 export default async function Dashboard() {
   const sb = createClient();
-  const [{ data: summary }, { data: holdings }, { data: signals }] =
-    await Promise.all([
-      sb.from("v_portfolio_summary").select("*").single(),
-      sb
-        .from("v_holdings_full")
-        .select("*")
-        .order("market_value", { ascending: false, nullsFirst: false }),
-      sb
-        .from("v_entry_signal")
-        .select(
-          "symbol, weighted_score, expected_rank, signal_strength, fund_count_pos, fund_count_total, mom_count_pos, mom_count_total, chip_count_pos, chip_count_total, is_entry_signal",
-        )
-        .eq("is_entry_signal", true)
-        .order("weighted_score", { ascending: false, nullsFirst: false })
-        .limit(10),
-    ]);
+  const [
+    { data: summary },
+    { data: holdings },
+    { data: signals },
+    { data: perfSummary },
+    { data: realizedRows },
+    { data: buyTxns },
+    { data: ranks },
+  ] = await Promise.all([
+    sb.from("v_portfolio_summary").select("*").single(),
+    sb
+      .from("v_holdings_full")
+      .select("*")
+      .order("market_value", { ascending: false, nullsFirst: false }),
+    sb
+      .from("v_entry_signal")
+      .select(
+        "symbol, weighted_score, expected_rank, signal_strength, fund_count_pos, fund_count_total, mom_count_pos, mom_count_total, chip_count_pos, chip_count_total, is_entry_signal",
+      )
+      .eq("is_entry_signal", true)
+      .order("weighted_score", { ascending: false, nullsFirst: false })
+      .limit(10),
+    // 「我的交易表現」widget 用
+    sb
+      .from("v_holdings_summary")
+      .select("total_realized_pnl, total_invested, count_closed")
+      .single(),
+    sb
+      .from("v_holdings_realized")
+      .select("symbol, sell_date, realized_pnl, realized_pct, qty_sold")
+      .order("sell_date", { ascending: false })
+      .order("created_at", { ascending: false }),
+    sb
+      .from("holdings_transactions")
+      .select("symbol, txn_date")
+      .eq("txn_type", "BUY")
+      .order("txn_date", { ascending: true }),
+    // 「給 Andy 的建議」widget 用 — top 30 取夠用,後續再 filter
+    sb
+      .from("v_stock_rank")
+      .select(
+        "symbol, weighted_score, fund_count_pos, fund_count_total, expected_rank",
+      )
+      .gte("fund_count_pos", 5)
+      .order("expected_rank", { ascending: true })
+      .limit(30),
+  ]);
 
+  // entry signal name lookup(原邏輯)+ rank picks name lookup(新邏輯)合併一次取
   const signalRows = (signals as EntrySignalSummary[] | null) ?? [];
-  const signalSymbols = signalRows.map((s) => s.symbol);
+  const rankRowsRaw =
+    (ranks as
+      | {
+          symbol: string;
+          weighted_score: number | string | null;
+          fund_count_pos: number;
+          fund_count_total: number;
+        }[]
+      | null) ?? [];
+
+  const allLookupSymbols = Array.from(
+    new Set([...signalRows.map((s) => s.symbol), ...rankRowsRaw.map((r) => r.symbol)]),
+  );
+
   const nameMap: Record<string, string | null> = {};
-  if (signalSymbols.length > 0) {
+  const industryMap: Record<string, string | null> = {};
+  if (allLookupSymbols.length > 0) {
     const [is, su, em] = await Promise.all([
       sb
         .from("industry_stocks")
-        .select("symbol, name")
-        .in("symbol", signalSymbols),
+        .select("symbol, name, industry")
+        .in("symbol", allLookupSymbols),
       sb
         .from("stock_universe")
         .select("symbol, name")
-        .in("symbol", signalSymbols),
-      sb.from("etf_metadata").select("symbol, name").in("symbol", signalSymbols),
+        .in("symbol", allLookupSymbols),
+      sb.from("etf_metadata").select("symbol, name").in("symbol", allLookupSymbols),
     ]);
     for (const r of (em.data as { symbol: string; name: string | null }[] | null) ?? []) {
       if (r.name) nameMap[r.symbol] = r.name;
@@ -156,14 +211,59 @@ export default async function Dashboard() {
     for (const r of (su.data as { symbol: string; name: string | null }[] | null) ?? []) {
       if (!nameMap[r.symbol] && r.name) nameMap[r.symbol] = r.name;
     }
-    for (const r of (is.data as { symbol: string; name: string | null }[] | null) ?? []) {
+    for (const r of (is.data as
+      | { symbol: string; name: string | null; industry: string | null }[]
+      | null) ?? []) {
       if (!nameMap[r.symbol] && r.name) nameMap[r.symbol] = r.name;
+      if (r.industry) industryMap[r.symbol] = r.industry;
     }
   }
+
+  // 持股表現 widget 預備:realized rows + 每 symbol first BUY date
+  const firstBuyMap = new Map<string, string>();
+  for (const t of (buyTxns as { symbol: string; txn_date: string }[] | null) ?? []) {
+    if (!firstBuyMap.has(t.symbol)) firstBuyMap.set(t.symbol, t.txn_date);
+  }
+
+  const perfRealized: PerfRealizedRow[] =
+    (
+      (realizedRows as
+        | {
+            symbol: string;
+            sell_date: string;
+            realized_pnl: number | string | null;
+            realized_pct: number | string | null;
+            qty_sold: number | string | null;
+          }[]
+        | null) ?? []
+    ).map((r) => ({
+      ...r,
+      first_buy_date: firstBuyMap.get(r.symbol) ?? null,
+    }));
+
+  // 持有中的 symbol → 排除掉(可關注標的不該推「已經持有的」)
+  const heldSymbols = new Set(
+    ((holdings as HoldingFull[] | null) ?? []).map((h) => h.symbol),
+  );
+  const advicePicks: AdvicePickRow[] = rankRowsRaw
+    .filter((r) => !heldSymbols.has(r.symbol))
+    .map((r) => ({
+      symbol: r.symbol,
+      name: nameMap[r.symbol] ?? null,
+      weighted_score: r.weighted_score,
+      fund_count_pos: r.fund_count_pos,
+      fund_count_total: r.fund_count_total,
+      industry: industryMap[r.symbol] ?? null,
+    }));
 
   return (
     <div className="space-y-6">
       <SummaryCards summary={summary as PortfolioSummary | null} />
+      <PerformanceWidget
+        summary={perfSummary as PerfSummary | null}
+        realized={perfRealized}
+      />
+      <AdviceWidget picks={advicePicks} />
       <EntrySignalWidget rows={signalRows} nameMap={nameMap} />
       <HoldingsAnalysis rows={(holdings as HoldingFull[] | null) ?? []} />
     </div>

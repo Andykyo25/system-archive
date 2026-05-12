@@ -667,6 +667,56 @@ Wave 4:M11(依賴 M9 + M10)
 
 ---
 
+## Phase 1 — Admin Dashboard Layout(2026-05-12)`analyst-deployer`
+
+### 計畫
+- [x] 新增 `app/_components/Sidebar.tsx`(client component):w-16/md:w-56,固定左側,7 個 nav items(emoji icon + label + desc),active 高亮(usePathname),響應式 <md 收摺成 icons-only(justify-center)
+- [x] 新增 `app/_components/TopBar.tsx`(client component):從 path 推 page title,右上預留狀態指示
+- [x] 改 `app/layout.tsx`:整體 `flex min-h-screen`(sidebar + main column),main 內 TopBar + 內容區
+- [x] 新增 `app/_components/PerformanceWidget.tsx`:讀 summary + realized + first_buy_date,顯示已實現損益 / 勝率 / 累積報酬率(加權)+ 平均單筆 + 平均持有天數 + 最近 5 筆 + 最大單筆獲利
+- [x] 新增 `app/_components/AdviceWidget.tsx`:4 個 advice card(出場紀律 / 分散產業 / 可關注標的 / 避免追的),動態填:對沖標的從 v_stock_rank fund>=5 非半導體挑 2 檔,可關注 top 5,避免追硬編碼
+- [x] 改 `app/page.tsx`(Dashboard):多 4 個 Promise.all query(summary / realized / buy_txns / ranks)+ symbol→name+industry lookup(industry_stocks/stock_universe/etf_metadata 三層 fallback)+ 排除持有中 symbol → advicePicks。順序:Summary → Performance → Advice → EntrySignal → Holdings
+- [x] `TabNav.tsx`:確認沒被任何地方 import,保留檔案
+- [x] 文件 review
+
+### Review
+
+**4 個新檔 + 2 個改檔**:
+- `app/_components/Sidebar.tsx`(新):左側 fixed sidebar,7 nav item,icon + active 高亮 + responsive(<md icons-only)。pageTitleFromPath 也在這檔 export 給 TopBar 用
+- `app/_components/TopBar.tsx`(新):main column 頂端 bar,顯示當前頁 title
+- `app/_components/PerformanceWidget.tsx`(新):整個 widget self-contained,接 PerfSummary + PerfRealizedRow[] props
+- `app/_components/AdviceWidget.tsx`(新):4 個 advice card,接 AdvicePickRow[](已含 industry 給 isSemi() 判斷)
+- `app/layout.tsx`(改):root layout 從 header+main 改成 flex sidebar+(topbar+main),max-w-6xl 砍掉讓內容自然撐
+- `app/page.tsx`(改):import + Promise.all 多抓 4 query,在 Dashboard 內 prep advicePicks(filter held + map industry),render 順序:Summary → Performance → Advice → EntrySignal → Holdings(分區清楚)
+
+**設計決策**:
+- 「累積報酬率」用加權版(`sum(pnl)/sum(cost_basis)`)而非簡單平均 — 反映 portfolio-level 報酬;副標補「平均單筆 X%」讓兩個視角並存。對 Andy 三檔已平倉(+12.6% 加權 / 約 13.3% 平均)這兩個數字會貼近呈現
+- 持有天數:`v_holdings_realized.sell_date - min(BUY txn_date per symbol)`。同 symbol 可能多次買賣,用 first BUY 算是「最初進場到完全出清」的概念 — 對 Andy 三檔全部一買一賣場景完全正確;未來若同 symbol 多次進出,可改 latest BUY 前推或 FIFO,先簡單版
+- 可關注標的排除「目前持有中」symbol — 推薦 Andy 已經持有的沒意義
+- 「分散產業」非半導體 filter 用 `industry_stocks.industry` 字串 keyword(半導體/電子零組件/晶圓/封測/IC設計)。沒進 industry_stocks 的 symbol industry=null 也算「非半導體」,可被推薦
+- 4 個 advice card 用 `grid-cols-2` + 內含 `[&:nth-child(2n)]:border-r-0` 處理邊界線
+- Sidebar 用 emoji 不引 icon library(spec 給授權:emoji 或 SVG)
+- Dashboard 全寬 widget 直列堆疊,不做 lg:cols-2 切分 — 因 EntrySignalWidget table 8 columns 在 narrow 容器擠壓嚴重,直接全寬最乾淨
+
+**Lessons 遵循**:
+- L01:Performance + Advice 兩個 widget 都只讀 supabase view,不打外部 API
+- L12:Sidebar/TopBar 是 client component(`"use client"`),Dashboard server component 直接 import 沒問題
+- L13:realized_pnl/realized_pct/weighted_score 等 numeric 全 `Number(x)` 轉,顯示用 fmtPct/fmtMoney
+- L14:Tailwind v4 利用 utility class 字面字串,advice card accent 顏色用 ACCENT_DOT lookup table(JIT 看得到)
+- L19:不動 schema / view / EF,純 UI 改動,multi-agent 邊界 0 接觸
+
+**驗證受限**:
+- 這個 session bash 被擋,無法跑 `npm run build`(host 跑時可驗證)
+- TS 看起來無錯:所有 import path / interface 對齊;PerformanceWidget 接 `PerfSummary | null`(handle null case);AdviceWidget 接 `AdvicePickRow[]`(empty 也有 fallback 文字)
+- 各 page 路由不動,sidebar 都套到(因在 root layout),驗證:Dashboard ✓ / /holdings / /watchlist / /etf / /rank / /backtest / /settings / /stocks/[symbol] 全繼承新 layout
+
+**取捨 / 已知限制**:
+- entry signal widget 沒改成 narrow-friendly,因為 spec 沒要求 + 直列堆疊就很實用
+- pageTitleFromPath 對 dynamic route(/stocks/[symbol] / /backtest/[id])硬寫 startsWith 邏輯,還沒泛用化 — 之後若多 dynamic 路由可以做 route metadata 表
+- AdviceWidget「避免追的」3 檔硬編碼。長期應該有個 `stock_blacklist` 表 + Settings UI 維護,但 v1 簡化先這樣
+
+---
+
 ## 後續可考慮(M8-M11 範圍外)
 
 - 自動下單(券商 API 串接)
