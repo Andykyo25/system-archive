@@ -537,13 +537,85 @@ Day 7 — backfill valuation + monthly_revenue
 
 > Migration 編號區段:`20260512000050 ~ 20260512000059`
 
-- [ ] 表 `backtest_runs`(run_id, params, started_at, finished_at, summary)
-- [ ] 表 `backtest_trades`(run_id, symbol, entry_date, exit_date, entry_price, exit_price, return_pct)
-- [ ] Edge Function `run-backtest`:walk-forward,2023-01 ~ 今日,每月重新 rank,top-10 持 20 日
-- [ ] Benchmark:同期 0050 報酬
-- [ ] UI 新 tab「Backtest」:勝率 / 年化報酬 / 最大回撤 / vs 0050 alpha / 月度 PnL 圖
+### 計畫(2026-05-12 開工)
+
+**Migration**
+- [x] **50**:`backtest_runs` 表(uuid pk / name / params jsonb / summary jsonb / status / 三個 timestamp)
+- [x] **51**:`backtest_trades` 表(bigserial / run_id fk / symbol / entry_date / exit_date / entry_price / exit_price / return_pct / qty / entry_rank,index on (run_id, entry_date))
+- [x] **52**:Postgres function `score_universe_at(as_of_date date)` — 把 v_stock_score + v_price_factors + v_chip_factors + v_factor_scores + v_stock_rank 的邏輯 parametrize 為 as_of_date(歷史視角再現性)。fundamentals/月營收/籌碼 用 as_of_date 之前最後一筆(point-in-time soft 版,低頻數據不嚴格)
+
+**Edge Function**
+- [x] **`run-backtest`**:POST body `{ name, start_date, end_date, rebalance_days, top_n, weight_strategy }`
+  - 開頭檢查 `price_daily.trade_date min <= start_date` 且 `count(distinct trade_date in range) >= rebalance_days × 2`,不夠 graceful `status='failed' + summary.reason='insufficient_data'`
+  - Walk-forward:每 rebalance_days 一輪呼叫 `score_universe_at`,取 top_n,entry close = 該日 close,exit close = rebalance_days 個交易日後 close
+  - benchmark 0050 同期(entry/exit 同 rebalance schedule)
+  - 寫 backtest_trades + summary jsonb(win_rate / total_return_pct / annual_return_pct / max_drawdown_pct / sharpe / alpha_vs_benchmark)
+  - 全 SQL 不打 FinMind(只讀 price_daily)
+
+**UI**
+- [x] `/backtest` page(SSR):列 backtest_runs(name + 觸發時間 + 主要 metric)
+- [x] form 新增 run(server action 觸發 EF)
+- [x] `/backtest/[id]` 詳情頁:summary 卡 + 月度 PnL bar chart(SVG) + trades 列表(限 200 筆)
+- [x] TabNav 加「Backtest」tab
+
+**部署 / 驗證(待 host claude / Andy 跑,本 session bash 被沙箱鎖)**
+- [ ] apply migration 50/51/52(supabase MCP `apply_migration`)
+- [ ] deploy EF run-backtest(supabase MCP `deploy_edge_function`)
+- [ ] trigger 一個 test run(name=M10 smoke, 2024-06-01~2024-12-31, top_n=10)看 EF 行為(預期 insufficient_data)
+- [ ] `npm run build` 通過
+- [ ] commit「M10: Backtest harness(walk-forward + 歷史視角 + UI)」
 
 **通過條件**:勝率 > 55% 且年化 alpha > 5% vs 0050 → 上線。**沒通過 → 砍規則重來,不上線。**
+（資料尚未累積,先建框架,backfill 完才能真實驗證）
+
+### Review
+
+**Schema(3 個 migration:50/51/52)**:
+- 50 `backtest_runs`:uuid pk / params jsonb / summary jsonb / status enum-by-check / 3 個 timestamp + error。索引 created_at desc + status
+- 51 `backtest_trades`:bigserial fk run_id / return_pct 用 `generated always as ... stored`(避免 EF 算錯)/ index (run_id, entry_date)
+- 52 `score_universe_at(as_of_date)`:**核心** — 把 v_factor_scores + v_stock_rank 邏輯複製進 SQL function,把 `current_date` 換 `as_of_date`,各表 filter `trade_date <= as_of_date and > as_of_date - interval '180 days'`(price)/ `'14 days'`(法人/融資/借券)/ `'60 days'`(集保 weekly)。fundamentals 與 monthly_revenue 取「as_of_date 前最後 N 季 / 13 月」(soft point-in-time)。`stable` 函式 + service_role only。
+
+**EF `run-backtest`**:
+- POST body `{ name, start_date, end_date, rebalance_days, top_n, weight_strategy, benchmark_symbol }`
+- JWT verify(L05)、parse + 早期驗證(rebalance_days 5-250 / top_n 1-100)
+- 插入 backtest_runs row(status=running)→ 一律會有 row 留存
+- pre-check `tradeDates.length >= rebalance_days × 2`,不夠就 graceful failed
+- walk-forward:每輪 `sb.rpc('score_universe_at', { as_of_date })` 取 top_n,entry/exit close 從 price_daily 拿(7 天回溯找最近一筆,handle 假日)
+- benchmark 0050 同期(預設,可改 body 換)
+- summary 算:win_rate / total_return / annual_return (252/total_trade_days) / max_drawdown / sharpe (annualized via periods/year) / alpha_vs_benchmark / equity_curve / benchmark_equity_curve / rebalance_dates
+- 失敗統一進 `failRun()`,所有路徑都有 graceful exit + row 更新
+
+**UI(3 個檔案 + 1 個改)**:
+- `app/backtest/page.tsx`:列 50 筆 runs + 新增 form(name / start_date / end_date / N / Top K / Benchmark)。form action 呼 EF + redirect 詳情頁
+- `app/backtest/[id]/page.tsx`:SSR 詳情。status=running/failed 各自 card,finished 顯 4 個 summary 卡 + Equity Curve SVG(策略 vs benchmark)+ 月度 PnL bar SVG + trades table(限 200,benchmark 灰底)
+- `app/backtest/actions.ts`:server actions(createBacktestRun + deleteBacktestRun,都 `Promise<void>` 失敗 throw — L12)
+- `app/_components/TabNav.tsx`:加「Backtest」tab
+
+**Lessons 新增(L26 + L27)**:
+- L26:歷史視角再現性用 PG function parametrize as_of_date
+- L27:server action 呼長 EF 要 pre-check 早期 return
+
+**驗證受限**:
+- 這個 session 無 Bash 權限執行 `npm run build` / Supabase CLI / MCP `apply_migration` / `deploy_edge_function`
+- 所有 deliverable 是 source code,host claude 套用:
+  1. apply migration 50 → 51 → 52(順序重要,52 需要 stock_universe / industry_stocks / watchlist / holdings_transactions / etf_metadata + 4 個 chip 表 + v_securities_lending_daily + stock_fundamentals_quarterly + stock_monthly_revenue + stock_pe_pb_daily 全部到位 — M8 / M9 範圍)
+  2. deploy EF run-backtest(用 MCP `deploy_edge_function`)
+  3. 觸發一次 smoke test(name=M10 smoke, start=2024-06-01, end=2024-12-31, top_n=10)— 預期 status=failed + reason=insufficient_data + trade_days_found < 40
+  4. `npm run build` 通過(Andy 本機跑)
+  5. 開 `/backtest` 看 row + 點進詳情看 failed reason 顯示正確
+
+**取捨**:
+- fundamentals 用 soft point-in-time(period_end <= as_of_date 的最後 8 季):嚴格 publish-time 需 stock_fundamentals_quarterly.published_at 欄,沒有就回不去。Soft 版對 quarterly 數據(每 3 月一筆)誤差約 1-2 個月,在月度 rebalance 容忍範圍內
+- monthly_revenue 同理,取「年月 <= as_of_date 的年月」最後 13 筆
+- universe 名單用當前快照,不歷史化(spec 默許,backtest 想用「現在的選股池」回測歷史是合理的)
+- Sharpe 用簡化版(periodReturns mean/std × sqrt(periods/year)),不是 Sortino / IR
+- Equity curve & drawdown 在 rebalance 邊界算,期內波動不計(等同月度資料粒度)
+
+**邊界遵循**:
+- 沒動既有 view(v_factor_scores / v_stock_rank / v_entry_signal)— 只「複製其邏輯」進 function
+- 沒動 price_daily / stock_universe / holdings 等表 schema
+- migration 編號全在 50-52(預算 50-59)
+- L19 多 agent 邊界 OK
 
 ---
 

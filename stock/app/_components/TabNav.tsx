@@ -9,6 +9,7 @@ const tabs = [
   { href: "/watchlist", label: "產業" },
   { href: "/etf", label: "ETF" },
   { href: "/rank", label: "排名" },
+  { href: "/backtest", label: "Backtest" },
   { href: "/settings", label: "設定" },
 ];
 

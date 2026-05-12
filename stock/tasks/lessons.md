@@ -186,7 +186,22 @@
 **做法**:把每個顏色變數獨立成 prop(text class + bar class),caller 明確傳兩個字面字串,讓 JIT 掃得到
 **為什麼**:Tailwind v4 的 content 掃描需要看到字面字串才會生成 CSS,任何動態組裝都會被 tree-shake 掉
 
-### L25 — 規則「資料就緒 vs 未到位」要寫 fallback,而不是禁用整個 signal(2026-05-12)
+### L26 — 「歷史視角再現性」(point-in-time)用 PG function parametrize 比建 N 個 view 乾淨(2026-05-12)
+**問題**:既有 v_stock_rank 用 current_date,backtest 要在 2024-06-01 站當天視角再 rank → 不能用同一個 view
+**做法**:寫 PG function `score_universe_at(as_of_date date) returns table`,把 view 邏輯整包複製進來,所有 `>= current_date - interval '...'` 換成 `<= as_of_date and > as_of_date - interval`。EF 每輪 rebalance 呼叫一次
+**為什麼**:
+1. 邏輯只在一個地方 maintain(function),既有 view 用 current_date 視角當 wrapper 也行(這版我沒做)
+2. 比建 14 個 dated view 乾淨(每月一個 view 不可行)
+3. function 是 stable 不是 immutable,可以查 table — 對於 read-only 計算 OK
+**取捨**:fundamentals / monthly_revenue / chip 等低頻數據,「as_of_date 之前最後一筆」是 soft point-in-time(資料可能有 lag),不是嚴格的 publish-time。對 backtest 而言可接受。
+
+### L27 — Server action 呼叫 Edge Function 要把長時間執行的 EF 設計成可早期 return(2026-05-12)
+**問題**:Backtest EF 可能跑 30s~2min,supabase-js `functions.invoke()` 預設 timeout 對長 EF 不友善
+**做法**:
+1. EF 開頭做 pre-check(資料量 / 參數合法性),不符就立刻 insert backtest_runs row 並 status=failed + return — 不要等到 walk-forward 中段才發現
+2. server action `await` invoke,但 EF 必須在合理時間內(< 60s)回應;若真的長,把 invoke 改成「fire-and-forget」(寫 row → 不 await response → redirect 去 detail page,user 重新整理看結果)
+**為什麼**:Edge runtime 有 hard timeout(150s),user 體驗 also 不容忍 form submit 卡 1 分鐘。pre-check 早 fail 是最佳實作。
+**注意**:M10 v1 是 sync await。未來資料累積完,可能要改 fire-and-forget,但 row 狀態管理可同步(EF 內已寫 row,client 只是不等回應)。
 **問題**:spec 寫「entry signal = fund≥4 AND mom≥2 AND chip≥2」,但 chip 4 個表都是 M8 cron 才剛跑、資料還沒進來。若嚴格 chip≥2 → 0 個 signal,整個 /rank tab 顯示空。
 **做法**:在 v_entry_signal 加三層 fallback:
 - `chip_count_total >= 3`:嚴格 `chip≥2`
