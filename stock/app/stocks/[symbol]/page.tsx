@@ -222,15 +222,17 @@ interface FactorRankRow {
   fund_fcf_pos: number | null;
   fund_peg_low: number | null;
   fund_rev_yoy: number | null;
+  fund_gross_up: number | null;
   mom_ma_golden: number | null;
   mom_ret_diff: number | null;
-  mom_rsi_ok: number | null;
+  mom_rsi_strong: number | null;
   rev_off_high: number | null;
   rev_vol_dry: number | null;
   chip_foreign_3d_buy: number | null;
   chip_margin_drop: number | null;
   chip_lending_drop: number | null;
   chip_share_concentrate: number | null;
+  chip_inst_concentration: number | null;
 }
 
 interface EntrySignalRow {
@@ -328,8 +330,7 @@ function FactorSection({
 }
 
 function buildFactorAxes(r: FactorRankRow): FactorAxis[] {
-  // 順序:基本面 6 → 動能 3 → 反轉 2 → 籌碼 4 = 15 個軸,但 spec 是 11(個股雷達圖以 dimension 顯示 11)
-  // 用 group 著色,軸標短中文
+  // M9.1 共 17 個軸:基本面 7 + 動能 3 + 反轉 2 + 籌碼 5
   const mk = (key: string, label: string, v: number | null, group: FactorAxis["group"]): FactorAxis => ({
     key,
     label,
@@ -341,17 +342,19 @@ function buildFactorAxes(r: FactorRankRow): FactorAxis[] {
     mk("fund_eps_yoy", "EPS YoY", r.fund_eps_yoy, "fund"),
     mk("fund_roe_high", "ROE>15%", r.fund_roe_high, "fund"),
     mk("fund_fcf_pos", "FCF+", r.fund_fcf_pos, "fund"),
-    mk("fund_peg_low", "PEG<1", r.fund_peg_low, "fund"),
+    mk("fund_peg_low", "PEG<1.2", r.fund_peg_low, "fund"),
     mk("fund_rev_yoy", "月營收+", r.fund_rev_yoy, "fund"),
+    mk("fund_gross_up", "毛利率升", r.fund_gross_up, "fund"),
     mk("mom_ma_golden", "黃金交叉", r.mom_ma_golden, "mom"),
     mk("mom_ret_diff", "動能加速", r.mom_ret_diff, "mom"),
-    mk("mom_rsi_ok", "RSI<70", r.mom_rsi_ok, "mom"),
+    mk("mom_rsi_strong", "RSI>50", r.mom_rsi_strong, "mom"),
     mk("rev_off_high", "深蹲", r.rev_off_high, "rev"),
     mk("rev_vol_dry", "量縮跌", r.rev_vol_dry, "rev"),
     mk("chip_foreign_3d_buy", "法人3日買", r.chip_foreign_3d_buy, "chip"),
     mk("chip_margin_drop", "融資減", r.chip_margin_drop, "chip"),
     mk("chip_lending_drop", "借券減", r.chip_lending_drop, "chip"),
     mk("chip_share_concentrate", "外資升", r.chip_share_concentrate, "chip"),
+    mk("chip_inst_concentration", "法人集中", r.chip_inst_concentration, "chip"),
   ];
 }
 

@@ -242,3 +242,23 @@
 **問題**:Dashboard 同時放 Performance widget + Entry signal widget + Advice widget 時,想把它們 `grid-cols-2/3/5` 切分視覺更緊湊,但 Entry signal table 8 column + Advice 4 區 + Performance 大數字三張卡,任一個塞到 narrow column 都會擠壓
 **做法**:全部 widget 全寬直列堆疊,內部各自有 `md:grid-cols-2/3` 把 narrow row 用 in-component 拆分。Dashboard 主軸是「向下捲」不是「左右並排」
 **為什麼**:Admin dashboard 普遍認知是直向 timeline / feed,不是 multi-pane workspace。給 widget 全寬還能在內部按需切 column 是更彈性的設計,Dashboard component 只負責順序不負責 layout 細節
+
+---
+
+## M9.1 Factor 模型優化後(2026-05-12)
+
+### L32 — factor view 版本升級時,必須同時改 score_universe_at(2026-05-12)
+**問題**:M9.1 修 factor 計算邏輯(加 fund_gross_up + chip_inst_concentration + rename mom_rsi_ok)時,線上 view(`v_factor_scores` / `v_stock_rank` / `v_entry_signal`)與 backtest function(`score_universe_at`)是兩條獨立的計算路徑。如果只改 view 不改 function,backtest 結果用「舊邏輯看舊資料」,線上「新邏輯看現價」,兩條路徑不對稱 — backtest 結論失準,而且後續一個個發現很難 debug
+**做法**:
+1. 每次改 v_factor_scores 或 v_stock_rank 邏輯,**強制同步改 `score_universe_at`**(整段 function rewrite,不能只改一半)
+2. spec 階段就把這條列為 hard requirement,migration 計畫包含「同步 function」這個獨立 milestone(不能漏掉)
+3. function 內讀 `app_settings` 是 OK 的(stable 不是 immutable),settings 改變後新 backtest 立刻吃到新 weights
+**為什麼**:view 是線上「現在」視角,function 是 backtest「歷史」視角,兩條邏輯必須語意一致才能 trust backtest。一致性檢查靠 spec 紀律(M10 spec 已說 function 同步,M9.1 spec 也再次強調)
+
+### L33 — app_settings driven config 比 hardcode 彈性,但 backtest 凍結要靠 params jsonb(2026-05-12)
+**問題**:M9.1 把 weights(40/30/10/20)從 view hardcode 改成 app_settings rows。好處:Andy 想 tune weights 不用 rebuild view。但 score_universe_at 也讀 settings → backtest 跑歷史用的是「當下 settings 值」,不是「跑時凍結值」。Andy 之後把 weight_chip 從 0.20 改 0.30,重跑同一個 backtest_run 結果就會不同 — 不 reproducible
+**做法**(v1 簡化先這樣):
+1. settings change = global,所有 view + function 立刻反映新值
+2. Andy 自己留 weight 參數紀錄(在 backtest_runs.name 帶個 "v1-w40/30/10/20" 標籤)
+3. **未來真要嚴格 reproducible**:`score_universe_at` 簽名改成 `score_universe_at(as_of_date date, weights jsonb default null)`,backtest EF 把當下 settings snapshot 進 `backtest_runs.params.weights` jsonb,跑歷史 walk-forward 時把 jsonb 傳進 function 用 coalesce(jsonb→numeric, settings→numeric)
+**為什麼**:settings-driven 是 1 個維度的「靈活」trade off 「reproducibility」。MVP 階段彈性比嚴格重要,但設計時要意識到這個取捨,不要等使用者抱怨「我上週跑的 backtest 怎麼現在數字不一樣」才回頭加 params jsonb

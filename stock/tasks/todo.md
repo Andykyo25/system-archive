@@ -717,6 +717,83 @@ Wave 4:M11(依賴 M9 + M10)
 
 ---
 
+## M9.1 — Factor 模型優化(根據台股分析師建議,2026-05-12)`analyst-deployer`
+
+> Migration 編號區段:`20260512000060 ~ 20260512000069`
+
+### 變更要點
+- 權重 hard-code → app_settings(短中線預設:fund 40 / mom 30 / rev 10 / chip 20)
+- PEG 門檻放寬 1.0 → 1.2(settings-aware)
+- RSI factor:`mom_rsi_ok`(RSI<70)→ `mom_rsi_strong`(RSI>50,轉強)
+- 新增基本面 factor:`fund_gross_up`(gross_margin_yoy_pp > 0)→ 基本面從 6 → 7 條
+- 新增籌碼 factor:`chip_inst_concentration`(3 日法人 net / 3 日總量 > 5%)→ 籌碼從 4 → 5 條
+- 進場訊號:加硬條件 `fund_rev_yoy=1`,fund≥3(從 ≥4 放寬),chip 三層 fallback 隨 chip 總數 5 調整(≥4 嚴格 ≥3 / >0 ≥1 / =0 不卡)
+- 17 軸雷達(7 fund + 3 mom + 2 rev + 5 chip)
+
+### Migration
+- [x] **60_factor_settings**:app_settings 新增 5 row(peg_threshold / weight_fund / weight_mom / weight_rev / weight_chip)
+- [x] **61_v_price_factors_v2**:`mom_rsi_ok` → `mom_rsi_strong`(RSI14 > 50,需 ≥13 RSI 樣本)
+- [x] **62_v_chip_factors_v2**:加 `chip_inst_concentration`(join price_daily 3 日 volume sum)
+- [x] **63_v_factor_scores_v2**:加 `fund_gross_up`,`fund_peg_low` 改讀 settings peg_threshold,合計 17 factor(7+3+2+5)
+- [x] **64_v_stock_rank_v2 + v_entry_signal_v2**:weights 從 settings 讀;entry rule:fund≥3 + rev_yoy=1 + mom≥2 + chip 三層 fallback(total≥4→pos≥3 / >0→pos≥1 / =0→true);strength 同步
+- [x] **65_score_universe_at_v2**:同步新 factor + settings-aware
+
+### UI
+- [x] `app/_components/AdviceWidget.tsx`:更新「17 因子」「fund≥3 + 月營收 YoY 必過」文字
+- [x] `app/_components/FactorRadar.tsx`:不動 component 本體(已 dynamic axes),更新註解 11→17
+- [x] `app/rank/page.tsx`:Legend 改 7/3/2/5,header 文字短中線權重 40/30/10/20,進場訊號條件改
+- [x] `app/stocks/[symbol]/page.tsx`:`buildFactorAxes` 加 fund_gross_up + chip_inst_concentration + rename mom_rsi_ok→mom_rsi_strong;FactorRankRow interface 補新欄位
+
+### 驗證(本 session bash 被擋,host claude / Andy 驗證)
+- [ ] migration apply 全過(60-65 順序,需先確認 app_settings 表存在,M3.6 已建)
+- [ ] SQL:`select * from v_stock_rank order by expected_rank limit 5`
+- [ ] SQL:`select count(*) from v_entry_signal where is_entry_signal=true`(預期 v1 後資料較嚴格 → 數量略減,因 fund≥3+rev_yoy 雙硬條件,且 chip 5 條後嚴格門檻提高)
+- [ ] SQL:`select * from score_universe_at('2024-06-01') limit 1`(可空,但不能 error)
+- [ ] `npm run build` pass(host 跑)
+- [ ] todo review + lesson(若有)
+
+### Review
+
+**6 個 migration + 3 UI 檔改動**:
+- 60 `app_settings` rows(peg_threshold 1.2 / weight_fund 0.40 / weight_mom 0.30 / weight_rev 0.10 / weight_chip 0.20)。用 ON CONFLICT DO UPDATE 讓重跑安全
+- 61 `v_price_factors`:`mom_rsi_ok`(RSI<70)→ `mom_rsi_strong`(RSI>50,轉強)。其他 4 factor 不變
+- 62 `v_chip_factors`:加 5th factor `chip_inst_concentration`(3 日 three_major_net / 3 日 price_daily.volume sum > 5%)。inst + price 都要 3 天才評,缺一回 null
+- 63 `v_factor_scores`:7 fund(加 `fund_gross_up` = gross_margin_yoy_pp > 0)+ 3 mom + 2 rev + 5 chip = 17 factor。fund_peg_low 改用 `app_settings.peg_threshold`(settings 表 CTE + cross join,settings 改變後 view 立刻反映)
+- 64 `v_stock_rank + v_entry_signal`:weights 從 app_settings 拿;新 entry 規則(月營收 YoY 必過 + fund≥3 + mom≥2 + chip 三層 fallback ≥4 條→≥3 / >0→≥1 / =0→不卡)。`strength` 也對齊
+- 65 `score_universe_at`:整個 function rewrite,17 factor + settings-aware(stable function 內讀 settings,backtest 改 weights 後新 run 才生效)
+
+**UI 改動**:
+- `AdviceWidget.tsx`:header 加上「17 因子 / fund≥3 + 月營收 YoY 必過 + 動能≥2」說明
+- `rank/page.tsx`:header 文字 短中線權重 40/30/10/20;Legend 4 dimensions 改 7/3/2/5 + 因子 list 換新項目 + 進場訊號條件描述
+- `stocks/[symbol]/page.tsx`:`FactorRankRow` interface 加 `fund_gross_up` / `chip_inst_concentration` / 改 `mom_rsi_strong`;`buildFactorAxes` 從 15 軸 → 17 軸,加入新 factor + 改名
+- `FactorRadar.tsx`:只更新註解(component 本身 dynamic axes,不寫死數量,完全 backward-compat)
+
+**設計決策**:
+1. **app_settings 為什麼用 view 而非 function 拿**:settings 變動希望 view 結果即時更新(像 commission_discount 一樣),不用 rebuild view。代價是每次 view 計算多一次 CTE select,可忽略
+2. **score_universe_at 同步**:stable function 內讀 settings 是 OK 的(stable 不是 immutable,可查 table)。Backtest 每輪呼叫一次,假設 N=12 輪 × 13 月 = 156 次呼叫,settings 表 ~9 row 讀取極快
+3. **chip_inst_concentration 字面解讀**:spec 寫「3 日法人 net / 3 日總量 > 5%」我採嚴格字面 = 正向 net 主導才過。法人淨賣的場景 ratio 雖然 abs 也可能 > 5% 但是負向,我擋掉(更安全)
+4. **fund_count_pos >= 5 在 Dashboard advice 條件不變**:在 6 條制下 ≥5 = 83%,7 條制下 ≥5 = 71% — Andy 看實際數量再決定要不要拉高(動 page.tsx 而非 view 即可)
+5. **不動 v_stock_score**(M3.6,gross_margin_yoy_pp 早已存在),也不動 v_industry_picks 等其他 view(它們用既有 6 條基本面 score)
+
+**Lessons 遵循**:
+- L01 範圍:universe 仍 stock_universe ∪ industry ∪ watchlist ∪ holdings_transactions(chip 不 union etf)
+- L13 NUMERIC:rank UI 已 `Number(x)` 轉,新增欄位仍是 numeric|null,沒新顯示需求
+- L19 多 agent 邊界:沒動其他 agent 範圍 view(v_holdings_*、v_latest_price_realtime 等)
+- L20 backward-compat:既有 view drop + recreate cascade,但 cascade 只動下游(v_stock_rank / v_entry_signal),score_universe_at 是 function 用 create or replace 取代
+- L23 資料量保護:fund_gross_up 需要 fund_ranked q1 + q5 都有,gross_profit/revenue > 0;chip_inst_concentration 需要 inst 3d + price 3d 都有
+- L26 score_universe_at parametrize:新版 function 仍維持「as_of_date 之前最後一筆」soft point-in-time 邏輯
+
+**取捨 / 已知限制**:
+- 因 fund 從 6 → 7 條,既有 v_industry_picks.score 仍是 0-6(M3.6 那組),沒升級。因 spec 標明「v_stock_score 不能動」,而 v_industry_picks 用 6 條規則 hard-code,M9.1 範圍外。Andy 之後若想 unify 再說
+- score_universe_at 內讀 settings 是線上版本,backtest 改 weights 後跑 history 是用「新 weights 看舊資料」,不是「凍結 weights」。若要嚴格 reproducible,需把 weights 寫進 backtest_runs.params jsonb,function 改吃 jsonb 而非 settings。v1 簡化先這樣
+
+**驗證受限**:
+- 本 session 無 bash → 無法 `npm run build` 或 supabase MCP apply migration
+- 套用順序:host 跑 `supabase db push` 自動依字典序套 60→61→62→63→64→65
+- 跑完先 SQL 驗 `select count(*) from v_factor_scores where fund_count_total >= 5`(看有多少 fund 有 5+ 可評),再 `select symbol, fund_count_pos, fund_count_total, signal_strength, is_entry_signal from v_entry_signal where is_entry_signal=true limit 30`
+
+---
+
 ## 後續可考慮(M8-M11 範圍外)
 
 - 自動下單(券商 API 串接)
