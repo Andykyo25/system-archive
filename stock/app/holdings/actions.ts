@@ -40,17 +40,17 @@ function isEtfSymbol(symbol: string): boolean {
 }
 
 // 計算手續費(雙邊都收)
+// 券商實際慣例:**無條件捨去到整數元**(floor),不是四捨五入。
+// 對照 Andy 對帳單:14000×12.97×0.001425=258.83 → 258 / 1000×225×0.001425=320.625 → 320
+// 台股手續費下限 20(慣例),為與既有 app_settings 邏輯一致暫不套下限
 function calcFee(qty: number, price: number, feeRate: number): number {
-  const raw = qty * price * feeRate;
-  // 台股手續費下限 20(慣例),但為了與既有 app_settings 一致計算
-  // 暫時不下限,跟 dashboard 算 net 的邏輯一致
-  return Math.round(raw * 100) / 100;
+  return Math.floor(qty * price * feeRate);
 }
 
-// 計算證交稅(只賣出收)
+// 計算證交稅(只賣出收,個股 0.3% / ETF 0.1%)
+// 同樣 floor 到整數元(181580×0.001=181.58 → 181)
 function calcTax(qty: number, price: number, taxRate: number): number {
-  const raw = qty * price * taxRate;
-  return Math.round(raw * 100) / 100;
+  return Math.floor(qty * price * taxRate);
 }
 
 // 新增 BUY transaction(取代原本的 addHolding)
