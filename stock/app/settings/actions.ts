@@ -21,6 +21,7 @@ export async function updateSetting(formData: FormData): Promise<void> {
   revalidatePath("/holdings");
   revalidatePath("/watchlist");
   revalidatePath("/etf");
+  revalidatePath("/rank");
 }
 
 // ETF metadata CRUD

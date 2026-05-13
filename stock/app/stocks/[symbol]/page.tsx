@@ -227,6 +227,7 @@ interface FactorRankRow {
   mom_ret_diff: number | null;
   mom_rsi_strong: number | null;
   mom_breakout: number | null;
+  mom_above_ma200: number | null;
   rev_off_high: number | null;
   rev_vol_dry: number | null;
   chip_foreign_3d_buy: number | null;
@@ -331,7 +332,7 @@ function FactorSection({
 }
 
 function buildFactorAxes(r: FactorRankRow): FactorAxis[] {
-  // M9.2 共 18 個軸:基本面 7 + 動能 4(加突破)+ 反轉 2 + 籌碼 5
+  // M9.3 共 19 個軸:基本面 7 + 動能 5(加突破 + 站上 MA200)+ 反轉 2 + 籌碼 5
   const mk = (key: string, label: string, v: number | null, group: FactorAxis["group"]): FactorAxis => ({
     key,
     label,
@@ -343,13 +344,14 @@ function buildFactorAxes(r: FactorRankRow): FactorAxis[] {
     mk("fund_eps_yoy", "EPS YoY", r.fund_eps_yoy, "fund"),
     mk("fund_roe_high", "ROE>10%", r.fund_roe_high, "fund"),
     mk("fund_fcf_pos", "FCF+", r.fund_fcf_pos, "fund"),
-    mk("fund_peg_low", "PEG<1.2", r.fund_peg_low, "fund"),
+    mk("fund_peg_low", "PEG<1.5", r.fund_peg_low, "fund"),
     mk("fund_rev_yoy", "月營收+", r.fund_rev_yoy, "fund"),
     mk("fund_gross_up", "毛利率升", r.fund_gross_up, "fund"),
     mk("mom_ma_golden", "黃金交叉", r.mom_ma_golden, "mom"),
     mk("mom_ret_diff", "動能加速", r.mom_ret_diff, "mom"),
     mk("mom_rsi_strong", "RSI>50", r.mom_rsi_strong, "mom"),
     mk("mom_breakout", "突破", r.mom_breakout, "mom"),
+    mk("mom_above_ma200", "站上MA200", r.mom_above_ma200, "mom"),
     mk("rev_off_high", "深蹲", r.rev_off_high, "rev"),
     mk("rev_vol_dry", "量縮跌", r.rev_vol_dry, "rev"),
     mk("chip_foreign_3d_buy", "法人3日買", r.chip_foreign_3d_buy, "chip"),

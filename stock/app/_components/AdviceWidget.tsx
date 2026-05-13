@@ -43,7 +43,7 @@ export function AdviceWidget({ picks }: { picks: AdvicePickRow[] }) {
           給 Andy 的建議
         </h2>
         <p className="mt-0.5 text-xs text-zinc-500">
-          基於你目前的交易風格與持股分布。系統用基本面 7 條 + 動能 4(加突破)+ 反轉 2 + 籌碼 5,共 18 因子;
+          基於你目前的交易風格與持股分布。系統用基本面 7 條 + 動能 5(加突破 + 站上 MA200)+ 反轉 2 + 籌碼 5,共 19 因子;
           進場訊號 = 基本面 ≥ 3 條 + 月營收 YoY 必須正 + 動能 ≥ 2 條。
         </p>
       </header>

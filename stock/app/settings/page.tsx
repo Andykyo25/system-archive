@@ -44,15 +44,33 @@ export default async function SettingsPage() {
   const settingsList = (settings as AppSetting[] | null) ?? [];
   const etfList = (etfs as EtfMeta[] | null) ?? [];
 
+  // 分組 settings:budget_ntd 獨立 / 其他歸「factor / 費率」
+  const budgetSetting = settingsList.find((s) => s.key === "budget_ntd") ?? null;
+  const otherSettings = settingsList.filter((s) => s.key !== "budget_ntd");
+
   return (
     <div className="space-y-10">
       <section>
-        <h2 className="mb-1 text-lg font-semibold">手續費 / 稅費</h2>
+        <h2 className="mb-1 text-lg font-semibold">投資預算</h2>
         <p className="mb-4 text-xs text-zinc-500">
-          影響:Dashboard 持股表「淨損益(估)」、總計卡的「未實現淨損益」
+          影響 /rank 頁:設定後只顯示「1 張成本 ≤ 預算」的標的。設 0 = 不 filter,顯示全部。
+        </p>
+        {budgetSetting ? (
+          <BudgetRow setting={budgetSetting} />
+        ) : (
+          <p className="rounded-lg border border-zinc-800 bg-zinc-900 p-3 text-sm text-zinc-500">
+            budget_ntd 設定尚未建立(套用 migration 71 後會自動出現)
+          </p>
+        )}
+      </section>
+
+      <section>
+        <h2 className="mb-1 text-lg font-semibold">手續費 / 稅費 / Factor 門檻</h2>
+        <p className="mb-4 text-xs text-zinc-500">
+          手續費 / 證交稅影響 Dashboard 持股表;peg_threshold / roe_threshold / weights 影響 /rank 多因子排名。
         </p>
         <div className="space-y-3">
-          {settingsList.map((s) => (
+          {otherSettings.map((s) => (
             <SettingRow key={s.key} setting={s} />
           ))}
         </div>
@@ -90,6 +108,36 @@ export default async function SettingsPage() {
         </div>
       </section>
     </div>
+  );
+}
+
+function BudgetRow({ setting }: { setting: AppSetting }) {
+  const v = Number(setting.value);
+  const wan = Number.isFinite(v) && v > 0 ? (v / 10000).toFixed(1) : null;
+  return (
+    <form
+      action={updateSetting}
+      className="grid grid-cols-1 gap-2 rounded-lg border border-zinc-800 bg-zinc-900 p-3 md:grid-cols-[1fr_240px_100px]"
+    >
+      <div>
+        <div className="font-mono text-sm text-zinc-200">{setting.key}</div>
+        <div className="text-xs text-zinc-500">
+          {setting.description ?? "投資預算"}
+          {wan && <span className="ml-2 text-emerald-400">≈ {wan} 萬</span>}
+        </div>
+      </div>
+      <input type="hidden" name="key" value={setting.key} />
+      <input
+        name="value"
+        type="number"
+        step="1000"
+        min="0"
+        placeholder="0 = 不 filter"
+        defaultValue={String(setting.value)}
+        className={inputCls}
+      />
+      <button className={btnCls + " w-full"}>儲存</button>
+    </form>
   );
 }
 

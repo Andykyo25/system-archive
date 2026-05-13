@@ -899,6 +899,129 @@ Wave 4:M11(依賴 M9 + M10)
 
 ---
 
+## M9.3 — 長期動能 factor + PEG 放寬 + 預算 filter(2026-05-13)`analyst-deployer`
+
+> Migration 編號區段:`20260512000071 ~ 20260512000075`
+
+### 動機(M9.2 baseline 2024 backtest 結果)
+- 2024 全年 backtest:勝率 56.7% / 累積 +17.2% / **alpha vs 0050 = -29.45%**
+- 系統錯過 TSMC/聯發科這類「PEG 偏高的續強龍頭」
+- MA20 黃金交叉抓「剛交叉」,抓不到「持續強勢」續漲股
+
+### 變更要點
+
+**A. 新動能 factor `mom_above_ma200`**
+- 條件:60 日報酬 > 0 AND latest_close > MA200
+- 邏輯:抓「長期趨勢向上」的續強股
+- 資料量保護:ma200_days_available ≥ 180(放寬 10% 給新上市股)
+
+**B. PEG 門檻 1.2 → 1.5**(只改 setting,view 不動)
+
+**C. 預算 filter (NEW)**
+- `app_settings.budget_ntd`(預設 0 = 不 filter)
+- `v_rank_with_cost`:rank join v_latest_price_realtime,新增 `cost_per_lot_ntd = current_price × 1000`
+- `/rank` 讀 v_rank_with_cost,SSR 端 filter `cost_per_lot_ntd ≤ budget_ntd OR budget_ntd = 0`
+
+**D. v_factor_scores / v_stock_rank / v_entry_signal / score_universe_at v4**
+- 動能 4 → 5 條
+- entry strong 改:`mom_count_pos >= 4`(5 條制 80%,對齊 M9.2 mom≥3 in 4 = 75%)
+
+### Migration
+- [x] **71_settings_peg_15_budget**:`peg_threshold` 1.2→1.5 + `budget_ntd` = 0
+- [x] **72_v_price_factors_v4**:agg 加 ma200_now / ma200_days_available + 新 factor mom_above_ma200
+- [x] **73_v_factor_scores_v4**:動能 5 條(加 mom_above_ma200),count_pos/total 對應
+- [x] **74_v_stock_rank_v4 + v_entry_signal_v4 + v_rank_with_cost**:pass-through + strong mom≥4 + 新 view 提供 cost_per_lot_ntd
+- [x] **75_score_universe_at_v4**:同步 19 factor
+
+### UI 改動(6 檔)
+- [x] `app/settings/page.tsx`:加「投資預算 (NT$)」input(BudgetRow,獨立 section + 萬位提示)
+- [x] `app/settings/actions.ts`:沿用 updateSetting + 加 revalidatePath("/rank")
+- [x] `app/rank/page.tsx`:改讀 v_rank_with_cost、SSR budget filter、加「1 張成本」欄、header 顯示預算狀態、Legend 7/5/2/5
+- [x] `app/_components/AdviceWidget.tsx`:header 18→19 因子 / 動能 4→5(加站上 MA200)
+- [x] `app/_components/FactorRadar.tsx`:註解 18→19 軸
+- [x] `app/stocks/[symbol]/page.tsx`:FactorRankRow interface 加 mom_above_ma200,buildFactorAxes 18→19 軸 + PEG label 改 1.5
+
+### 驗證(本 session bash 被擋,host claude 用 supabase MCP 套 + 跑 build)
+- [ ] 5 個 migration apply(71 → 72 → 73 → 74 → 75 順序)
+- [ ] SQL:`select symbol, mom_above_ma200, mom_count_pos, mom_count_total from v_factor_scores where symbol='2330' limit 1` 確認 TSMC mom_above_ma200=1
+- [ ] SQL:`select symbol, expected_rank, cost_per_lot_ntd from v_rank_with_cost where cost_per_lot_ntd <= 100000 order by expected_rank limit 10`
+- [ ] SQL:`select count(*) from v_factor_scores where mom_above_ma200 = 1`(預期數量略多,因為現多頭環境多數股站上 MA200)
+- [ ] `select * from score_universe_at(current_date - interval '7 days') limit 5`(歷史視角 sanity check)
+- [ ] /settings 可輸入預算 budget_ntd
+- [ ] /rank SSR 200,filter 生效(設 100000 看 top 10 限低價股)
+- [ ] `npm run build` pass(host 跑)
+- [ ] 觸發 M9.3 baseline backtest (2024-01-01 ~ 2024-12-31) 對比 8c1bd889-e786-4758-ba2c-6752fb10b303
+
+### Review
+
+**5 個 migration + 6 UI 檔改動**:
+- 71 `app_settings`:`peg_threshold` 1.2→1.5(放寬讓 TSMC/聯發科 PEG 偏高的續強龍頭過關)+ 新增 `budget_ntd` = 0(預設不 filter)
+- 72 `v_price_factors`:agg CTE 加 `ma200_now`(rn 1..200 avg)+ `ma200_days_available`(rn 1..200 count),新 factor `mom_above_ma200`(close > MA200 AND 60d ret > 0)。ranked CTE 視窗從 180 → 220 天給 MA200 用
+- 73 `v_factor_scores`:動能 4 → 5,加 mom_above_ma200 pass-through 與 count_pos / count_total 對應;peg_threshold settings 預設改 1.5
+- 74 `v_stock_rank` + `v_entry_signal` + `v_rank_with_cost`:rank 加 mom_above_ma200 pass-through;entry signal strong 規則 mom≥4(對應 4/5 = 80%);新 view `v_rank_with_cost` join `v_latest_price_realtime`,加 `cost_per_lot_ntd = current_price × 1000`
+- 75 `score_universe_at`:整段 function rewrite 同步 19 factor + ma200_now + ma200_days_available + mom_above_ma200 + 視窗 220 天 + settings peg_threshold 預設 1.5
+
+**UI 改動**:
+- `settings/page.tsx`:budget_ntd 拆獨立 section + `BudgetRow` component(萬位即時提示);其他 settings 仍走 `SettingRow`(step="0.0001")
+- `settings/actions.ts`:加 revalidatePath("/rank") 讓 budget 變動立即反映
+- `rank/page.tsx`:
+  - query source 從 `v_stock_rank` 改 `v_rank_with_cost`(limit 80,給 budget filter 留空間)
+  - 多 query app_settings.budget_ntd
+  - SSR filter `cost_per_lot_ntd <= budget`(budget=0 不 filter)
+  - 加 `BudgetHeader`(已設預算/未設預算兩種狀態)
+  - `EmptyState` 區分「沒符合預算」vs「沒任何資料」
+  - 新欄「1 張成本」(fmtCost helper:≥1 萬顯示 X.X 萬,< 1 萬顯示千分位)
+  - Legend 7/5/2/5,加「站上 MA200 續強」,PEG 改 < 1.5,加 strong 規則說明
+- `AdviceWidget.tsx`:header 文字「19 因子」/ 動能描述「5(加突破 + 站上 MA200)」
+- `FactorRadar.tsx`:只動開頭註解(component 本身完全 dynamic)
+- `stocks/[symbol]/page.tsx`:`FactorRankRow.mom_above_ma200` 補上;`buildFactorAxes` 加「站上MA200」label;`fund_peg_low` label 從「PEG<1.2」改「PEG<1.5」
+
+**Dashboard(`app/page.tsx`)不需動**:
+- 它只 select count 欄,沒讀 individual factor
+- `mom_count_total` 自動從 4 → 5
+- `fund_count_pos >= 5` filter 不變(7 條中過 5 = 71%)
+- 不在 spec「6 UI 檔」清單內是正確的
+
+**設計決策**:
+1. **mom_above_ma200 條件**:嚴格字面解讀 spec「60 日報酬 > 0% AND latest_close > MA200」。為什麼兩個都要?單看 close > MA200 不夠 — 股價剛突破 200 日線但 60 日報酬還負(剛從低點反彈)是「翻轉中」不是「持續強」。雙條件確保「中期 + 長期同步向上」
+2. **ma200_days_available ≥ 180 寬鬆 10%**:spec 寫 180,即 200 × 0.9。給新上市股 ~9 個月歷史留空間,避免被一刀切。剛好接近 1 個季度線(60)+ 半年線(120)+ 200 日線之間的中間值
+3. **ranked CTE 視窗 180 → 220**:200 個交易日歷史需要,且加 10% buffer 因 row_number 排序是 trade_date desc 取最近的(超過 200 的不影響 rn 1..200 計算)。220 天涵蓋 ~220 trade days × 5/7 ≈ 314 calendar days,夠
+4. **v_rank_with_cost 分開不寫進 v_stock_rank**:
+   - v_stock_rank 是純 factor 邏輯,join realtime price 會語意混淆(score_universe_at 歷史視角不能用 realtime)
+   - 獨立一個 view 給 UI filter 用更乾淨,backtest 路徑零影響
+5. **budget filter 在 SSR 端而非 SQL view**:
+   - spec 寫「不動 v_stock_rank,改在前端 filter(避免 view 重做)」
+   - 也讓 budget 變化不需 rebuild view(只是 app_settings update + revalidatePath 觸發 re-fetch)
+6. **fmtCost 「11.4 萬」vs 「3,250」**:Andy 預算經常以萬為單位思考,小於 1 萬的低價股(KY 股或興櫃)仍以千分位顯示完整數字,讓兩種價位都好讀
+7. **rank query limit 80 而非原 30**:因 budget filter 後可能濾掉很多,留空間讓 top 30 顯示仍有量(80 應夠 cover 多數預算)。若 budget 極低仍會出現 empty state
+8. **mom≥4 in 5 entry strong 規則**:M9.2 是 mom≥3 in 4 (75%),M9.3 加到 5 條後維持類似嚴格度,mom≥4 in 5 (80%) 比 mom≥3 in 5 (60%) 嚴。spec L33 文字明確要求 4。
+
+**Lessons 遵循**:
+- L01 範圍:universe 維持 stock_universe ∪ industry ∪ watchlist ∪ holdings_transactions ∪ etf_metadata
+- L13 NUMERIC string:budget / current_price / cost_per_lot_ntd 全 `Number(x)` 轉,顯示用 fmtMoney / fmtCost
+- L14 Tailwind v4:BudgetHeader 兩個版本(emerald/zinc accent)用字面 className,沒 dynamic class 組裝
+- L19 多 agent 邊界:沒動 M3.6 v_stock_score / v_industry_picks,沒動 M8.x 持股相關 view / EF
+- L20 backward-compat:v_factor_scores / v_stock_rank / v_entry_signal cascade drop 重建,score_universe_at 用 create or replace。`fund_peg_low` 因 settings 改 1.5 自動寬鬆(view 不需動)
+- L23 資料量保護:mom_above_ma200 需要 ma200_days_available ≥ 180 + ma200_now / latest_close / close_60d_ago 都非 null
+- L32 score_universe_at 必同步:75 號 rewrite,19 factor + 視窗 220 + ma200 新欄 + settings 預設 1.5,全部對齊 73/74 號
+- L33 settings-driven 對 backtest 的取捨:peg 改 1.5 後同一 backtest run 結果會跟著改(新跑算新值)— Andy 自己用 backtest_runs.name 標籤標 M9.3 區分
+
+**取捨 / 已知限制**:
+- mom_above_ma200 跟 mom_ret_diff 有點重疊(都看 60 日報酬)。但 mom_ret_diff 是「20 日報酬 vs 60 日報酬比例」,mom_above_ma200 是「60 日報酬 > 0 + close > 200 日線」,前者測「加速度」後者測「長期方向」。兩者過關代表「方向 + 加速」雙都有,不是 redundant
+- 預算 filter 在 SSR 端 = budget 改變只觸發 revalidate;若 Andy 想互動式 toggle(client-side 不刷新)需要 client state,v1 簡化先這樣
+- v_rank_with_cost 是 view 不是 materialized view,每次 query 都重算 join。但 v_stock_rank 本身已是 derived(多個 CTE 計算),v_latest_price_realtime 也是 view → 多 join 一層成本可忽略
+- v_rank_with_cost.cost_per_lot_ntd 用 current_price × 1000,沒處理「零股」/「整股」差異(假設 Andy 都買整張)。零股場景未來再加另一個 cost_per_share 欄
+- 視窗 220 天會讓 v_price_factors 計算量略增(原 180),但 universe < 200 檔,SQL 視窗函數對 RDBMS 不是瓶頸(< 1s 應該 OK)
+
+**驗證受限**:
+- 本 session bash 完全被沙箱擋,無法跑 supabase MCP / supabase CLI / npm run build
+- TS code 三次通讀過:所有 import / interface 對齊;新 RankWithCostRow 含 current_price / cost_per_lot_ntd / price_source;BudgetRow 簡單 form;buildFactorAxes 加 mom_above_ma200 軸
+- 套用順序:host claude / Andy 用 supabase MCP 依序套 71 → 72 → 73 → 74 → 75
+- 套完 SQL 驗:見上面驗證清單
+- M9.3 baseline backtest 可比較 8c1bd889(M9.2 baseline,2024 全年 alpha -29.45%)— 期待 alpha 有改善(目標 > 0,即跑贏 0050)
+
+---
+
 ## 後續可考慮(M8-M11 範圍外)
 
 - 自動下單(券商 API 串接)
