@@ -4,6 +4,7 @@ import { fmtMoney, fmtPct, pctColor } from "../_components/Format";
 import { PriceCell } from "../_components/PriceCell";
 import { SellDialog } from "./SellDialog";
 import { DeleteTxnButton } from "./DeleteTxnButton";
+import { HoldingsAdvice, type HoldingAdviceRow } from "./HoldingsAdvice";
 
 export const dynamic = "force-dynamic";
 
@@ -105,6 +106,7 @@ export default async function HoldingsPage() {
     { data: holdings },
     { data: realized },
     { data: transactions },
+    { data: advice },
     fees,
   ] = await Promise.all([
     sb.from("v_holdings_summary").select("*").single(),
@@ -123,6 +125,9 @@ export default async function HoldingsPage() {
       .order("txn_date", { ascending: false })
       .order("created_at", { ascending: false })
       .limit(200),
+    sb
+      .from("v_holdings_advice")
+      .select("*"),
     loadFeeSettings(),
   ]);
 
@@ -130,6 +135,7 @@ export default async function HoldingsPage() {
   const realizedRows = (realized as RealizedRow[] | null) ?? [];
   const txnRows = (transactions as Transaction[] | null) ?? [];
   const sum = (summary as Summary | null) ?? null;
+  const adviceRows = (advice as HoldingAdviceRow[] | null) ?? [];
 
   return (
     <div className="space-y-8">
@@ -138,6 +144,8 @@ export default async function HoldingsPage() {
       <AddBuySection />
 
       <CurrentHoldingsSection rows={rows} fees={fees} />
+
+      <HoldingsAdvice rows={adviceRows} />
 
       <RealizedSection rows={realizedRows} />
 
