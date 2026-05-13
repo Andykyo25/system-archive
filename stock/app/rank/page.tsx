@@ -67,8 +67,11 @@ export default async function RankPage() {
   );
   const entryCount = signalRows.filter((s) => s.is_entry_signal).length;
 
+  // budget_ntd 儲存值單位是「萬」NT$(因 app_settings.value 限制 numeric(10,6))
+  // 讀出來 × 10000 變成 NT$ 才能跟 cost_per_lot_ntd 比較
   const budgetRaw = (settingRow as { value: number | string | null } | null)?.value ?? 0;
-  const budget = Number(budgetRaw);
+  const budgetWan = Number(budgetRaw);
+  const budget = Number.isFinite(budgetWan) ? budgetWan * 10000 : 0;
   const hasBudget = Number.isFinite(budget) && budget > 0;
 
   // SSR 預算 filter:budget=0 不 filter,否則 cost_per_lot_ntd <= budget(null cost 一律過濾掉)

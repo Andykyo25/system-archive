@@ -53,7 +53,7 @@ export default async function SettingsPage() {
       <section>
         <h2 className="mb-1 text-lg font-semibold">投資預算</h2>
         <p className="mb-4 text-xs text-zinc-500">
-          影響 /rank 頁:設定後只顯示「1 張成本 ≤ 預算」的標的。設 0 = 不 filter,顯示全部。
+          影響 /rank 頁:設定後只顯示「1 張成本 ≤ 預算」的標的。**單位:萬 NT$**(輸 20 = 20 萬)。設 0 = 不 filter,顯示全部。
         </p>
         {budgetSetting ? (
           <BudgetRow setting={budgetSetting} />
@@ -112,8 +112,10 @@ export default async function SettingsPage() {
 }
 
 function BudgetRow({ setting }: { setting: AppSetting }) {
+  // budget_ntd 儲存值 = 萬 NT$(因為 app_settings.value 是 numeric(10,6),
+  // 整數最多 4 位,9999.99 → 用萬單位讓 9999 萬 = 9.99 億都能存)
   const v = Number(setting.value);
-  const wan = Number.isFinite(v) && v > 0 ? (v / 10000).toFixed(1) : null;
+  const ntd = Number.isFinite(v) && v > 0 ? Math.round(v * 10000).toLocaleString() : null;
   return (
     <form
       action={updateSetting}
@@ -122,17 +124,17 @@ function BudgetRow({ setting }: { setting: AppSetting }) {
       <div>
         <div className="font-mono text-sm text-zinc-200">{setting.key}</div>
         <div className="text-xs text-zinc-500">
-          {setting.description ?? "投資預算"}
-          {wan && <span className="ml-2 text-emerald-400">≈ {wan} 萬</span>}
+          投資預算(單位:**萬** NT$)
+          {ntd && <span className="ml-2 text-emerald-400">= NT$ {ntd}</span>}
         </div>
       </div>
       <input type="hidden" name="key" value={setting.key} />
       <input
         name="value"
         type="number"
-        step="1000"
+        step="1"
         min="0"
-        placeholder="0 = 不 filter"
+        placeholder="20 = 20 萬,0 = 不 filter"
         defaultValue={String(setting.value)}
         className={inputCls}
       />
