@@ -57,13 +57,20 @@ export function AdviceWidget({ picks }: { picks: AdvicePickRow[] }) {
             <>
               <p>
                 你目前勝率 100% 但容易太早出場(2408 兩天 +23% 跑掉,PEG
-                0.05 本可抱更長)。
+                0.05 本可抱更長)。**你只買整張不買零股**,所以不分批,改用觀察點:
               </p>
-              <p className="mt-1 font-medium text-zinc-300">建議分批停利:</p>
+              <p className="mt-2 font-medium text-zinc-300">單張部位:</p>
               <ul className="mt-0.5 list-inside list-disc space-y-0.5 text-zinc-400">
-                <li>+20% 出 1/3(鎖獲利)</li>
-                <li>+40% 再出 1/3(降風險)</li>
-                <li>剩 1/3 抱到基本面反轉或跌破 MA20</li>
+                <li>+20% 觀察點(看 RSI 是否 &lt; 80,若還強 → 抱)</li>
+                <li>+30% 第二觀察點(看法人是否還連買 → 弱就整張出)</li>
+                <li>+40% 強制整張出(末段勿貪)</li>
+                <li>-10% 強制整張停損(認錯)</li>
+              </ul>
+              <p className="mt-2 font-medium text-zinc-300">多張部位(≥2 張):</p>
+              <ul className="mt-0.5 list-inside list-disc space-y-0.5 text-zinc-400">
+                <li>+20% 出 1 張(回收成本)</li>
+                <li>+40% 再出 1 張</li>
+                <li>剩餘抱到基本面反轉或跌破 MA20</li>
               </ul>
             </>
           }
