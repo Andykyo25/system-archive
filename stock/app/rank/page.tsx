@@ -41,8 +41,15 @@ interface NameMap {
   [symbol: string]: string | null;
 }
 
-export default async function RankPage() {
+export default async function RankPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
+}) {
   const sb = createClient();
+  const sp = await searchParams;
+  // ?ignore_budget=1 → 不套用預算 filter(一鍵切「不考慮資產」)
+  const ignoreBudget = sp.ignore_budget === "1";
 
   const [{ data: ranks }, { data: signals }, { data: settingRow }] = await Promise.all([
     // M9.3:改讀 v_rank_with_cost(多了 cost_per_lot_ntd 給 budget filter)
@@ -74,17 +81,27 @@ export default async function RankPage() {
   const budget = Number.isFinite(budgetWan) ? budgetWan * 10000 : 0;
   const hasBudget = Number.isFinite(budget) && budget > 0;
 
-  // SSR 預算 filter:budget=0 不 filter,否則 cost_per_lot_ntd <= budget(null cost 一律過濾掉)
-  const filteredRows = hasBudget
+  // Filter 套用條件:有設預算 且 沒按「忽略」toggle
+  const shouldFilter = hasBudget && !ignoreBudget;
+
+  // SSR 預算 filter:不 filter 時直接 allRows;filter 時剔除 cost null / 超預算
+  const filteredRows = shouldFilter
     ? allRows.filter((r) => {
         const c = Number(r.cost_per_lot_ntd);
         return Number.isFinite(c) && c > 0 && c <= budget;
       })
     : allRows;
 
+  // 預算內符合的檔數(無論 toggle 在哪 state 都算給 segmented control 顯示)
+  const inBudgetCount = hasBudget
+    ? allRows.filter((r) => {
+        const c = Number(r.cost_per_lot_ntd);
+        return Number.isFinite(c) && c > 0 && c <= budget;
+      }).length
+    : 0;
+
   // 顯示 top 30(filter 後)
   const rankRows = filteredRows.slice(0, 30);
-  const matchedCount = filteredRows.length;
   const allCount = allRows.length;
 
   // 拉 name (industry_stocks + stock_universe + etf_metadata)
@@ -122,8 +139,9 @@ export default async function RankPage() {
         <BudgetHeader
           hasBudget={hasBudget}
           budget={budget}
-          matched={matchedCount}
-          all={allCount}
+          inBudgetCount={inBudgetCount}
+          allCount={allCount}
+          ignoreBudget={ignoreBudget}
         />
         <p className="mt-2 text-xs text-zinc-500">
           權重(短中線):基本面 40% / 動能 30% / 反轉 10% / 籌碼 20%(可在{" "}
@@ -135,7 +153,7 @@ export default async function RankPage() {
       </header>
 
       {rankRows.length === 0 ? (
-        <EmptyState hasBudget={hasBudget} budget={budget} />
+        <EmptyState hasBudget={hasBudget} budget={budget} ignoreBudget={ignoreBudget} />
       ) : (
         <RankTable rows={rankRows} nameMap={nameMap} signalMap={signalMap} />
       )}
@@ -148,18 +166,21 @@ export default async function RankPage() {
 function BudgetHeader({
   hasBudget,
   budget,
-  matched,
-  all,
+  inBudgetCount,
+  allCount,
+  ignoreBudget,
 }: {
   hasBudget: boolean;
   budget: number;
-  matched: number;
-  all: number;
+  inBudgetCount: number;
+  allCount: number;
+  ignoreBudget: boolean;
 }) {
+  // 沒設預算 → toggle 沒意義,維持原訊息
   if (!hasBudget) {
     return (
       <p className="mt-2 rounded border border-zinc-800 bg-zinc-950 px-3 py-2 text-xs text-zinc-400">
-        未設預算 → 顯示全部 ({all} 檔)。設預算可在{" "}
+        未設預算 → 顯示全部 ({allCount} 檔)。設預算可在{" "}
         <Link href="/settings" className="text-blue-400 hover:underline">
           /settings
         </Link>{" "}
@@ -167,31 +188,72 @@ function BudgetHeader({
       </p>
     );
   }
+
+  // Segmented control 2 tab(SSR Link 切 URL,保留 refresh-safe 狀態)
   const wan = (budget / 10000).toFixed(1);
+  const tabBase =
+    "inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition";
+  const tabActiveBudget = "bg-emerald-600 text-white shadow-sm";
+  const tabActiveAll = "bg-zinc-700 text-white shadow-sm";
+  const tabIdle = "text-zinc-400 hover:text-zinc-200";
+
   return (
-    <p className="mt-2 rounded border border-emerald-900/40 bg-emerald-950/20 px-3 py-2 text-xs text-emerald-200">
-      依預算 <span className="font-semibold tabular-nums">{wan} 萬</span> 過濾,符合{" "}
-      <span className="font-semibold tabular-nums">{matched}</span> 檔(共 {all} 檔)
-    </p>
+    <div className="mt-2 flex flex-wrap items-center gap-2">
+      <div className="inline-flex rounded-lg border border-zinc-800 bg-zinc-950 p-1">
+        <Link
+          href="/rank"
+          className={`${tabBase} ${!ignoreBudget ? tabActiveBudget : tabIdle}`}
+        >
+          依預算 {wan} 萬
+          <span className="rounded bg-black/30 px-1.5 py-0.5 tabular-nums">
+            {inBudgetCount}
+          </span>
+        </Link>
+        <Link
+          href="/rank?ignore_budget=1"
+          className={`${tabBase} ${ignoreBudget ? tabActiveAll : tabIdle}`}
+        >
+          全部
+          <span className="rounded bg-black/30 px-1.5 py-0.5 tabular-nums">{allCount}</span>
+        </Link>
+      </div>
+      <span className="text-xs text-zinc-500">
+        預算可在{" "}
+        <Link href="/settings" className="text-blue-400 hover:underline">
+          /settings
+        </Link>{" "}
+        調整
+      </span>
+    </div>
   );
 }
 
-function EmptyState({ hasBudget, budget }: { hasBudget: boolean; budget: number }) {
-  if (hasBudget) {
+function EmptyState({
+  hasBudget,
+  budget,
+  ignoreBudget,
+}: {
+  hasBudget: boolean;
+  budget: number;
+  ignoreBudget: boolean;
+}) {
+  // 設了預算 + 沒按忽略 → 是「預算內沒符合」
+  if (hasBudget && !ignoreBudget) {
     const wan = (budget / 10000).toFixed(1);
     return (
       <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-8 text-center">
         <p className="text-zinc-400">預算 {wan} 萬內沒有符合的標的</p>
         <p className="mt-2 text-sm text-zinc-500">
-          可在{" "}
+          可上方點「全部」忽略預算,或在{" "}
           <Link href="/settings" className="text-blue-400 hover:underline">
             /settings
           </Link>{" "}
-          調高預算或設 0 顯示全部
+          調高預算
         </p>
       </div>
     );
   }
+  // 沒設預算 或 按了忽略 → 真的沒任何排名資料
   return (
     <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-8 text-center">
       <p className="text-zinc-400">尚無排名資料</p>
