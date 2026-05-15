@@ -44,6 +44,10 @@ interface ReqBody {
   symbols?: string[];
   symbol_offset?: number;
   symbol_limit?: number;
+  // 第二組 token 切換:不傳 = finmind_token(現狀,quota source=finmind);
+  // 傳 "finmind_token_2" = 用第二組 token,quota 獨立計 source=finmind_2。
+  // 兩 token 各自 600/day 互不影響。
+  token_key?: string;
 }
 
 function decodeJwtPayload(jwt: string): Record<string, unknown> {
@@ -101,9 +105,14 @@ Deno.serve(async (req: Request) => {
   if (!body.start_date) return Response.json({ error: "missing start_date" }, { status: 400 });
   const endDate = body.end_date ?? new Date().toISOString().slice(0, 10);
 
-  const tokenRes = await supabase.rpc("read_finmind_token");
+  // 雙 token:token_key="finmind_token_2" → 第二組 + quota source=finmind_2
+  // 預設(不傳)→ 第一組 + source=finmind(完全等於現狀,退版安全)
+  const useSecondToken = body.token_key === "finmind_token_2";
+  const tokenRpc = useSecondToken ? "read_finmind_token_2" : "read_finmind_token";
+  const quotaSource = useSecondToken ? "finmind_2" : "finmind";
+  const tokenRes = await supabase.rpc(tokenRpc);
   if (tokenRes.error || !tokenRes.data) {
-    return Response.json({ error: "missing finmind_token in vault" }, { status: 500 });
+    return Response.json({ error: `missing token via ${tokenRpc} in vault` }, { status: 500 });
   }
   const TOKEN = tokenRes.data as string;
 
@@ -142,12 +151,12 @@ Deno.serve(async (req: Request) => {
   // quota
   const today = new Date().toISOString().slice(0, 10);
   await supabase.from("api_quota_state").upsert(
-    { source: "finmind", quota_date: today, used: 0, budget: FINMIND_DAILY_BUDGET },
+    { source: quotaSource, quota_date: today, used: 0, budget: FINMIND_DAILY_BUDGET },
     { onConflict: "source,quota_date", ignoreDuplicates: true },
   );
   const { data: quotaRow } = await supabase
     .from("api_quota_state").select("used, budget")
-    .eq("source", "finmind").eq("quota_date", today).single();
+    .eq("source", quotaSource).eq("quota_date", today).single();
   const usedSoFar = quotaRow?.used ?? 0;
   const budget = quotaRow?.budget ?? FINMIND_DAILY_BUDGET;
   const remaining = budget - usedSoFar;
@@ -472,7 +481,7 @@ Deno.serve(async (req: Request) => {
 
   await supabase.from("api_quota_state")
     .update({ used: usedSoFar + apiCalls })
-    .eq("source", "finmind").eq("quota_date", today);
+    .eq("source", quotaSource).eq("quota_date", today);
 
   await supabase.from("fetch_log").update({
     finished_at: new Date().toISOString(),
