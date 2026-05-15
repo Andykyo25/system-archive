@@ -262,3 +262,16 @@
 2. Andy 自己留 weight 參數紀錄(在 backtest_runs.name 帶個 "v1-w40/30/10/20" 標籤)
 3. **未來真要嚴格 reproducible**:`score_universe_at` 簽名改成 `score_universe_at(as_of_date date, weights jsonb default null)`,backtest EF 把當下 settings snapshot 進 `backtest_runs.params.weights` jsonb,跑歷史 walk-forward 時把 jsonb 傳進 function 用 coalesce(jsonb→numeric, settings→numeric)
 **為什麼**:settings-driven 是 1 個維度的「靈活」trade off 「reproducibility」。MVP 階段彈性比嚴格重要,但設計時要意識到這個取捨,不要等使用者抱怨「我上週跑的 backtest 怎麼現在數字不一樣」才回頭加 params jsonb
+
+---
+
+## 分析系統行為被糾正後(2026-05-15)
+
+### L34 — 分析「系統給使用者什麼」前,必須查完整 code path(SQL + application layer),不要只看一層就臆測
+**問題**:Andy 問「3006 賣掉這決策怎樣」。我只查了 `v_holdings_advice` SQL view 發現它只算數字(pct / obs points / rsi14)沒有 status,就**臆測「系統還叫你抱 +40%、沒 RSI 過熱邏輯」**,還據此提了「M9.x 加 RSI 過熱凌駕」改進。實際上 status 邏輯在 application layer 的 `deriveStatus()`(Telegram EF + HoldingsAdvice.tsx 共用),規則 #9 早就有 `rsi>80 → 🔥 隨時準備出`。Andy 糾正「系統有給出場提示」後我才去看 EF。接著我又臆測「盤前 08:55 推時 RSI 還沒過熱、是盤中才變」,Andy 再次糾正「盤前就有過熱提示」(3006 是 5/13→5/14 隔夜急漲累積,盤前 RSI 已 >80)。**一個分析錯兩次,都是沒查證就推測**。
+**做法**:
+1. 回答「系統會給使用者什麼建議/提示/狀態」這類問題前,先把**完整 code path 攤開**:SQL view → application layer(EF / React component) → 推播/呈現端。status / 文案 / 決策邏輯常在 application layer 不在 SQL
+2. 涉及「時間點」的推論(盤前 vs 盤中 RSI 是否過熱)→ 用實際資料反推(查 5/14 收盤 RSI、隔夜漲幅),不要用「感覺應該還沒過熱」臆測
+3. 在還沒查證前,**不要提改進建議**(我提的「盤中過熱警報」是 over-engineering,因為過熱是隔夜累積、盤前推播已涵蓋)
+4. 被糾正一次後,下一步要**更保守地查證**,而不是換個方向再臆測一次
+**為什麼**:使用者問交易決策分析時,錯誤的系統行為描述會誤導他對「系統能不能信任」的判斷,比一般 code bug 更傷。Andy 要的是「隨時驗證、不要走偏」,臆測系統行為正是最容易走偏的地方。Trust but verify — 對自己的推論也要 verify。
