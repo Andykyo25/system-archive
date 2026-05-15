@@ -15,6 +15,7 @@
 //   shareholding   → stock_shareholding
 //   lending        → stock_securities_lending
 //   valuation      → stock_pe_pb_daily
+//   corporate_action → stock_corporate_action (split + dividend,2 call/symbol)
 //
 // 參數:
 //   dataset: 上面的鍵
@@ -166,6 +167,7 @@ Deno.serve(async (req: Request) => {
   // 每個 dataset 各自的「per-symbol API call count」
   let callsPerSymbol = 1;
   if (body.dataset === "fundamentals") callsPerSymbol = 3;
+  if (body.dataset === "corporate_action") callsPerSymbol = 2;
 
   for (const symbol of symbols) {
     if (apiCalls + callsPerSymbol > remaining) {
@@ -413,6 +415,52 @@ Deno.serve(async (req: Request) => {
             });
           if (error) throw error;
           written += rows.length;
+        }
+      } else if (body.dataset === "corporate_action") {
+        // 還原權值來源:TaiwanStockSplitPrice(分割) + TaiwanStockDividendResult(除權息)
+        // 兩表免費、欄位一致:date / stock_id / before_price / after_price
+        // ratio = after_price / before_price(該 action 日當天調整係數,< 1)
+        apiCalls += 2;
+        const [splits, divs] = await Promise.all([
+          callFinmind(TOKEN, "TaiwanStockSplitPrice", symbol, body.start_date, endDate),
+          callFinmind(TOKEN, "TaiwanStockDividendResult", symbol, body.start_date, endDate),
+        ]);
+        const caRows: Array<{
+          symbol: string; action_date: string; action_type: string;
+          before_price: number; after_price: number; ratio: number;
+        }> = [];
+        const pushCA = (
+          // deno-lint-ignore no-explicit-any
+          arr: any[],
+          actionType: "split" | "dividend",
+        ) => {
+          for (const r of arr) {
+            const bp = toN(r.before_price);
+            const ap = toN(r.after_price);
+            if (bp == null || ap == null || bp === 0) continue;
+            caRows.push({
+              symbol: String(r.stock_id),
+              action_date: String(r.date),
+              action_type: actionType,
+              before_price: bp,
+              after_price: ap,
+              ratio: ap / bp,
+            });
+          }
+        };
+        // deno-lint-ignore no-explicit-any
+        pushCA(splits as any[], "split");
+        // deno-lint-ignore no-explicit-any
+        pushCA(divs as any[], "dividend");
+        if (caRows.length > 0) {
+          const { error } = await supabase
+            .from("stock_corporate_action")
+            .upsert(caRows, {
+              onConflict: "symbol,action_date,action_type",
+              ignoreDuplicates: true,
+            });
+          if (error) throw error;
+          written += caRows.length;
         }
       } else {
         throw new Error(`unknown dataset ${body.dataset}`);
