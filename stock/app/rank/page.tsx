@@ -41,6 +41,14 @@ interface NameMap {
   [symbol: string]: string | null;
 }
 
+// 構造 /rank URL,保留兩個 toggle state(防止互相覆蓋)
+function buildRankHref(opts: { ignoreBudget?: boolean; focus?: number }): string {
+  const qs: string[] = [];
+  if (opts.ignoreBudget) qs.push("ignore_budget=1");
+  if (opts.focus === 5) qs.push("focus=5");
+  return qs.length > 0 ? `/rank?${qs.join("&")}` : "/rank";
+}
+
 export default async function RankPage({
   searchParams,
 }: {
@@ -50,6 +58,8 @@ export default async function RankPage({
   const sp = await searchParams;
   // ?ignore_budget=1 → 不套用預算 filter(一鍵切「不考慮資產」)
   const ignoreBudget = sp.ignore_budget === "1";
+  // ?focus=5 → 高集中模式(M9.4a backtest alpha -4.22%);預設 30 維持原行為
+  const focus = sp.focus === "5" ? 5 : 30;
 
   const [{ data: ranks }, { data: signals }, { data: settingRow }] = await Promise.all([
     // M9.3:改讀 v_rank_with_cost(多了 cost_per_lot_ntd 給 budget filter)
@@ -72,7 +82,8 @@ export default async function RankPage({
   const signalMap = new Map<string, SignalRow>(
     signalRows.map((s) => [s.symbol, s] as const),
   );
-  const entryCount = signalRows.filter((s) => s.is_entry_signal).length;
+  // 全市場 entry signal 總數(給 Top 30 mode 顯示用)
+  const totalEntryCount = signalRows.filter((s) => s.is_entry_signal).length;
 
   // budget_ntd 儲存值單位是「萬」NT$(因 app_settings.value 限制 numeric(10,6))
   // 讀出來 × 10000 變成 NT$ 才能跟 cost_per_lot_ntd 比較
@@ -100,9 +111,17 @@ export default async function RankPage({
       }).length
     : 0;
 
-  // 顯示 top 30(filter 後)
-  const rankRows = filteredRows.slice(0, 30);
+  // 顯示 top K (filter 後),K 由 focus 決定(5 高集中 / 30 全覽)
+  const rankRows = filteredRows.slice(0, focus);
   const allCount = allRows.length;
+
+  // 當前 view(top K)中亮 ⭐ 的個數 — 驗證「值得進場」標的密度
+  const viewEntryCount = rankRows.filter(
+    (r) => signalMap.get(r.symbol)?.is_entry_signal,
+  ).length;
+  const viewStrongCount = rankRows.filter(
+    (r) => signalMap.get(r.symbol)?.signal_strength === "strong",
+  ).length;
 
   // 拉 name (industry_stocks + stock_universe + etf_metadata)
   const symbols = rankRows.map((r) => r.symbol);
@@ -127,14 +146,31 @@ export default async function RankPage({
   return (
     <div className="space-y-6">
       <header className="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
-        <div className="flex items-baseline justify-between">
-          <h1 className="text-xl font-semibold">多因子排名 (Top 30)</h1>
-          <div className="text-sm text-zinc-400">
-            進場訊號 (
-            <span className="text-yellow-400">⭐</span>):
-            <span className="ml-1 font-semibold text-yellow-300 tabular-nums">{entryCount}</span>{" "}
-            檔
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h1 className="text-xl font-semibold">
+              多因子排名 (Top {focus})
+            </h1>
+            <p className="mt-1 text-xs text-zinc-500">
+              當前範圍 ⭐{" "}
+              <span className="font-semibold text-yellow-300 tabular-nums">
+                {viewEntryCount}
+              </span>{" "}
+              / {rankRows.length} 檔
+              {viewStrongCount > 0 && (
+                <>
+                  {" "}
+                  · 含{" "}
+                  <span className="font-semibold text-yellow-200 tabular-nums">
+                    {viewStrongCount}
+                  </span>{" "}
+                  strong
+                </>
+              )}
+              {" · "}全市場共 {totalEntryCount} 檔 entry signal
+            </p>
           </div>
+          <FocusToggle focus={focus} ignoreBudget={ignoreBudget} />
         </div>
         <BudgetHeader
           hasBudget={hasBudget}
@@ -142,23 +178,61 @@ export default async function RankPage({
           inBudgetCount={inBudgetCount}
           allCount={allCount}
           ignoreBudget={ignoreBudget}
+          focus={focus}
         />
         <p className="mt-2 text-xs text-zinc-500">
           權重(短中線):基本面 40% / 動能 30% / 反轉 10% / 籌碼 20%(可在{" "}
           <Link href="/settings" className="text-blue-400 hover:underline">
             Settings
           </Link>{" "}
-          調)。資料缺維度時權重 reallocate 給其他維度。
+          調)。資料缺維度時權重 reallocate 給其他維度。Top 5 = M9.4a backtest 集中度策略(2024 alpha −4.22% / Sharpe 1.50)。
         </p>
       </header>
 
       {rankRows.length === 0 ? (
-        <EmptyState hasBudget={hasBudget} budget={budget} ignoreBudget={ignoreBudget} />
+        <EmptyState
+          hasBudget={hasBudget}
+          budget={budget}
+          ignoreBudget={ignoreBudget}
+          focus={focus}
+        />
       ) : (
         <RankTable rows={rankRows} nameMap={nameMap} signalMap={signalMap} />
       )}
 
       <Legend />
+    </div>
+  );
+}
+
+function FocusToggle({
+  focus,
+  ignoreBudget,
+}: {
+  focus: number;
+  ignoreBudget: boolean;
+}) {
+  // 精選 Top 5 (M9.4a backtest 集中度策略,2024 alpha -4.22) vs 完整 Top 30 (預設,全覽)
+  const tabBase =
+    "inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition";
+  const tabActiveFocus = "bg-amber-600 text-white shadow-sm";
+  const tabActiveFull = "bg-zinc-700 text-white shadow-sm";
+  const tabIdle = "text-zinc-400 hover:text-zinc-200";
+  return (
+    <div className="inline-flex rounded-lg border border-zinc-800 bg-zinc-950 p-1">
+      <Link
+        href={buildRankHref({ ignoreBudget, focus: 5 })}
+        className={`${tabBase} ${focus === 5 ? tabActiveFocus : tabIdle}`}
+        title="M9.4a 集中度策略(backtest 2024 alpha -4.22% / Sharpe 1.50)"
+      >
+        🎯 精選 Top 5
+      </Link>
+      <Link
+        href={buildRankHref({ ignoreBudget })}
+        className={`${tabBase} ${focus === 30 ? tabActiveFull : tabIdle}`}
+      >
+        完整 Top 30
+      </Link>
     </div>
   );
 }
@@ -169,12 +243,14 @@ function BudgetHeader({
   inBudgetCount,
   allCount,
   ignoreBudget,
+  focus,
 }: {
   hasBudget: boolean;
   budget: number;
   inBudgetCount: number;
   allCount: number;
   ignoreBudget: boolean;
+  focus: number;
 }) {
   // 沒設預算 → toggle 沒意義,維持原訊息
   if (!hasBudget) {
@@ -201,7 +277,7 @@ function BudgetHeader({
     <div className="mt-2 flex flex-wrap items-center gap-2">
       <div className="inline-flex rounded-lg border border-zinc-800 bg-zinc-950 p-1">
         <Link
-          href="/rank"
+          href={buildRankHref({ focus: focus === 5 ? 5 : undefined })}
           className={`${tabBase} ${!ignoreBudget ? tabActiveBudget : tabIdle}`}
         >
           依預算 {wan} 萬
@@ -210,7 +286,7 @@ function BudgetHeader({
           </span>
         </Link>
         <Link
-          href="/rank?ignore_budget=1"
+          href={buildRankHref({ ignoreBudget: true, focus: focus === 5 ? 5 : undefined })}
           className={`${tabBase} ${ignoreBudget ? tabActiveAll : tabIdle}`}
         >
           全部
@@ -232,19 +308,23 @@ function EmptyState({
   hasBudget,
   budget,
   ignoreBudget,
+  focus,
 }: {
   hasBudget: boolean;
   budget: number;
   ignoreBudget: boolean;
+  focus: number;
 }) {
-  // 設了預算 + 沒按忽略 → 是「預算內沒符合」
+  // 設了預算 + 沒按忽略 → 是「預算內沒符合」(常見於 focus=5 高集中模式)
   if (hasBudget && !ignoreBudget) {
     const wan = (budget / 10000).toFixed(1);
     return (
       <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-8 text-center">
-        <p className="text-zinc-400">預算 {wan} 萬內沒有符合的標的</p>
+        <p className="text-zinc-400">
+          {focus === 5 ? "精選 Top 5" : `Top ${focus}`} 中沒有預算 {wan} 萬內的標的
+        </p>
         <p className="mt-2 text-sm text-zinc-500">
-          可上方點「全部」忽略預算,或在{" "}
+          可上方點「全部」忽略預算,或切「完整 Top 30」看更多,或在{" "}
           <Link href="/settings" className="text-blue-400 hover:underline">
             /settings
           </Link>{" "}
