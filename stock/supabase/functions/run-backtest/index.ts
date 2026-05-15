@@ -40,6 +40,9 @@ interface RunReq {
   top_n?: number;
   weight_strategy?: "equal" | "rank";
   benchmark_symbol?: string;
+  // round-trip 交易成本 %(台股標準 = 買 0.1425 + 賣 0.1425 + 證交稅 0.3 = 0.585)
+  // 預設 0.585(未打折,保守)。傳 0 = 完全等同舊版邏輯(迴歸測試用)
+  cost_pct?: number;
 }
 
 interface ScoreRow {
@@ -217,11 +220,15 @@ Deno.serve(async (req: Request) => {
   const topN = body.top_n ?? 10;
   const weightStrategy = body.weight_strategy ?? "equal";
   const benchmarkSymbol = body.benchmark_symbol ?? "0050";
+  const costPct = body.cost_pct ?? 0.585; // round-trip 交易成本 %(0 = 退化成舊版)
   if (rebalanceDays < 1 || rebalanceDays > 250) {
     return Response.json({ error: "rebalance_days out of range" }, { status: 400 });
   }
   if (topN < 1 || topN > 100) {
     return Response.json({ error: "top_n out of range" }, { status: 400 });
+  }
+  if (costPct < 0 || costPct > 5) {
+    return Response.json({ error: "cost_pct out of range (0-5)" }, { status: 400 });
   }
 
   const params = {
@@ -231,6 +238,7 @@ Deno.serve(async (req: Request) => {
     top_n: topN,
     weight_strategy: weightStrategy,
     benchmark_symbol: benchmarkSymbol,
+    cost_pct: costPct,
   };
 
   // ---------- insert run row ----------
@@ -343,7 +351,8 @@ Deno.serve(async (req: Request) => {
       const e = entryCloses.get(r.symbol);
       const x = exitCloses.get(r.symbol);
       if (!e || !x) continue;
-      const ret = (x.close - e.close) / e.close;
+      // net return = gross − round-trip 成本(cost_pct=0 時退化成原 gross)
+      const ret = (x.close - e.close) / e.close - costPct / 100;
       trades.push({
         run_id: runId,
         symbol: r.symbol,
@@ -406,8 +415,9 @@ Deno.serve(async (req: Request) => {
 
   // ---------- compute summary ----------
   const strategyTrades = trades.filter((t) => !t.is_benchmark);
+  // 勝率用「扣成本後 net return > 0」判定(cost_pct=0 時 ≡ exit > entry,退化成舊版)
   const wins = strategyTrades.filter(
-    (t) => t.exit_price > t.entry_price,
+    (t) => (t.exit_price - t.entry_price) / t.entry_price > costPct / 100,
   ).length;
   const winRate =
     strategyTrades.length > 0
