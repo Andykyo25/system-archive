@@ -204,23 +204,20 @@ curl -X POST 'https://<project>.supabase.co/functions/v1/fetch-finmind-backfill'
 
 EF 走 sync await,沒早 return 的時候 user 等可能 30-60s。長 backtest 改 fire-and-forget(L27)是 future work。
 
-### 因子解讀
+### 因子解讀(M9.3,**19 factor**:7+5+2+5)
 
-「排名」tab top 30 + 個股頁雷達圖:
+「排名」tab + 個股頁雷達圖。每 factor = 1/0/null(資料不足不評,不污染分母):
 
-- **基本面 (6 個 factor)**:EPS 連 4 季正 / EPS YoY+ / ROE > 15% / FCF > 0 / PEG < 1 / 月營收 YoY > 0
-- **動能 (3)**:MA20 / MA60 黃金交叉 / 20 日 vs 60 日報酬加速 / RSI14 < 70
-- **反轉 (2)**:距 60 日高點折價 > 10% / 5 日跌幅 > 3% 但量縮
-- **籌碼 (4)**:法人 3 日買超 / 融資餘額減 / 借券減 / 外資持股比例升
+- **基本面 (7)**:EPS 近 8 季連正 / EPS YoY+ / ROE > 門檻 / FCF > 0 / PEG < 門檻(用 4 季 YoY 中位數,3 層 fallback)/ 月營收 YoY+ / 毛利率 YoY+
+- **動能 (5)**:MA 黃金交叉 / 報酬加速 / RSI14 > 50 轉強 / 帶量突破 20 日新高 / 站上 MA200+60 日正報酬
+- **反轉 (2)**:距 60 日高折價 > 10% / 急跌量縮
+- **籌碼 (5)**:法人 3 日買超 / 融資減 / 借券減 / 外資持股升 / 法人佔成交比高
 
-加權:fund 50% / mom 25% / rev 15% / chip 10%。**某維度全 null 時權重 reallocate 給其他維度**,所以資料未就緒不會把名次擠歪。
+加權:**fund 40% / mom 30% / chip 20% / rev 10%**(從 `app_settings`,可調)。某維度全 null → 權重 reallocate 給其他維度。
 
-進場訊號(⭐):
-- fund_count_pos ≥ 4(硬條件)
-- mom_count_pos ≥ 2(硬條件)
-- chip 三層 fallback:資料 ≥ 3 個 factor 嚴格 ≥ 2 / 1-2 個放寬 / 0 個不卡
+進場訊號(⭐,`v_entry_signal`):月營收 YoY 必過 + fund_count_pos ≥ 3 + mom_count_pos ≥ 2 + 籌碼三層 fallback。強度 strong(fund≥5+mom≥4+籌碼嚴格)/ normal。L25 設計:資料就緒前後規則自動升級,UI 不閃斷。
 
-L25 的設計 — 資料就緒前後規則「自動升級」,UI 不會閃斷。
+線上選股/排名與 backtest 用**同一套邏輯**:view 鏈(`v_price_factors`→`v_factor_scores`→`v_stock_rank`)是「現在」視角;`score_universe_at(date)` PG function 是「歷史」視角,兩條必須語意一致(L32)。
 
 ### 現價 timestamp 顯示
 
@@ -247,13 +244,17 @@ hover 顯示完整時間 + 來源。
 
 ---
 
-## Lessons
+## 2026-05 重大演進(README 上半部分架構仍適用,以下為其後新增)
 
-關鍵教訓寫在 `tasks/lessons.md`(L01 ~ L28),被使用者糾正過的模式都進去。每次開新 session 先翻。
+- **Phase 0 還原權值地基(全完成)**:`price_daily.adj_factor` + `stock_corporate_action`;選股因子與 backtest 全改用 `close×adj_factor`(除權息/分割不再造成假性跳水)。每週 `fetch-corporate-action-weekly` cron 自動抓新除權息 → 自動 `recompute_adj_factor()`。close≤0 防護。
+- **回測誠實化 v2**(`run-backtest` EF):`exec_model='nextopen'`(隔日開盤成交,修 lookahead)+ 漲停鎖死過濾 + ETF 差別交易成本;保留 `exec_model='close'`+flat 當退版錨點(byte-exact 重現舊基準 = 零邏輯漂移)。
+- **前向紙上追蹤**(`paper_track_tick()` + `paper-track-weekly` cron + `v_paper_performance`):每 ~20 交易日凍結 v_stock_rank top10+0050,adj_close 結算。`universe_snapshot` 每週凍結成員。**零倖存者偏差,是「能否持續收益」的真證據來源**。
+- **⚠ 最大保留**:所有 backtest alpha(含 2025 top5 OOS）受**不可測倖存者偏差**(有效 universe 全為「現在」選取套歷史;陣亡輸家因 L01 設計不可測)→ 數字是樂觀估計、非可交易保證。需累積前向追蹤 6-12 個月才有定論。
+- **安全**:敏感表 RLS 全 deny-all + app 純 server-side service_role(已稽核)。
 
-## Milestone
+## Lessons / Milestone
 
-M0 ~ M11 完成,詳見 `tasks/todo.md`。
+關鍵教訓 `tasks/lessons.md`(**L01 ~ L40**),被糾正過的模式都進去,每次開新 session 先翻。專案當前完整狀態(authoritative)見 auto-memory `stock_current_state_*.md`。Milestone M0~M11 + Phase 0 + M9.x,詳見 `tasks/todo.md`。
 
 ---
 
