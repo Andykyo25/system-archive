@@ -114,7 +114,16 @@ function fmtMoney(v: number | string | null | undefined, digits = 2): string {
   return n.toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits });
 }
 
-function buildMessage(rows: AdviceRow[]): string {
+// 資料新鮮度:holding 的 as_of_ts 日期落後 price_daily 最新交易日 = 舊價
+//   (用「日期 vs 最新交易日」而非「幾小時前」,週末/假日才不會誤報)
+function isStale(r: AdviceRow, latestTradeDate: string | null): boolean {
+  if (!latestTradeDate) return false;
+  if (!r.as_of_ts) return true; // 完全沒時間戳 = 不可信
+  const d = String(r.as_of_ts).slice(0, 10);
+  return d < latestTradeDate;
+}
+
+function buildMessage(rows: AdviceRow[], latestTradeDate: string | null): string {
   const now = new Date();
   const taipei = now.toLocaleString("zh-TW", {
     timeZone: "Asia/Taipei",
@@ -126,7 +135,12 @@ function buildMessage(rows: AdviceRow[]): string {
     return mdEsc(`📊 持股建議 (${taipei})\n\n目前無持股 — 沒有需要分析的部位`);
   }
 
-  let msg = `*📊 持股建議* \\(${mdEsc(taipei)}\\)\n\n`;
+  const anyStale = rows.some((r) => isStale(r, latestTradeDate));
+  let msg = `*📊 持股建議* \\(${mdEsc(taipei)}\\)\n`;
+  if (anyStale) {
+    msg += `⚠ *資料延遲警示*:部分標的現價非最新交易日\\(最新 ${mdEsc(latestTradeDate ?? "?")}\\),標 ⚠ 者價格偏舊,勿據此下單\n`;
+  }
+  msg += `\n`;
   for (const r of rows) {
     const s = deriveStatus(r);
     const pct = n(r.pct_change);
@@ -134,9 +148,12 @@ function buildMessage(rows: AdviceRow[]): string {
     const price = n(r.current_price);
     const rsi = n(r.rsi14);
     const signalStr = r.is_entry_signal ? ` ⭐ ${r.signal_strength}` : "";
+    const staleMark = isStale(r, latestTradeDate)
+      ? ` ⚠資料延遲\\(${mdEsc(r.as_of_ts ? String(r.as_of_ts).slice(0, 10) : "無時間戳")}\\)`
+      : "";
 
     msg += `${s.icon} *${mdEsc(r.symbol)}* · ${r.lots} 張 @ ${mdEsc(fmtMoney(r.avg_cost))}\n`;
-    msg += `現價 ${mdEsc(price == null ? "—" : fmtMoney(price))} \\(${mdEsc(pctStr)}\\)\n`;
+    msg += `現價 ${mdEsc(price == null ? "—" : fmtMoney(price))} \\(${mdEsc(pctStr)}\\)${staleMark}\n`;
     msg += `*${mdEsc(s.headline)}*\n`;
     msg += `${mdEsc(s.detail)}\n`;
     msg += `📌 停損 ${mdEsc(fmtMoney(r.stop_loss_price))} \\| 加碼 ${mdEsc(fmtMoney(r.add_position_price))} \\| `;
@@ -190,7 +207,28 @@ Deno.serve(async (req: Request) => {
     return Response.json({ skipped: "no_holdings" });
   }
 
-  const message = buildMessage(advice);
+  // 資料新鮮度 guard:拿 price_daily 最新交易日,標示落後的 holding(不阻擋發送)
+  const { data: ltd } = await sb
+    .from("price_daily")
+    .select("trade_date")
+    .order("trade_date", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const latestTradeDate = (ltd?.trade_date as string | undefined) ?? null;
+  const staleSymbols = advice
+    .filter((r) => !r.as_of_ts || String(r.as_of_ts).slice(0, 10) < (latestTradeDate ?? ""))
+    .map((r) => r.symbol);
+  if (staleSymbols.length > 0) {
+    // 觀測點:fetch_log 留警示(success=false 讓監控掃得到)
+    await sb.from("fetch_log").insert({
+      source: "telegram_holdings_advice",
+      success: false,
+      error: `stale price for ${staleSymbols.length} holding(s): ${staleSymbols.join(",")} (latest trade_date=${latestTradeDate})`,
+      finished_at: new Date().toISOString(),
+    });
+  }
+
+  const message = buildMessage(advice, latestTradeDate);
 
   // 送 Telegram
   const tgRes = await fetch(`https://api.telegram.org/bot${TOKEN}/sendMessage`, {
