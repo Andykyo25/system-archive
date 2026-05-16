@@ -287,3 +287,24 @@
 2. 看到「mutation 回報有改 N 列、但同句驗證顯示沒變」→ 先想 MVCC snapshot,不要立刻當成失敗去 rollback
 3. 任何「跑完 X 再確認 X 生效」的 pattern,確認步驟另開一條 query
 **為什麼**:單一 SQL statement 的 MVCC snapshot 在 query 開始時就固定。同 SELECT list 內的 sibling 子查詢看不到同句中 VOLATILE function 所做的 UPDATE(那是另一個 statement context 的變更),會讀到 mutation 前的舊狀態。誤判成「沒生效」可能觸發不必要且具破壞性的 rollback/重跑 — 對 adj_factor 這種全表還原尤其危險。驗證一定要在乾淨的後續 query 做。
+
+---
+
+## M9.4 階段 3 Step 1 (M9.4c) 試驗→revert 後(2026-05-16)
+
+### L36 — 結構性 factor 改動「commit/上線前」必須過 OOS 閘;直覺好的 factor 可能殺掉已驗證的集中度 alpha
+**問題**:M9.4c 加第 6 動能 factor mom_strong_persist(ret_60d>0 + close>MA20 + RSI14 50~75,直覺上「補捉 TSMC 類持續強勢」很合理,線上抽查 2330/2454/0050 都正確 =1)。但跑 OOS:**top5 2025 OOS alpha +17.75 → +10.42(-7.33pp)、top5 2024 -22.08 → -34.97(-12.89pp)**,top10 兩年大致持平。直覺與線上抽查完全看不出問題,只有 OOS backtest 揭穿。根因:RSI≤75 上限把「爆發性強勢」(2492 RSI77.7、3006 RSI83.4)相對降權,而那些正是 2025 推升 top5 的大贏家 → 稀釋了 top5 的純度(M9.4a 已驗證的 alpha 來源)。
+**做法**:
+1. 任何「加/改 factor、改 weight、改 entry 規則」這類結構性改動,**commit/宣告成功前一定要跑 in-sample + OOS 雙軌**,並與「當前已驗證基準」(Phase 0.7 honest)逐項比 alpha。in-sample 持平 / 線上抽查合理 **都不算數**
+2. 特別警惕「集中度策略(top5)」:它的 alpha 來自少數爆發股,任何看似中性的新 factor 都可能換掉那幾檔 → 對 top5 比 top10 敏感得多。評估改動要分開看 top5 vs top10
+3. 改動「先 append-only 上 DB 驗 OOS、git 先不 commit」;OOS 沒贏就 revert,**git 從頭就乾淨**(這次因此 revert 成本極低)
+4. 試驗與 revert 都要留痕(migration + commit 都保留),backtest_runs 也留,方便日後審計「為什麼當初沒採用」
+**為什麼**:Andy 要 institutional-grade。直覺合理 + 線上看起來對,是最危險的假陽性 — 會讓人想直接上線。M9.4a 的 top5 集中度 alpha 是整個系統最有價值的發現,任何結構改動的預設假設應是「可能弄壞它」,要 OOS 證明沒弄壞才採用。OOS 閘就是擋這種「看起來很好但實際侵蝕已驗證 edge」的改動。
+
+### L37 — view 鏈改動優先用 append-only CREATE OR REPLACE,不要 drop cascade(revert 才會便宜)
+**問題**:M9.4c 要動 v_price_factors→v_factor_scores→v_stock_rank 鏈。drop cascade 會波及 v_entry_signal/v_rank_with_cost/**v_holdings_advice(餵 /holdings + Telegram)**。若用 drop cascade,revert 時要一次重建整條鏈(含 v_holdings_advice),風險高且 /holdings+Telegram 有短暫破窗。
+**做法**:
+1. view 加 factor/欄位,優先設計成 **append-only**:新欄一律加在 select **最尾端**,既有欄名稱/型別/順序全不動,既有欄的「表達式」可改(如 mom_count 5→6)→ Postgres `create or replace view` 允許、**完全不 cascade**
+2. 下游 view 用 `r.*` 的(如 v_rank_with_cost)不受影響:它在建立時就固定欄位集,上游 append 新欄不會自動傳染也不報錯
+3. revert 時:把「計分表達式」改回舊版即可,append 的 dead 欄留著無害(要清 schema 才需 cascade — 通常不值得那風險)
+**為什麼**:append-only 讓「上線試驗 → OOS 沒過 → 行為 revert」變成純表達式回滾,不碰 cascade、不碰 /holdings/Telegram。這次 revert 因此只改 2 個物件、4 backtest byte-exact 回基準,零生產風險。結構改動的可逆性要在「設計階段」就用 append-only 買起來。
