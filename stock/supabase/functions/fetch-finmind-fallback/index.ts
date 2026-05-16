@@ -53,7 +53,7 @@ async function fetchFinmindForSymbol(
   // deno-lint-ignore no-explicit-any
   return (json.data as any[]).flatMap((r): PriceRow[] => {
     const close = parseFloat(String(r.close));
-    if (!Number.isFinite(close)) return [];
+    if (!Number.isFinite(close) || close <= 0) return []; // close<=0 = 未交易/停牌/髒資料,不寫
     return [{
       symbol: String(r.stock_id),
       trade_date: String(r.date),

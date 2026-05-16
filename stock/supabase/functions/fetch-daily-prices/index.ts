@@ -29,7 +29,7 @@ function parseTWSE(json: unknown): PriceRow[] {
   // deno-lint-ignore no-explicit-any
   return (json as any[]).flatMap((r): PriceRow[] => {
     const close = parseFloat(r.ClosingPrice);
-    if (!Number.isFinite(close)) return [];
+    if (!Number.isFinite(close) || close <= 0) return []; // close<=0 = 未交易/停牌/髒資料,不寫
     return [{
       symbol: String(r.Code),
       trade_date: rocDateToISO(String(r.Date)),
@@ -49,7 +49,7 @@ function parseTPEX(json: unknown): PriceRow[] {
   // deno-lint-ignore no-explicit-any
   return (json as any[]).flatMap((r): PriceRow[] => {
     const close = parseFloat(r.Close);
-    if (!Number.isFinite(close)) return [];
+    if (!Number.isFinite(close) || close <= 0) return []; // close<=0 = 未交易/停牌/髒資料,不寫
     return [{
       symbol: String(r.SecuritiesCompanyCode),
       trade_date: rocDateToISO(String(r.Date)),

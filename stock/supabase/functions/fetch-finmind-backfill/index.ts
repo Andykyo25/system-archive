@@ -190,7 +190,7 @@ Deno.serve(async (req: Request) => {
         // deno-lint-ignore no-explicit-any
         const rows = (data as any[]).flatMap((r) => {
           const close = toN(r.close);
-          if (close == null) return [];
+          if (close == null || close <= 0) return []; // close<=0 = 未交易/停牌/髒資料,不寫
           return [{
             symbol: String(r.stock_id),
             trade_date: String(r.date),
@@ -490,6 +490,17 @@ Deno.serve(async (req: Request) => {
     error: errors.length > 0 ? errors.join("; ").slice(0, 1000) : null,
   }).eq("id", logId);
 
+  // Phase 0 收尾:corporate_action 寫入後自動 recompute adj_factor,
+  // 否則新除權息/分割進來但 adj_factor 沿用舊值 → backtest/選股取價失真。
+  // 同步呼叫(EF 內,無 pg_net async 排序問題)。idempotent + 只更新有變動的列。
+  let adjRecomputed: number | null = null;
+  let adjRecomputeError: string | null = null;
+  if (body.dataset === "corporate_action" && written > 0) {
+    const rc = await supabase.rpc("recompute_adj_factor");
+    if (rc.error) adjRecomputeError = rc.error.message;
+    else adjRecomputed = (rc.data as number | null) ?? null;
+  }
+
   return Response.json({
     dataset: body.dataset,
     range: { start: body.start_date, end: endDate },
@@ -499,5 +510,7 @@ Deno.serve(async (req: Request) => {
     errors: errors.length,
     quota: { used: usedSoFar + apiCalls, budget },
     next_offset_hint: offset + limit,
+    adj_recomputed: adjRecomputed,
+    adj_recompute_error: adjRecomputeError,
   });
 });
