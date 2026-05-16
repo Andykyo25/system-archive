@@ -57,6 +57,7 @@ interface PriceRow {
   symbol: string;
   trade_date: string;
   close: number | string;
+  adj_factor: number | string | null;
 }
 
 interface TradeInsert {
@@ -113,7 +114,10 @@ async function getTradeDates(
   return Array.from(dates).sort();
 }
 
-// 在某日(或之前最近一個交易日)取一組 symbol 的 close
+// 在某日(或之前最近一個交易日)取一組 symbol 的 adj_close(close × adj_factor)
+// Phase 0.6:回測 entry/exit/benchmark 全經此函式,改用還原權值價,
+//   讓除權息/分割不再造成假性報酬。adj_factor 缺值 fallback 1.0(= raw,安全退化)。
+//   adj_factor 全表 = 1.0 時 close×1.0 恆等 raw close → byte 級退版安全網。
 async function getClosesAt(
   sb: SupabaseClient,
   symbols: string[],
@@ -128,7 +132,7 @@ async function getClosesAt(
     .slice(0, 10);
   const { data, error } = await sb
     .from("price_daily")
-    .select("symbol,trade_date,close")
+    .select("symbol,trade_date,close,adj_factor")
     .in("symbol", symbols)
     .gte("trade_date", minDate)
     .lte("trade_date", date)
@@ -140,7 +144,8 @@ async function getClosesAt(
     if (m.has(r.symbol)) continue;
     const c = toN(r.close);
     if (c == null) continue;
-    m.set(r.symbol, { close: c, trade_date: r.trade_date });
+    const f = toN(r.adj_factor) ?? 1; // adj_factor numeric→string(L13);缺值 fallback 1
+    m.set(r.symbol, { close: c * f, trade_date: r.trade_date });
   }
   return m;
 }
