@@ -275,3 +275,15 @@
 3. 在還沒查證前,**不要提改進建議**(我提的「盤中過熱警報」是 over-engineering,因為過熱是隔夜累積、盤前推播已涵蓋)
 4. 被糾正一次後,下一步要**更保守地查證**,而不是換個方向再臆測一次
 **為什麼**:使用者問交易決策分析時,錯誤的系統行為描述會誤導他對「系統能不能信任」的判斷,比一般 code bug 更傷。Andy 要的是「隨時驗證、不要走偏」,臆測系統行為正是最容易走偏的地方。Trust but verify — 對自己的推論也要 verify。
+
+---
+
+## Phase 0.6 退版迴歸後(2026-05-16)
+
+### L35 — 不要在同一個 SQL statement 內「呼叫 data-modifying function + 驗證它的結果」
+**問題**:Phase 0.6 還原 adj_factor 時跑 `select recompute_adj_factor() as r, (select count(*) from price_daily where adj_factor<>1) as chk, ...`。`recompute_adj_factor()`(VOLATILE plpgsql,內含 UPDATE)回傳 92975(確實更新了),但同句的 `chk` 子查詢卻顯示 0、0050 = 1.0/1.0,看起來像「還原失敗」。差點誤判要 rollback / 重跑。實際上還原是成功的 — 獨立查詢一驗就對(adj≠1 = 92975、0050 0.226/1.0)。
+**做法**:
+1. mutation(function 內 UPDATE/INSERT)與「驗證該 mutation 的讀」**必須拆成兩個獨立 execute_sql 呼叫**,不要塞同一條 SELECT 的多個 expression
+2. 看到「mutation 回報有改 N 列、但同句驗證顯示沒變」→ 先想 MVCC snapshot,不要立刻當成失敗去 rollback
+3. 任何「跑完 X 再確認 X 生效」的 pattern,確認步驟另開一條 query
+**為什麼**:單一 SQL statement 的 MVCC snapshot 在 query 開始時就固定。同 SELECT list 內的 sibling 子查詢看不到同句中 VOLATILE function 所做的 UPDATE(那是另一個 statement context 的變更),會讀到 mutation 前的舊狀態。誤判成「沒生效」可能觸發不必要且具破壞性的 rollback/重跑 — 對 adj_factor 這種全表還原尤其危險。驗證一定要在乾淨的後續 query 做。
