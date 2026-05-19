@@ -134,15 +134,22 @@ Deno.serve(async (req: Request) => {
   }
   const TOKEN = tokenRes.data as string;
 
-  const [holdings, watchlist, industry] = await Promise.all([
-    supabase.from("holdings").select("symbol").is("closed_at", null),
-    supabase.from("watchlist").select("symbol"),
-    supabase.from("industry_stocks").select("symbol"),
-  ]);
+  // 收料 symbol 單一來源 v_fetch_universe(根治 holdings_transactions 漏收 drift)。
+  // fallback:view 異常 → 退回原 holdings/watchlist/industry query(零退化)。
+  const fu = await supabase.from("v_fetch_universe").select("symbol");
   const targetSymbols = new Set<string>();
-  for (const r of holdings.data ?? []) targetSymbols.add(r.symbol);
-  for (const r of watchlist.data ?? []) targetSymbols.add(r.symbol);
-  for (const r of industry.data ?? []) targetSymbols.add(r.symbol);
+  if (fu.error) {
+    const [holdings, watchlist, industry] = await Promise.all([
+      supabase.from("holdings").select("symbol").is("closed_at", null),
+      supabase.from("watchlist").select("symbol"),
+      supabase.from("industry_stocks").select("symbol"),
+    ]);
+    for (const r of holdings.data ?? []) targetSymbols.add(r.symbol);
+    for (const r of watchlist.data ?? []) targetSymbols.add(r.symbol);
+    for (const r of industry.data ?? []) targetSymbols.add(r.symbol);
+  } else {
+    for (const r of fu.data ?? []) targetSymbols.add(r.symbol);
+  }
   if (targetSymbols.size === 0) return Response.json({ skipped: "no_target_symbols" });
 
   const today = new Date().toISOString().slice(0, 10);
