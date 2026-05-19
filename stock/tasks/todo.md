@@ -1022,6 +1022,60 @@ Wave 4:M11(依賴 M9 + M10)
 
 ---
 
+## M9.5 — 低基期轉機模式 OOS 回測(2026-05-19)`analyst-deployer`
+
+**起因**:2492 華新科 5/6→5/14 +49.7%,系統 rank 36 沒選到。卡點 ROE 4.7%(連放寬到 5% 都不過)+ 量 1.4x(mom_breakout 寫死要 2x)。Andy 5/12 講好「繼續噴就討論低基期轉機模式」→ 已觸發。**方向:加分路線(新增 factor、不動任何硬門檻)** — 最 append-only、revert 最便宜、不為單一股放寬硬條件(最低 overfit)。
+
+### 新 factor 定義 `mom_low_base_breakout`(boolean,進 mom 維度 5→6)
+- 低基期:`(latest_close - low_120d) / low_120d * 100 < LOW_BASE_PCT`(掃描 {20,25,30,40},先 25 起手)
+- 帶量:`vol_latest > vol_5d_avg * 1.4`
+- 突破:`latest_close >= high_20d * 0.99`(沿用既有 mom_breakout 的 20 日新高定義)
+- null 防護:照 M9.4c — 資料不足(ma/vol/low_120d 任一缺)回 `null::boolean` 不回 false
+- **設計理由**:120d 低點定義「長期低基期」排除崩完短彈假訊號;量1.4x+新高對應 2492 啟動特徵;只在低基期前提認列這種較弱突破 = 非無差別放寬。不動 fund/ROE/v_entry_signal/加權 → 純加分
+
+### 要動的檔(全 append-only,照抄 M9.4c migrations 20260515000006~11 範本)
+- [ ] `新號_v_price_factors_low_base.sql`:agg CTE append `low_120d`;select 尾端 append `pct_from_120d_low` + `mom_low_base_breakout`。既有欄序型別不動(避 cascade)
+- [ ] `新號_v_factor_scores_low_base.sql`:mom_count_pos / mom_count_total 表達式 5→6
+- [ ] `新號_score_universe_at_low_base.sql`:整段 create or replace(=20260515000011 body + 同步加 low_120d/pct/factor + mom_count 6),L32 必同步
+- [ ] 先寫好備用 `新號_*_revert_low_base.sql`:計分回 5、欄位留 dead(和 M9.4c revert 20260515000010/11 一樣)
+- **不動**:run-backtest EF / app_settings / v_entry_signal / v_stock_rank 加權 / holdings·telegram 鏈
+
+### 驗證三閘(L36 具體化,不過閘即 revert)
+- [ ] **Gate 0 零漂移**:套用後 score_universe_at(today) vs v_factor_scores 四維 count 全 0 不一致(L32);加 factor 前 backtest byte-exact = Phase 0.7 錨點
+- [ ] **Gate 1 樣本量/區別力**:2024 全年每 rebalance 日統計 `mom_low_base_breakout=1` 的 (distinct symbol 數、進 top10 次數)。**distinct symbol <15 或進 top10 <10 次 → factor 無區別力,當場 revert,不跑 Gate 2**。並抽查 2492 在 2026-05-06 啟動點 rank 是否上升(驗 factor 真抓得到此 case)
+- [ ] **Gate 2 OOS 對比**:4 run(2024 t10/t5 in、2025 t10/t5 OUT),exec_model='nextopen' 動態成本。baseline = 誠實化 v2(2025 **t5 +24.19** / t10 +13.80;2024 t10 -27.86 / t5 -17.33)。**判準:2025 t5 OUT 不得低於 +24.19 且 2024 不顯著惡化**,沒贏即 revert(L36)
+- [ ] LOW_BASE_PCT 掃 {20,25,30,40} 各跑 Gate 2 選 OOS 最穩;全輸 baseline → 此路不通 revert + 記 lesson
+- [ ] `npm run build` pass(host 跑) + commit + todo review + lesson
+
+### 倖存者偏差 caveat(必附,L38/L39)
+回測 universe=154 檔全 selected_at=2026-05-12。低基期轉機股**最易踩倖存者偏差**(很多衝一下就陣亡,只有活的還在 universe)。即使 Gate 2 贏 baseline 也只證「精選存活集內有效」= 樂觀上偏、非可交易保證。真 de-bias 靠已上線前向紙上追蹤長期累積。
+
+### scope
+4~5 migration(全 append-only 抄 M9.4c)、0 行 EF/前端。實作風險低,時間主要在跑回測掃門檻。
+
+### Review(結案 2026-05-19)— **Gate 1 否決,「低基期」對 2492 是偽命題,Andy 拍板停 M9.5**
+
+**結論**:`mom_low_base_breakout` 前提錯誤,不採用。
+
+**實際 vs spec 偏離(2 處,均更安全/更省)**:
+1. apply 策略改「只先 apply score_universe_at(backtest 路徑),線上 v_price_factors/v_factor_scores 不動」— 原 spec 隱含三檔全 apply(會在未過閘前改線上 /rank);Andy 在意持股零影響,改成過閘才上線。L36/「先評估再決定」精神
+2. Gate 1 即否決 → 沒跑 Gate 2 掃 {20,25,30,40}(省算力,Gate1 存在的意義)
+
+**Gate 1 數據**:2024 樣本量足(145 distinct sym / 1193 sym-day)但 2492 在 5/4~5/18 啟動段(138.5→220 +59%)factor 命中 **全 0**。診斷:2492 的 120d 低點=80(2025底),5 月爆發時距低點 **+30~90%**,是「2025 從 80 漲到 220 的長多段強勢股」非低基期型態;放寬到 40% 也框不到。2024 命中多為台灣大/統一/華南金牛皮股放量,語意偏離。
+
+**收尾驗證(持股零影響,Andy 點名,3 次查證)**:
+- apply 前/後/revert 後三次指紋比對:線上 10 view(持股鏈+選股鏈)md5 全程 byte 零變動;持股 6285/1000/28.4萬 + 10 筆交易紀錄零變動;score_fn 無 DB 物件依賴(deps=[])
+- score_universe_at forward→revert,殘留字串 `low_120d`/`mom_low_base_breakout`/`LOW_BASE_PCT` = **0**,mom 計分回 5 條(mom_above_ma200 收尾),mom_total_max 5。**行為等價回 20260515000011 基線已證**
+- md5 非 byte-exact 回基線 = 良性(SQL prosrc 受 CRLF/空白物理表示影響,非邏輯差異);驗證以行為等價為準(見 L41)
+
+**repo 終態**:留 `20260519000003`(forward,apply 過=史實)+ `20260519000005`(revert,現行,DB 回基線);刪 `000001/000002/000004`(線上 view 從未 apply,留著會被未來 db push 誤套)。沿用 M9.4c「試驗檔+revert 並存」慣例。
+
+**教訓 → lessons L41**:案例契合度驗證(2492 真的符合「低基期」定義嗎)要前置到寫 spec 之前(Gate 0),別憑記憶檔/直覺假設就往下做完整套流程。
+
+**DB 現狀**:score_universe_at = 20260515000011 基線(動能 5 條),零殘留。線上選股/持股/Telegram 全程未受影響。
+
+---
+
 ## 後續可考慮(M8-M11 範圍外)
 
 - 自動下單(券商 API 串接)
