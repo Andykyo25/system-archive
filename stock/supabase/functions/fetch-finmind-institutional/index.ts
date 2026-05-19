@@ -144,26 +144,31 @@ Deno.serve(async (req: Request) => {
   }
   const TOKEN = tokenRes.data as string;
 
-  // ETF 沒法人買賣超(嚴格說有,但意義不同),只抓個股
-  // 從 v_holdings_current(M8.5 新 view)+ watchlist + industry_stocks + stock_universe 取 targetSymbols
-  // 若 v_holdings_current 還沒建,fallback 到原 holdings 表
-  const [holdingsCurrent, watchlist, industry, universe] = await Promise.all([
-    supabase.from("v_holdings_current").select("symbol"),
-    supabase.from("watchlist").select("symbol"),
-    supabase.from("industry_stocks").select("symbol"),
-    supabase.from("stock_universe").select("symbol"),
-  ]);
+  // ETF 沒法人買賣超(嚴格說有,但意義不同),只抓個股 → 讀 v_fetch_universe_stocks(stock 底集,不含 ETF)
+  // 收料 symbol 單一來源(L42 做法3 籌碼側統一,根治籌碼/價格兩套 pattern drift)。
+  // fallback:view 異常 → 退回原 v_holdings_current/watchlist/industry/stock_universe query(零退化,鏡像 c4e850f)。
+  const fu = await supabase.from("v_fetch_universe_stocks").select("symbol");
   const targetSymbols = new Set<string>();
-  if (holdingsCurrent.error) {
-    // M8.5 還沒套用時 fallback 到舊 holdings 表
-    const { data: oldHoldings } = await supabase.from("holdings").select("symbol").is("closed_at", null);
-    for (const r of oldHoldings ?? []) targetSymbols.add(r.symbol);
+  if (fu.error) {
+    const [holdingsCurrent, watchlist, industry, universe] = await Promise.all([
+      supabase.from("v_holdings_current").select("symbol"),
+      supabase.from("watchlist").select("symbol"),
+      supabase.from("industry_stocks").select("symbol"),
+      supabase.from("stock_universe").select("symbol"),
+    ]);
+    if (holdingsCurrent.error) {
+      // M8.5 還沒套用時 fallback 到舊 holdings 表
+      const { data: oldHoldings } = await supabase.from("holdings").select("symbol").is("closed_at", null);
+      for (const r of oldHoldings ?? []) targetSymbols.add(r.symbol);
+    } else {
+      for (const r of holdingsCurrent.data ?? []) targetSymbols.add(r.symbol);
+    }
+    for (const r of watchlist.data ?? []) targetSymbols.add(r.symbol);
+    for (const r of industry.data ?? []) targetSymbols.add(r.symbol);
+    for (const r of universe.data ?? []) targetSymbols.add(r.symbol);
   } else {
-    for (const r of holdingsCurrent.data ?? []) targetSymbols.add(r.symbol);
+    for (const r of fu.data ?? []) targetSymbols.add(r.symbol);
   }
-  for (const r of watchlist.data ?? []) targetSymbols.add(r.symbol);
-  for (const r of industry.data ?? []) targetSymbols.add(r.symbol);
-  for (const r of universe.data ?? []) targetSymbols.add(r.symbol);
   if (targetSymbols.size === 0) return Response.json({ skipped: "no_target_symbols" });
 
   const today = new Date().toISOString().slice(0, 10);

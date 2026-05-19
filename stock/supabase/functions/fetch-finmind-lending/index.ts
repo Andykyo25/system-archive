@@ -87,22 +87,29 @@ Deno.serve(async (req: Request) => {
   }
   const TOKEN = tokenRes.data as string;
 
-  const [holdingsCurrent, watchlist, industry, universe] = await Promise.all([
-    supabase.from("v_holdings_current").select("symbol"),
-    supabase.from("watchlist").select("symbol"),
-    supabase.from("industry_stocks").select("symbol"),
-    supabase.from("stock_universe").select("symbol"),
-  ]);
+  // 收料 symbol 單一來源 v_fetch_universe_stocks(L42 做法3 籌碼側統一,根治兩套 pattern drift)。
+  // fallback:view 異常 → 退回原 v_holdings_current/watchlist/industry/stock_universe query(零退化,鏡像 c4e850f)。
+  const fu = await supabase.from("v_fetch_universe_stocks").select("symbol");
   const targetSymbols = new Set<string>();
-  if (holdingsCurrent.error) {
-    const { data: oldHoldings } = await supabase.from("holdings").select("symbol").is("closed_at", null);
-    for (const r of oldHoldings ?? []) targetSymbols.add(r.symbol);
+  if (fu.error) {
+    const [holdingsCurrent, watchlist, industry, universe] = await Promise.all([
+      supabase.from("v_holdings_current").select("symbol"),
+      supabase.from("watchlist").select("symbol"),
+      supabase.from("industry_stocks").select("symbol"),
+      supabase.from("stock_universe").select("symbol"),
+    ]);
+    if (holdingsCurrent.error) {
+      const { data: oldHoldings } = await supabase.from("holdings").select("symbol").is("closed_at", null);
+      for (const r of oldHoldings ?? []) targetSymbols.add(r.symbol);
+    } else {
+      for (const r of holdingsCurrent.data ?? []) targetSymbols.add(r.symbol);
+    }
+    for (const r of watchlist.data ?? []) targetSymbols.add(r.symbol);
+    for (const r of industry.data ?? []) targetSymbols.add(r.symbol);
+    for (const r of universe.data ?? []) targetSymbols.add(r.symbol);
   } else {
-    for (const r of holdingsCurrent.data ?? []) targetSymbols.add(r.symbol);
+    for (const r of fu.data ?? []) targetSymbols.add(r.symbol);
   }
-  for (const r of watchlist.data ?? []) targetSymbols.add(r.symbol);
-  for (const r of industry.data ?? []) targetSymbols.add(r.symbol);
-  for (const r of universe.data ?? []) targetSymbols.add(r.symbol);
   if (targetSymbols.size === 0) return Response.json({ skipped: "no_target_symbols" });
 
   const today = new Date().toISOString().slice(0, 10);

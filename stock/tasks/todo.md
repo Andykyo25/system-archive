@@ -1098,6 +1098,48 @@ Wave 4:M11(依賴 M9 + M10)
 
 ---
 
+## 籌碼 4 EF 收料 universe 統一(2026-05-19)`data-pipeline` — 計畫待 Andy 拍板
+
+**起因**:L42 做法3 / todo「後續可選①」。c4e850f 已把價格 4 EF 改讀 `v_fetch_universe`,籌碼 4 EF(institutional/margin/lending/shareholding)仍 inline `v_holdings_current ∪ watchlist ∪ industry_stocks ∪ stock_universe`(4 source、**無 etf_metadata**)→ 兩套 pattern,未來新增 source 表會再 drift。
+
+**關鍵發現(非機械鏡像)**:`v_fetch_universe` = 上述 4 + `etf_metadata`(多 **11 檔 ETF**:0050/0052/0056/006208/00679B/00713/00878/00919/00929/00940/00981A)。籌碼現用 universe=149、v_fetch_universe=160。籌碼 EF 直接改讀 v_fetch_universe → 行為改變:
+- 每個籌碼 EF 每跑多 +11 ETF symbol API call
+- `institutional` 明確註解「ETF 沒法人買賣超…只抓個股」→ 收語意無效資料
+- `lending` 已慢性配額耗盡(05-14/05-18「quota exhausted at ~2883」)→ +11 更糟
+
+**建議 Option A(雙 view,零行為改變,真正單一來源)**:
+1. migration:`v_fetch_universe_stocks` = 現籌碼 4 source(無 ETF);`v_fetch_universe` 改 `= v_fetch_universe_stocks ∪ etf_metadata`(對價格側 byte 等同,160 不變、零退化)
+2. 籌碼 4 EF happy path 改讀 `v_fetch_universe_stocks`;fallback **保留各自現有** inline 4-source query(view 異常=今日 byte 等同,鏡像 c4e850f 哲學)
+3. deploy 4 EF,親驗 verify_jwt 全 true 未變、其他 EF 未誤動;response `target_symbols`=**149**(非 160,證 ETF 沒漏入)
+4. 退化錨:`count(v_fetch_universe)`=160 不變(價格側)、`count(v_fetch_universe_stocks)`=149(=舊籌碼數)
+
+**效果**:stock 底集單一定義(`v_fetch_universe_stocks`),未來加 source 表 1 處改、8 EF 自動同步;ETF 為價格側 explicit additive layer。籌碼/價格各自語意零變、零 quota 退化。scope:1 migration + 4 小 EF edit + deploy。
+
+- [x] migration `20260519000008_v_fetch_universe_stocks`(append,不 cascade)— applied
+- [x] 4 籌碼 EF happy path 改 `v_fetch_universe_stocks` + 保留原 fallback
+- [x] deploy 4 EF + 親驗(verify_jwt 全 true 未變 / 僅 4 EF 動 / ezbr sha 變)
+- [x] 退化錨:v_fetch_universe=160(價格側零變)、v_fetch_universe_stocks=149、ETF 洩漏=0、0050 價收/籌排
+- [x] service_role SELECT v_fetch_universe_stocks=149 無錯(EF happy path 可讀,不靜默 fallback)
+- [ ] commit(待 Andy)+ 17:00+ 籌碼 cron 為線上端到端確認點(fetch_log target_symbols 應=149)
+
+### Review(2026-05-19,Option A 完成)
+**結果**:籌碼 4 EF v1→v2 全部署,verify_jwt 全 true 未變,僅 4 個 EF 動到。`v_fetch_universe_stocks`(149 stock 底集)+ `v_fetch_universe`(=stocks∪etf=160,價格側 byte 等同)。零行為改變、零 quota 退化。
+**驗證(L40 紀律,零 FinMind 消耗)**:資料層 + service_role 可讀性雙證;未做整檔 invoke(會燒 ~450 call 且惡化 lending 配額——本次要保護的對象)。線上 cron 17:00+ 為自然端到端確認點。
+**偏離 spec(1 處,更安全)**:未現場 invoke 驗 target_symbols,改以「資料層+權限+部署 sha」三證 + 線上 cron 自然確認(L40:昂貴動作對結論非必要時用等價省做法)。
+**根治效果**:stock 底集單一定義,未來加 source 表 1 處改、籌碼+價格 8 EF 自動同步;ETF 為價格側 explicit additive layer。L42 做法3 達成。
+
+### 健檢順帶發現 → 已修(2026-05-19,Andy 拍板補全 48 檔)
+
+**現象**:健檢發現 2330 缺 05-12~15;深查發現**非 2330 專屬 = 48 檔權值藍籌**(2330/1101/1216/1301/2303/2412/2880…)05-12~15 集體缺 4 天,全 universe 那 4 天 156→108。
+
+**根因(L34 追資料定性)**:這 48 檔平日靠 `finmind` fallback EF 收(TWSE primary STOCK_DAY_ALL 平日只覆蓋 ~89,05-18 擴到 137 才自補)。05-12~15 `finmind` fallback 每天回報 success(rw=107)但**當日列未落地**(price_daily finmind_n 49→1)→ 4 天靜默缺口,被「回報成功」掩蓋(L42 同類)。
+
+**修復**:自助 fetch-finmind-backfill(L42 做法4 / pgnet+vault,token_2),dataset=price symbols=[48] 05-12~15。EF 回 status200 written=**192(=48×4)** errors=0 quota50/600。親驗:05-12~15 每日 108→**156** 回升、2330 連續 05-11..05-18 無洞、藍籌 6 檔全回。backtest/rank/持股這 4 天已正確。
+
+**⚠ 未根治的 recurring 根因(Andy 本次選只補料、未深挖)**:`finmind` fallback「回報 success 卻當日列不落地」會再發;且 2330 等大型藍籌不在 TWSE primary STOCK_DAY_ALL(長期靠 fallback)很脆。**後續候選**:① 查 fetch-finmind-fallback 為何 success 卻 under-land(rw=107/rs=535 固定樣態可疑)② 查為何藍籌不在 TWSE primary ③ signal/coverage 缺口主動告警(L42 做法2,本次又一次靠人工健檢才抓到)。
+
+---
+
 ## 後續可考慮(M8-M11 範圍外)
 
 - 自動下單(券商 API 串接)
