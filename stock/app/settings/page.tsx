@@ -46,7 +46,11 @@ export default async function SettingsPage() {
 
   // 分組 settings:budget_ntd 獨立 / 其他歸「factor / 費率」
   const budgetSetting = settingsList.find((s) => s.key === "budget_ntd") ?? null;
-  const otherSettings = settingsList.filter((s) => s.key !== "budget_ntd");
+  const defaultTopNSetting =
+    settingsList.find((s) => s.key === "default_top_n") ?? null;
+  const otherSettings = settingsList.filter(
+    (s) => s.key !== "budget_ntd" && s.key !== "default_top_n",
+  );
 
   return (
     <div className="space-y-10">
@@ -60,6 +64,22 @@ export default async function SettingsPage() {
         ) : (
           <p className="rounded-lg border border-zinc-800 bg-zinc-900 p-3 text-sm text-zinc-500">
             budget_ntd 設定尚未建立(套用 migration 71 後會自動出現)
+          </p>
+        )}
+      </section>
+
+      <section>
+        <h2 className="mb-1 text-lg font-semibold">排名展示預設</h2>
+        <p className="mb-4 text-xs text-zinc-500">
+          影響 /rank 頁預設精選檔數(整數 5~50)。Top 5 集中度:2025 OOS alpha
+          +24.19 vs Top 10 +13.80(誠實化 v2,兩年一致勝)。⚠ 受倖存者偏差
+          caveat — 樂觀估計,非可交易保證。/rank 仍可用 ?focus= 臨時切。
+        </p>
+        {defaultTopNSetting ? (
+          <DefaultTopNRow setting={defaultTopNSetting} />
+        ) : (
+          <p className="rounded-lg border border-zinc-800 bg-zinc-900 p-3 text-sm text-zinc-500">
+            default_top_n 設定尚未建立(套用 migration 後會自動出現)
           </p>
         )}
       </section>
@@ -135,6 +155,42 @@ function BudgetRow({ setting }: { setting: AppSetting }) {
         step="1"
         min="0"
         placeholder="20 = 20 萬,0 = 不 filter"
+        defaultValue={String(setting.value)}
+        className={inputCls}
+      />
+      <button className={btnCls + " w-full"}>儲存</button>
+    </form>
+  );
+}
+
+function DefaultTopNRow({ setting }: { setting: AppSetting }) {
+  // M9.4a:整數 5~50。Top 5 集中度 2025 OOS alpha +24.19(誠實化 v2;
+  //   受倖存者偏差 caveat)。預設 30 全覽。updateSetting 不做範圍檢查,
+  //   靠此 input min/max + /rank 讀取端 clamp 防呆。
+  const v = Number(setting.value);
+  const isValid = Number.isInteger(v) && v >= 5 && v <= 50;
+  return (
+    <form
+      action={updateSetting}
+      className="grid grid-cols-1 gap-2 rounded-lg border border-zinc-800 bg-zinc-900 p-3 md:grid-cols-[1fr_240px_100px]"
+    >
+      <div>
+        <div className="font-mono text-sm text-zinc-200">{setting.key}</div>
+        <div className="text-xs text-zinc-500">
+          /rank 預設精選檔數(整數 5~50)
+          {isValid && (
+            <span className="ml-2 text-emerald-400">= Top {Math.round(v)}</span>
+          )}
+        </div>
+      </div>
+      <input type="hidden" name="key" value={setting.key} />
+      <input
+        name="value"
+        type="number"
+        step="1"
+        min="5"
+        max="50"
+        placeholder="5 = 集中度,30 = 全覽"
         defaultValue={String(setting.value)}
         className={inputCls}
       />

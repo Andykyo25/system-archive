@@ -45,7 +45,9 @@ interface NameMap {
 function buildRankHref(opts: { ignoreBudget?: boolean; focus?: number }): string {
   const qs: string[] = [];
   if (opts.ignoreBudget) qs.push("ignore_budget=1");
+  // M9.4a:focus=5/30 為臨時覆寫(優先於 default_top_n setting)
   if (opts.focus === 5) qs.push("focus=5");
+  else if (opts.focus === 30) qs.push("focus=30");
   return qs.length > 0 ? `/rank?${qs.join("&")}` : "/rank";
 }
 
@@ -58,24 +60,43 @@ export default async function RankPage({
   const sp = await searchParams;
   // ?ignore_budget=1 → 不套用預算 filter(一鍵切「不考慮資產」)
   const ignoreBudget = sp.ignore_budget === "1";
-  // ?focus=5 → 高集中模式(M9.4a backtest alpha -4.22%);預設 30 維持原行為
-  const focus = sp.focus === "5" ? 5 : 30;
 
-  const [{ data: ranks }, { data: signals }, { data: settingRow }] = await Promise.all([
-    // M9.3:改讀 v_rank_with_cost(多了 cost_per_lot_ntd 給 budget filter)
-    // 撈多一些(限 80 檔)再 SSR filter,因為 budget filter 後可能剩很少
-    sb
-      .from("v_rank_with_cost")
-      .select("*")
-      .order("expected_rank", { ascending: true })
-      .limit(80),
-    sb.from("v_entry_signal").select("symbol, is_entry_signal, signal_strength"),
-    sb
-      .from("app_settings")
-      .select("value")
-      .eq("key", "budget_ntd")
-      .maybeSingle(),
-  ]);
+  const [{ data: ranks }, { data: signals }, { data: settingRow }, { data: topNRow }] =
+    await Promise.all([
+      // M9.3:改讀 v_rank_with_cost(多了 cost_per_lot_ntd 給 budget filter)
+      // 撈多一些(限 80 檔)再 SSR filter,因為 budget filter 後可能剩很少
+      sb
+        .from("v_rank_with_cost")
+        .select("*")
+        .order("expected_rank", { ascending: true })
+        .limit(80),
+      sb.from("v_entry_signal").select("symbol, is_entry_signal, signal_strength"),
+      sb
+        .from("app_settings")
+        .select("value")
+        .eq("key", "budget_ntd")
+        .maybeSingle(),
+      // M9.4a:default_top_n setting(預設精選檔數)
+      sb
+        .from("app_settings")
+        .select("value")
+        .eq("key", "default_top_n")
+        .maybeSingle(),
+    ]);
+
+  // M9.4a:default_top_n → /rank 預設精選檔數。
+  // 依據:top5 集中度 2025 OOS alpha +24.19 vs top10 +13.80(誠實化 v2,兩年一致
+  //   勝 top10、sharpe 更高、maxDD 不更差,非 overfit)。⚠ 受倖存者偏差 caveat
+  //   (154 檔全 2026-05-12 selected)→ 樂觀估計,非可交易保證。
+  // 防呆:updateSetting 不做範圍檢查,故此處 clamp 整數 5~50,否則 fallback 30。
+  const rawTopN = Number(
+    (topNRow as { value: number | string | null } | null)?.value ?? 30,
+  );
+  const defaultTopN =
+    Number.isInteger(rawTopN) && rawTopN >= 5 && rawTopN <= 50 ? rawTopN : 30;
+  // ?focus= 臨時覆寫優先於 setting(focus=5/30);否則用 default_top_n
+  const focus =
+    sp.focus === "5" ? 5 : sp.focus === "30" ? 30 : defaultTopN;
 
   const allRows = (ranks as RankWithCostRow[] | null) ?? [];
   const signalRows = (signals as SignalRow[] | null) ?? [];
@@ -170,7 +191,7 @@ export default async function RankPage({
               {" · "}全市場共 {totalEntryCount} 檔 entry signal
             </p>
           </div>
-          <FocusToggle focus={focus} ignoreBudget={ignoreBudget} />
+          <FocusToggle focus={focus} ignoreBudget={ignoreBudget} defaultTopN={defaultTopN} />
         </div>
         <BudgetHeader
           hasBudget={hasBudget}
@@ -185,7 +206,10 @@ export default async function RankPage({
           <Link href="/settings" className="text-blue-400 hover:underline">
             Settings
           </Link>{" "}
-          調)。資料缺維度時權重 reallocate 給其他維度。Top 5 = M9.4a backtest 集中度策略(2024 alpha −4.22% / Sharpe 1.50)。
+          調)。資料缺維度時權重 reallocate 給其他維度。預設顯示 Top {defaultTopN}
+          (可在 Settings 改 default_top_n,下方可臨時切)。Top 5 集中度:2025 OOS
+          alpha +24.19 vs Top 10 +13.80(誠實化 v2,兩年一致勝)。⚠ 受倖存者偏差
+          caveat — 樂觀估計,非可交易保證。
         </p>
       </header>
 
@@ -208,31 +232,43 @@ export default async function RankPage({
 function FocusToggle({
   focus,
   ignoreBudget,
+  defaultTopN,
 }: {
   focus: number;
   ignoreBudget: boolean;
+  defaultTopN: number;
 }) {
-  // 精選 Top 5 (M9.4a backtest 集中度策略,2024 alpha -4.22) vs 完整 Top 30 (預設,全覽)
+  // M9.4a:Top 5 集中度 / Top 30 全覽 為臨時覆寫(?focus=,優先於 setting)。
+  // 預設檔數由 default_top_n setting 控制(/settings),非此處。
   const tabBase =
     "inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition";
   const tabActiveFocus = "bg-amber-600 text-white shadow-sm";
   const tabActiveFull = "bg-zinc-700 text-white shadow-sm";
   const tabIdle = "text-zinc-400 hover:text-zinc-200";
   return (
-    <div className="inline-flex rounded-lg border border-zinc-800 bg-zinc-950 p-1">
-      <Link
-        href={buildRankHref({ ignoreBudget, focus: 5 })}
-        className={`${tabBase} ${focus === 5 ? tabActiveFocus : tabIdle}`}
-        title="M9.4a 集中度策略(backtest 2024 alpha -4.22% / Sharpe 1.50)"
-      >
-        🎯 精選 Top 5
-      </Link>
-      <Link
-        href={buildRankHref({ ignoreBudget })}
-        className={`${tabBase} ${focus === 30 ? tabActiveFull : tabIdle}`}
-      >
-        完整 Top 30
-      </Link>
+    <div className="flex flex-wrap items-center gap-2">
+      <div className="inline-flex rounded-lg border border-zinc-800 bg-zinc-950 p-1">
+        <Link
+          href={buildRankHref({ ignoreBudget, focus: 5 })}
+          className={`${tabBase} ${focus === 5 ? tabActiveFocus : tabIdle}`}
+          title="集中度策略:2025 OOS alpha +24.19 vs Top10 +13.80(誠實化 v2;受倖存者偏差 caveat,樂觀估計非保證)"
+        >
+          🎯 Top 5
+        </Link>
+        <Link
+          href={buildRankHref({ ignoreBudget, focus: 30 })}
+          className={`${tabBase} ${focus === 30 ? tabActiveFull : tabIdle}`}
+        >
+          Top 30
+        </Link>
+      </div>
+      <span className="text-xs text-zinc-500">
+        預設 Top {defaultTopN}(可在{" "}
+        <Link href="/settings" className="text-blue-400 hover:underline">
+          /settings
+        </Link>{" "}
+        改 default_top_n)
+      </span>
     </div>
   );
 }
@@ -277,7 +313,7 @@ function BudgetHeader({
     <div className="mt-2 flex flex-wrap items-center gap-2">
       <div className="inline-flex rounded-lg border border-zinc-800 bg-zinc-950 p-1">
         <Link
-          href={buildRankHref({ focus: focus === 5 ? 5 : undefined })}
+          href={buildRankHref({ focus: focus === 5 ? 5 : focus === 30 ? 30 : undefined })}
           className={`${tabBase} ${!ignoreBudget ? tabActiveBudget : tabIdle}`}
         >
           依預算 {wan} 萬
@@ -286,7 +322,7 @@ function BudgetHeader({
           </span>
         </Link>
         <Link
-          href={buildRankHref({ ignoreBudget: true, focus: focus === 5 ? 5 : undefined })}
+          href={buildRankHref({ ignoreBudget: true, focus: focus === 5 ? 5 : focus === 30 ? 30 : undefined })}
           className={`${tabBase} ${ignoreBudget ? tabActiveAll : tabIdle}`}
         >
           全部
