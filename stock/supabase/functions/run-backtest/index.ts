@@ -37,6 +37,9 @@ interface RunReq {
   cost_pct?: number;
   // 'nextopen'(預設,誠實:隔日開盤成交)| 'close'(退版錨點:錨點收盤成交)
   exec_model?: "nextopen" | "close";
+  // M9.4b:>0 啟用停損(持有期 low 跌破 entry×(1-x/100) 即誠實出場);
+  //   0/未給=無停損(stop_loss_pct=0 整段 short-circuit,退版錨點 byte-exact)
+  stop_loss_pct?: number;
 }
 
 interface ScoreRow {
@@ -254,6 +257,8 @@ Deno.serve(async (req: Request) => {
   const benchmarkSymbol = body.benchmark_symbol ?? "0050";
   const execModel = body.exec_model === "close" ? "close" : "nextopen";
   const costOverride = body.cost_pct == null ? null : body.cost_pct;
+  // M9.4b 停損 %:0/未給 = 無停損(整段 short-circuit,退版錨點 byte-exact)
+  const stopLossPct = body.stop_loss_pct == null ? 0 : body.stop_loss_pct;
   if (rebalanceDays < 1 || rebalanceDays > 250) {
     return Response.json({ error: "rebalance_days out of range" }, { status: 400 });
   }
@@ -262,6 +267,9 @@ Deno.serve(async (req: Request) => {
   }
   if (costOverride != null && (costOverride < 0 || costOverride > 5)) {
     return Response.json({ error: "cost_pct out of range (0-5)" }, { status: 400 });
+  }
+  if (stopLossPct < 0 || stopLossPct > 50) {
+    return Response.json({ error: "stop_loss_pct out of range (0-50)" }, { status: 400 });
   }
 
   // 動態 ETF 差別成本(cost_pct 未給時)— 從 app_settings 拿,對齊 holdings 層
@@ -295,6 +303,7 @@ Deno.serve(async (req: Request) => {
     exec_model: execModel,
     cost_pct: costOverride, // null = 動態 ETF 差別
     cost_model: costOverride == null ? "dynamic_etf_diff" : "flat_override",
+    stop_loss_pct: stopLossPct, // M9.4b:0 = 無停損
   };
 
   const { data: runRow, error: runErr } = await sb
@@ -372,6 +381,7 @@ Deno.serve(async (req: Request) => {
   const equityCurve: number[] = [equity];
   const benchEquityCurve: number[] = [benchEquity];
   let skippedLimitUp = 0;
+  let stopLossTriggered = 0; // M9.4b:本 run 因停損提前出場的筆數
 
   for (const pt of points) {
     const rankDate = tradeDates[pt.rankIdx];
@@ -442,10 +452,31 @@ Deno.serve(async (req: Request) => {
     const validReturns: number[] = [];
     for (const r of rankRows) {
       const e = entryPrice(r.symbol);
-      const x = exitPrice(r.symbol);
+      let x = exitPrice(r.symbol);
       if (!e || !x || e.price <= 0) {
         if (!e) skippedLimitUp++; // 含買不到(鎖漲停/無資料)
         continue;
+      }
+      // M9.4b 停損:持有期 (e.date, x.date] 首根 low 跌破 stopLine → 誠實出場。
+      //   stopLossPct=0 整段不執行(退版錨點 byte-exact 鐵律)。
+      if (stopLossPct > 0) {
+        const stopLine = e.price * (1 - stopLossPct / 100);
+        const arr = bars.get(r.symbol);
+        if (arr) {
+          for (const b of arr) {
+            if (b.trade_date <= e.date) continue; // 進場日當天不算(成交後才建倉)
+            if (b.trade_date > x.date) break; // 超過正常出場 → 不觸發
+            if (b.low != null && b.low <= stopLine) {
+              // 誠實出場價:跳空開盤已 ≤ 停損線 → 用 open(可能比 -x% 更糟);
+              //   盤中才跌破 → 用停損線價(觸價單假設)。一字鎖跌停亦走 open(認最差)
+              const stopExit =
+                b.open != null && b.open <= stopLine ? b.open : stopLine;
+              x = { price: stopExit, date: b.trade_date };
+              stopLossTriggered++;
+              break;
+            }
+          }
+        }
       }
       const ret = (x.price - e.price) / e.price - costFor(r.symbol);
       trades.push({
@@ -539,6 +570,7 @@ Deno.serve(async (req: Request) => {
     n_trades: strategyTrades.length,
     n_rebalances: points.length,
     skipped_limit_up_or_nodata: skippedLimitUp,
+    stop_loss_triggered_count: stopLossTriggered,
     exec_model: execModel,
     cost_model: costOverride == null ? "dynamic_etf_diff" : `flat_${costOverride}`,
     equity_curve: equityCurve.map((v) => Number(v.toFixed(4))),
