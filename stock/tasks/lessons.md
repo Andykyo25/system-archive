@@ -346,3 +346,16 @@
 3. L36/L39 是「結構改動要 OOS-gate、方向不可預設」;L41 補的是**時序**:連「目標案例符不符合定義」這種最基本前提,都要前置查證,不能憑記憶檔/直覺假設就往下做 spec
 4. 附帶:revert function 後驗證**以行為等價為準**(殘留字串=0 + 關鍵輸出回基線 + 下游 view md5 零變動),**勿用 `pg_get_functiondef` md5 byte-exact** — SQL language function 的 prosrc 原樣存字串,受 CRLF↔LF/空白物理表示影響,md5 不等常是良性,會誤判
 **為什麼**:Andy 要 institutional-grade + token 紀律(L40)。最貴的浪費不是「做錯」,是「在錯誤前提上把整套流程做到很後面才發現前提錯」。前提驗證成本極低(一個 SQL 查案例時間序列),卻能在投入任何實作前砍掉偽命題 — 這個 ROI 比任何後置 gate 都高。「先確認你要打的靶真的長那樣,再上膛」。
+
+---
+
+## 持股分析殘缺 — 沉默 drift(2026-05-19)
+
+### L42 — 局部換介面必掃全鏈一起升;沉默資料殘缺要主動告警;宣告「環境受限」前先窮舉系統既有機制
+**問題**:M8.5 持股改 transaction-log(`holdings` 表 → `v_holdings_current`)。籌碼 4 EF 跟著升級讀 v_holdings_current,但**價格類 4 EF(daily-prices/fundamentals/monthly-revenue/valuation)沒跟上**,仍讀舊 holdings 表 → 沉默 drift。使用者持股 6285(用 transaction-log 記)恰好踩盲區:price/fundamentals/monthly_revenue 全 0 筆 → v_factor_scores fund/mom 0/0、signal=insufficient_data、rank #10(只籌碼撐的**假象**)。但 /holdings 靜靜顯示「持續抱、符合紀律」(無資料默認),使用者一直以為系統在分析他最重要的持股,實際是瞎的。真實 6285 補完料後 rank #10→#60。
+**做法**:
+1. 局部換介面(舊表→新 view)時,**grep 全部依賴舊介面的元件、列 drift 清單一次全升**,不可只改「當下在動的那幾個」。partial migration = 沉默 drift 溫床(這次籌碼升了價格沒升,半年沒人發現)
+2. 使用者最在意資料(持股)的分析殘缺是**沉默失敗,要主動偵測告警**:signal=insufficient_data 的持股該醒目警示,而非靜靜顯示「持續抱」。無資料 ≠ 沒問題(對照 L34/L38:0 常是「沒收集」非「沒事」)
+3. 根治用**單一事實來源 view**(v_fetch_universe)讓未來新元件無法再各自定義 → 勝過「逐一 copy 正確 pattern」(後者仍 N 份重複會再 drift)。Andy 拍板選這個
+4. 宣告「環境受限」(如無 EF invoke 工具)**之前先窮舉系統既有機制**:這次差點輕易交 host,實際 pg_cron 本就用 `net.http_post + vault edge_function_auth` 呼叫 EF,經 execute_sql 複用同 pattern 即可自助觸發 backfill。受限是最後結論、不是第一反應
+**為什麼**:Andy「持股最重要、分析最精準」。沉默 drift 最危險 — 系統「看起來在運作」(有 rank、有建議)卻對使用者最在意標的瞎分析,還用「無資料默認」偽裝成正常,差點讓使用者基於假 rank #10 安心。institutional:換介面全鏈掃、殘缺要告警、根治要單一來源;且「我做不到」前先把系統既有能力翻一遍。

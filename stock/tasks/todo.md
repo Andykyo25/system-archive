@@ -1076,6 +1076,28 @@ Wave 4:M11(依賴 M9 + M10)
 
 ---
 
+## 持股自動完整追蹤根治 + 6285 止血(2026-05-19)`data-pipeline`
+
+**起因**:Andy 截圖質疑持股 6285 分析不精準。診斷:6285 用 transaction-log 記、不在追蹤名單,price/fundamentals/monthly_revenue/pe_pb 全 0 筆 → v_factor_scores fund/mom 0/0、signal=insufficient_data、rank #10(只籌碼撐的假象);/holdings「持續抱」是無資料默認非分析。
+
+**根因**:M8.5 持股改 transaction-log 後,籌碼 4 EF 升級讀 v_holdings_current,但價格類 4 EF(daily-prices/fundamentals/monthly-revenue/valuation)沒跟上仍讀舊 holdings 表 → 沉默 drift(半年沒人發現,使用者持股恰好踩盲區才暴露)。
+
+**做法(Andy 拍板:建單一來源根治)**:
+- 新 view `v_fetch_universe`(=v_holdings_current∪watchlist∪industry∪stock_universe∪etf,migration 20260519000007)
+- 4 EF symbol source 改讀 view + fallback=各自原 query(view 異常零退化)。籌碼 EF 不動(已正確,只動該動的)
+- deploy 親驗:fetch-daily-prices v7 / fundamentals v2 / monthly-revenue v2 / valuation v3(verify_jwt 全 true 未變、其他 EF 未誤動)
+- 6285 backfill **自助完成**(複用 cron pg_net+vault pattern 經 execute_sql,非交 host):price 810 / fundamentals 13 / monthly_revenue 41 / valuation 811,errors 全 0,token_2 quota ~8
+
+**結果**:6285 v_factor_scores fund 0/0→7(過5)、mom 0/0→5(過2);v_holdings_advice signal `insufficient_data`→`normal`、rank **#10→#60**、wscore 50.57。**之前 #10 是資料缺失假象,真實 #60 — Andy 持股決策現在才建立在真實分析上**。
+
+**根治效果**:下次日更 cron 自動收 6285 + 未來任何新持股自動完整收料,單一來源 view 杜絕未來 drift。
+
+**commit**:`c4e850f`(已 push origin/main)。教訓 → lessons **L42**。記憶 → `stock_ef_invoke_via_pgnet`(無 invoke 工具時自助觸發 EF 途徑)。
+
+**後續可選(非本次 scope)**:① 籌碼 4 EF 也統一改用 v_fetch_universe(目前 inline 仍兩套) ② 持股 signal=insufficient_data 主動告警(沉默失敗偵測,L42 做法2)。
+
+---
+
 ## 後續可考慮(M8-M11 範圍外)
 
 - 自動下單(券商 API 串接)
