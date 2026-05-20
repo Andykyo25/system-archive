@@ -40,6 +40,11 @@ interface RunReq {
   // M9.4b:>0 啟用停損(持有期 low 跌破 entry×(1-x/100) 即誠實出場);
   //   0/未給=無停損(stop_loss_pct=0 整段 short-circuit,退版錨點 byte-exact)
   stop_loss_pct?: number;
+  // 波動正規化停損(L43,與 stop_loss_pct 三者互斥,多個 >0 → 400):
+  //   A. stop_atr_mult>0:進場日 ATR14 算一次,stopLine=entry−k×ATR(全期固定)
+  stop_atr_mult?: number;
+  //   B. stop_chandelier_mult>0:逐 bar stopLine=max(high,entry..t)−k×ATR14_t(順勢移動鎖利)
+  stop_chandelier_mult?: number;
 }
 
 interface ScoreRow {
@@ -216,6 +221,25 @@ function addDays(iso: string, days: number): string {
     .toISOString().slice(0, 10);
 }
 
+// ATR(n):TR=max(H−L,|H−prevC|,|L−prevC|) 的 n 期均(SMA-ATR,確定性)。
+// bars sorted-asc。需 endIdx 當根含前 n-1 根 + 各自前一根算 prevClose →
+// endIdx >= n。資料不足 / OHLC 缺值 → 回 null(不偽造,L23/L42 精神)。
+function atrAt(bars: Bar[], endIdx: number, n: number): number | null {
+  if (endIdx < n || endIdx >= bars.length) return null;
+  let sum = 0;
+  for (let i = endIdx - n + 1; i <= endIdx; i++) {
+    const b = bars[i];
+    const p = bars[i - 1];
+    if (b.high == null || b.low == null || p.close == null) return null;
+    sum += Math.max(
+      b.high - b.low,
+      Math.abs(b.high - p.close),
+      Math.abs(b.low - p.close),
+    );
+  }
+  return sum / n;
+}
+
 Deno.serve(async (req: Request) => {
   const auth = req.headers.get("authorization");
   if (!auth?.startsWith("Bearer ")) {
@@ -259,6 +283,10 @@ Deno.serve(async (req: Request) => {
   const costOverride = body.cost_pct == null ? null : body.cost_pct;
   // M9.4b 停損 %:0/未給 = 無停損(整段 short-circuit,退版錨點 byte-exact)
   const stopLossPct = body.stop_loss_pct == null ? 0 : body.stop_loss_pct;
+  // 波動正規化停損(L43):ATR-static / Chandelier,k 倍數;0/未給 = 不啟用
+  const stopAtrMult = body.stop_atr_mult == null ? 0 : body.stop_atr_mult;
+  const stopChandelierMult =
+    body.stop_chandelier_mult == null ? 0 : body.stop_chandelier_mult;
   if (rebalanceDays < 1 || rebalanceDays > 250) {
     return Response.json({ error: "rebalance_days out of range" }, { status: 400 });
   }
@@ -270,6 +298,18 @@ Deno.serve(async (req: Request) => {
   }
   if (stopLossPct < 0 || stopLossPct > 50) {
     return Response.json({ error: "stop_loss_pct out of range (0-50)" }, { status: 400 });
+  }
+  if (stopAtrMult < 0 || stopAtrMult > 20) {
+    return Response.json({ error: "stop_atr_mult out of range (0-20)" }, { status: 400 });
+  }
+  if (stopChandelierMult < 0 || stopChandelierMult > 20) {
+    return Response.json({ error: "stop_chandelier_mult out of range (0-20)" }, { status: 400 });
+  }
+  // 三停損模式互斥:同時 >1 個 >0 → 語意含混,擋下
+  if ([stopLossPct, stopAtrMult, stopChandelierMult].filter((v) => v > 0).length > 1) {
+    return Response.json({
+      error: "stop modes mutually exclusive: set only one of stop_loss_pct / stop_atr_mult / stop_chandelier_mult",
+    }, { status: 400 });
   }
 
   // 動態 ETF 差別成本(cost_pct 未給時)— 從 app_settings 拿,對齊 holdings 層
@@ -304,6 +344,8 @@ Deno.serve(async (req: Request) => {
     cost_pct: costOverride, // null = 動態 ETF 差別
     cost_model: costOverride == null ? "dynamic_etf_diff" : "flat_override",
     stop_loss_pct: stopLossPct, // M9.4b:0 = 無停損
+    stop_atr_mult: stopAtrMult, // L43 A:0 = 不啟用
+    stop_chandelier_mult: stopChandelierMult, // L43 B:0 = 不啟用
   };
 
   const { data: runRow, error: runErr } = await sb
@@ -381,7 +423,8 @@ Deno.serve(async (req: Request) => {
   const equityCurve: number[] = [equity];
   const benchEquityCurve: number[] = [benchEquity];
   let skippedLimitUp = 0;
-  let stopLossTriggered = 0; // M9.4b:本 run 因停損提前出場的筆數
+  let stopLossTriggered = 0; // 本 run 因停損提前出場的筆數(三模式共用)
+  let atrSeedUnavailable = 0; // L43 透明:ATR 模式但進場 ATR14 資料不足、該持股本期未施停損的筆數
 
   for (const pt of points) {
     const rankDate = tradeDates[pt.rankIdx];
@@ -408,7 +451,9 @@ Deno.serve(async (req: Request) => {
     // 涵蓋 entry 前一根(prev_close 算鎖死)~ exit 之後 8 交易日(出場跌停往後找)
     const symbols = rankRows.map((r) => r.symbol);
     const allSyms = Array.from(new Set([...symbols, benchmarkSymbol]));
-    const fetchStart = addDays(tradeDates[Math.max(0, pt.rankIdx - 1)], -10);
+    // -30(原 -10):多備 ~14 交易日給 ATR14 種子(L43)。只擴 fetch 窗,
+    // 既有 entry/exit/固定%停損皆 date-indexed/date-guarded → byte 不變(L39)。
+    const fetchStart = addDays(tradeDates[Math.max(0, pt.rankIdx - 1)], -30);
     const fetchEnd = addDays(tradeDates[Math.min(last, pt.exitIdx + 8)], 2);
     const bars = await getBarsRange(sb, allSyms, fetchStart, fetchEnd);
 
@@ -457,17 +502,55 @@ Deno.serve(async (req: Request) => {
         if (!e) skippedLimitUp++; // 含買不到(鎖漲停/無資料)
         continue;
       }
-      // M9.4b 停損:持有期 (e.date, x.date] 首根 low 跌破 stopLine → 誠實出場。
-      //   stopLossPct=0 整段不執行(退版錨點 byte-exact 鐵律)。
-      if (stopLossPct > 0) {
-        const stopLine = e.price * (1 - stopLossPct / 100);
+      // 停損(三互斥模式;持有期 (e.date, x.date] 首根 low 跌破 stopLine → 誠實出場)。
+      //   三者全 0 → 整段不執行(退版錨點 byte-exact 鐵律,L39)。
+      //   stopLossPct>0 路徑與舊版逐 bar/觸發/誠實出場完全等價(byte-exact)。
+      if (stopLossPct > 0 || stopAtrMult > 0 || stopChandelierMult > 0) {
         const arr = bars.get(r.symbol);
         if (arr) {
-          for (const b of arr) {
+          const eIdx = arr.findIndex((b) => b.trade_date === e.date);
+          // A/B 進場日 ATR14(資料不足 → null,不偽造)
+          const atrEntry =
+            (stopAtrMult > 0 || stopChandelierMult > 0) && eIdx >= 0
+              ? atrAt(arr, eIdx, 14)
+              : null;
+          if (
+            (stopAtrMult > 0 || stopChandelierMult > 0) && eIdx >= 0 &&
+            atrEntry == null
+          ) {
+            atrSeedUnavailable++; // 該持股本期 ATR 種子不足 → 不施停損(透明計數)
+          }
+          // 固定 %(保留舊行為)/ A ATR-static(進場算一次全期固定)
+          const fixedStopLine =
+            stopLossPct > 0 ? e.price * (1 - stopLossPct / 100) : null;
+          const atrStopLine =
+            stopAtrMult > 0 && atrEntry != null
+              ? e.price - stopAtrMult * atrEntry
+              : null;
+          // B Chandelier 滾動最高(含進場日 high 起算)
+          let runHigh =
+            stopChandelierMult > 0 && eIdx >= 0 && arr[eIdx].high != null
+              ? (arr[eIdx].high as number)
+              : -Infinity;
+          for (let i = eIdx >= 0 ? eIdx + 1 : 0; i < arr.length; i++) {
+            const b = arr[i];
             if (b.trade_date <= e.date) continue; // 進場日當天不算(成交後才建倉)
             if (b.trade_date > x.date) break; // 超過正常出場 → 不觸發
+            let stopLine: number | null = null;
+            if (fixedStopLine != null) {
+              stopLine = fixedStopLine;
+            } else if (atrStopLine != null) {
+              stopLine = atrStopLine;
+            } else if (stopChandelierMult > 0) {
+              if (b.high != null && b.high > runHigh) runHigh = b.high;
+              const atrT = atrAt(arr, i, 14);
+              if (atrT != null && runHigh > -Infinity) {
+                stopLine = runHigh - stopChandelierMult * atrT;
+              }
+            }
+            if (stopLine == null) continue; // 資料不足這根跳過(下一根可能就夠)
             if (b.low != null && b.low <= stopLine) {
-              // 誠實出場價:跳空開盤已 ≤ 停損線 → 用 open(可能比 -x% 更糟);
+              // 誠實出場價:跳空開盤已 ≤ 停損線 → 用 open(可能比停損線更糟);
               //   盤中才跌破 → 用停損線價(觸價單假設)。一字鎖跌停亦走 open(認最差)
               const stopExit =
                 b.open != null && b.open <= stopLine ? b.open : stopLine;
@@ -571,6 +654,7 @@ Deno.serve(async (req: Request) => {
     n_rebalances: points.length,
     skipped_limit_up_or_nodata: skippedLimitUp,
     stop_loss_triggered_count: stopLossTriggered,
+    atr_seed_unavailable: atrSeedUnavailable,
     exec_model: execModel,
     cost_model: costOverride == null ? "dynamic_etf_diff" : `flat_${costOverride}`,
     equity_curve: equityCurve.map((v) => Number(v.toFixed(4))),

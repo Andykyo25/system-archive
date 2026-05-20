@@ -67,6 +67,14 @@ interface Summary {
   count_closed: number | string;
 }
 
+// v_portfolio_summary 提供「淨」未實現損益(扣雙邊手續費 + 證交稅),
+// /holdings 的「未實現淨損益」Card 用此對齊 dashboard /(同樣讀 v_portfolio_summary.net_total_pnl)。
+interface PortfolioSummary {
+  total_pnl: number | string;       // gross 未實現(= summary.total_unrealized_pnl)
+  net_total_pnl: number | string;   // 扣手續費後的淨未實現
+  net_total_pct: number | string;
+}
+
 interface FeeSettings {
   feeRate: number;
   taxStock: number;
@@ -103,6 +111,7 @@ export default async function HoldingsPage() {
   const sb = createClient();
   const [
     { data: summary },
+    { data: portfolio },
     { data: holdings },
     { data: realized },
     { data: transactions },
@@ -110,6 +119,10 @@ export default async function HoldingsPage() {
     fees,
   ] = await Promise.all([
     sb.from("v_holdings_summary").select("*").single(),
+    sb
+      .from("v_portfolio_summary")
+      .select("total_pnl, net_total_pnl, net_total_pct")
+      .single(),
     sb
       .from("v_holdings_pnl")
       .select("*")
@@ -135,11 +148,12 @@ export default async function HoldingsPage() {
   const realizedRows = (realized as RealizedRow[] | null) ?? [];
   const txnRows = (transactions as Transaction[] | null) ?? [];
   const sum = (summary as Summary | null) ?? null;
+  const portfolioSum = (portfolio as PortfolioSummary | null) ?? null;
   const adviceRows = (advice as HoldingAdviceRow[] | null) ?? [];
 
   return (
     <div className="space-y-8">
-      <SummarySection summary={sum} />
+      <SummarySection summary={sum} portfolio={portfolioSum} />
 
       <AddBuySection />
 
@@ -154,9 +168,21 @@ export default async function HoldingsPage() {
   );
 }
 
-function SummarySection({ summary }: { summary: Summary | null }) {
+function SummarySection({
+  summary,
+  portfolio,
+}: {
+  summary: Summary | null;
+  portfolio: PortfolioSummary | null;
+}) {
   const realized = Number(summary?.total_realized_pnl ?? 0);
-  const unrealized = Number(summary?.total_unrealized_pnl ?? 0);
+  // 未實現損益:對齊 dashboard 主數字用「淨」(扣手續費 + 證交稅),sub 附「毛」對照。
+  // 來源:v_portfolio_summary.net_total_pnl(同 dashboard);fallback 用 v_holdings_summary gross 避免 view 缺資料時整段空。
+  const grossUnrealized = Number(
+    portfolio?.total_pnl ?? summary?.total_unrealized_pnl ?? 0,
+  );
+  const netUnrealized = Number(portfolio?.net_total_pnl ?? grossUnrealized);
+  const netUnrealizedPct = portfolio?.net_total_pct ?? null;
   const total = Number(summary?.total_pnl ?? 0);
   const invested = Number(summary?.total_invested ?? 0);
   const recovered = Number(summary?.total_recovered ?? 0);
@@ -176,10 +202,16 @@ function SummarySection({ summary }: { summary: Summary | null }) {
           }
         />
         <Card
-          label="未實現損益"
-          value={fmtMoney(unrealized, 0)}
-          color={pctColor(unrealized || null)}
-          sub={countHoldings > 0 ? `${countHoldings} 檔持有中` : "目前無持股"}
+          label="未實現淨損益"
+          value={fmtMoney(netUnrealized, 0)}
+          color={pctColor(netUnrealized || null)}
+          sub={
+            countHoldings > 0
+              ? `${
+                  netUnrealizedPct != null ? fmtPct(netUnrealizedPct) : "—"
+                }　·　毛 ${fmtMoney(grossUnrealized, 0)}　·　${countHoldings} 檔`
+              : "目前無持股"
+          }
         />
         <Card
           label="累計總損益"

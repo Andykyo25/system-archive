@@ -96,8 +96,14 @@ async function fetchMisBatch(channels: string[]): Promise<{
 }
 
 function quoteToRow(q: MisQuote, fallbackTs: string): IntradayRow | null {
-  // 最新價:z 是即時 / o 是開盤(盤前可用)。盤前盤後 z 通常是 "-"
-  const price = toN(q.z) ?? toN(q.o);
+  // 最新價:只用 z(即時成交價)。z="-" → null → skip 不寫 cache。
+  //   ❌ 舊版 fallback 到 q.o(開盤價)製造大量 stale quote(整天 cache 都是 open),
+  //      使用者看到「現價=開盤價」假象(L45)。
+  //   ✅ 盤前 z 全空 → cache 整天首寫發生在開盤第一筆成交,之前 v_latest_price_realtime
+  //      自動 fallback 到 price_daily 昨收。
+  //   ✅ 盤中 5 分鐘間隙 z="-" → 該股 skip,保留上次真實 z(ON CONFLICT DO UPDATE 不覆寫)。
+  //   ✅ 盤後 z="-" → skip,保留 13:30 真實收盤,不被偽造蓋過。
+  const price = toN(q.z);
   if (!price || price <= 0) return null;
 
   const prev = toN(q.y);
@@ -118,7 +124,7 @@ function quoteToRow(q: MisQuote, fallbackTs: string): IntradayRow | null {
     price,
     volume: toN(q.tv),
     change_pct,
-    market_state: q.z === "-" ? "CLOSED" : "REGULAR",
+    market_state: "REGULAR",  // 能寫入 cache 即 z 有真實成交 → 必 REGULAR(舊版 z="-" 標 CLOSED 是 bug,盤中間隙誤標關市)
     currency: "TWD",
     source: "twse_mis",
   };

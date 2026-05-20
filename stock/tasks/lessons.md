@@ -359,3 +359,59 @@
 3. 根治用**單一事實來源 view**(v_fetch_universe)讓未來新元件無法再各自定義 → 勝過「逐一 copy 正確 pattern」(後者仍 N 份重複會再 drift)。Andy 拍板選這個
 4. 宣告「環境受限」(如無 EF invoke 工具)**之前先窮舉系統既有機制**:這次差點輕易交 host,實際 pg_cron 本就用 `net.http_post + vault edge_function_auth` 呼叫 EF,經 execute_sql 複用同 pattern 即可自助觸發 backfill。受限是最後結論、不是第一反應
 **為什麼**:Andy「持股最重要、分析最精準」。沉默 drift 最危險 — 系統「看起來在運作」(有 rank、有建議)卻對使用者最在意標的瞎分析,還用「無資料默認」偽裝成正常,差點讓使用者基於假 rank #10 安心。institutional:換介面全鏈掃、殘缺要告警、根治要單一來源;且「我做不到」前先把系統既有能力翻一遍。
+
+---
+
+## 策略迭代:參數失敗時換形式化,不是暴力掃寬(2026-05-19)
+
+### L43 — 固定/粗糙策略參數過不了 robustness 閘時,優先換「結構更好的形式化」(波動正規化 / 時限 / regime-aware),別預設把同一個粗參數暴力掃寬
+**問題**:M9.4b 固定 -10% 停損未過完整 OOS 閘(2024 t5 惡化 -10.93pp)。我的預設下一步寫成「掃更寬門檻 {-15,-20%}」。Andy 指正:方向**不是**放寬同一個固定 %,而是引進**動態標準差(ATR 停損)**——波動大的股停損寬、波動小的股停損緊;或改**時限停損(Time Stop)**,而非價格固定比例。
+**做法**:
+1. 固定比例參數失敗,**先問「失敗機制」再決定下一步**:M9.4b 敗因是 2024(0050 超級年)被 volatility-blind 的固定 % 在正常洗盤洗掉最終大贏家(whipsaw),不是「門檻數字不對」。對症解法是把參數**正規化到每檔自身波動**(k×ATR / Chandelier)或改**時間維度**(Time Stop / vol-target),不是同一個波動盲參數換數字
+2. 「暴力掃寬同一參數」只在「形式已對、只是 grid 沒掃到最佳值」時才合理;若失敗根因是**形式本身太粗**(忽略波動/時間/regime),掃寬是死路 + 浪費算力,且常只是把 overfit 換位置
+3. 提策略改良方向前,先想「**機構級會怎麼做**」(ATR/Chandelier stop、time stop、vol-target、regime filter)再回答,不要預設最粗的 fixed-% grid sweep
+4. 任何新停損/出場形式仍須過 [[L36]] 完整 OOS 閘(4 格 vs 誠實v2、不得顯著惡化、預設假設「會弄壞已驗證 edge」)
+**為什麼**:Andy 要 institutional-grade。把「-10% 不行 → 試 -15/-20%」當預設,是**把參數搜尋誤當策略設計**。真正槓桿在改變參數的「形式化」(normalize by volatility / 換到時間域 / 加 regime 條件),不是在錯的形式上多試幾個值。這是「先診斷失敗機制、再對症換形式」對策略迭代的版本,呼應 L41(先驗前提)/ L36(完整閘)。
+
+---
+
+## 歷史 backfill 對齊回測週期 — partial backfill 是沉默 drift 另一面(2026-05-20)
+
+### L44 — 新增 factor/維度時,「邏輯一致」≠「歷史資料覆蓋一致」;partial backfill = drift 溫床
+**問題**:Phase 0 系統性 backfill 還原權值 + 清 close=0,但**籌碼 4 表(institutional/margin/lending/shareholding)歷史只回到 2026-04-16 / 05-04**(EF cron 首次啟動時點),2024/2025 backtest 期間 chip 5 條因子對全 154 檔皆 null。結果:
+- 5-factor 模型在歷史回測中**實際只跑 14 條**(fund 7 + mom 5 + rev 2),chip 5 全 null;
+- 但 chip 維度 10% 權重仍佔分母 → weighted_score 天花板 ~90% 而非 100%(L1 表中 TSMC 進 top5 的 ws 都卡在 72.5 = 此天花板的 ~80%);
+- 線上(現 19-factor 含 chip)vs backtest(歷史 14-factor 無 chip)**系統性 ranking 不對齊**;
+- +24.19 OOS alpha 是 **14-factor 達成的**,不是「19-factor」。一直以為的「五維因子模型」在歷史回測裡的真實面貌是「四維 + 一維權重空轉」。
+- L32 對齊驗證(score_universe_at vs v_factor_scores 0 不一致)只證**邏輯一致**,沒驗**歷史資料覆蓋一致** → 假陽性 alignment。
+
+**做法**:
+1. 新增 factor/維度時,**必須評估「此 factor 所依賴的原始資料表,在回測週期(通常 ≥1 年)是否有完整歷史」**。若沒,三選一:(a) backfill 對齊 (b) 該因子權重設 0 直到資料齊 (c) 明確標註「該因子歷史不可評,backtest 偏粗」並記入 caveat
+2. L32 對齊驗證要擴展為**兩層**:
+   - **邏輯一致**(view/function 公式對齊,L32 既有)
+   - **歷史資料覆蓋一致**(score_universe_at(some_history_date) 結果上 group by 各因子的 null 率,任何 factor 在歷史時點 > 50% null → 該因子權重空轉,要決策)
+3. 系統性 audit:回測週期 N 年若涉籌碼/法人/月營收/EPS 等**外部資料 backfill 而來的因子**,在 backfill 之前要建「覆蓋率表」(各表 × 年份 × 全 universe 涵蓋 %),低覆蓋的因子在該 backtest run 標 N/A
+4. 同 [[L42]] partial migration 精神:partial backfill 是沉默 drift 溫床。要 backfill 就掃全鏈(price + adj + fund + rev + 籌碼 4 表 全部對齊回測週期),不能只補「當下最痛的那個」
+
+**為什麼**:Andy 要 institutional-grade backtest。一個五維模型在歷史回測中實際只用四維而你不知道,等於用「錯誤的 alpha 號稱」做決策。+24.19 alpha 是 14-factor 算出來的,線上 19-factor 排名 vs backtest 14-factor 不對齊 → paper-track 真實表現可能與 backtest 預測有 systematic gap。partial backfill 跟 partial migration([[L42]])一樣是「看起來都對、實際底層缺資料」的沉默失敗類型。institutional 紀律:覆蓋率審查與邏輯審查同樣是必經步驟。
+
+---
+
+## EF fallback 不該偽造資料(2026-05-20)
+
+### L45 — 即時資料 EF 在「真實值不存在」時應 skip 不寫,**不可 fallback 到衍生/類似值**;否則就是 sliently 寫假新聞
+**問題**:fetch-yahoo-intraday(MIS 即時揭示)寫入 price_intraday_cache 時,
+```ts
+const price = toN(q.z) ?? toN(q.o);  // ❌
+```
+`q.z` 是「最新成交價」、`q.o` 是「當日開盤」。**twse_mis 在盤中 5 分鐘無新成交瞬間 / 盤前 / 盤後 z="-"**(完全合理,免費 API 內建)。**舊版 fallback 到 open**(整天不變的當日開盤價)→ cache 寫進大量 stale 296 quote → v_latest_price_realtime 取 max(quoted_at) 選到 stale 偽造值 → 推播 / /holdings UI 看到「現價=當日 open」假象。**直接結果**:Andy 2026-05-20 13:35 收到推播「6285 現價 296」,實際 13:30 收盤 279,落差 −17 元(−5.7%)→ 使用者完全被誤導。
+
+**做法**:
+1. **即時 cache 寫入鐵律**:**只寫「該欄位的真實 source 值」,該欄位空就 skip 整列**(`return null`),**不要 fallback 到「看似合理」的衍生值**(如取 open / 取 high / 取 prev close)。寧可 cache 該瞬間沒寫,讓上層 view 走它已有的 fallback chain(cache → today close → yesterday close)
+2. **cache 是「即時瞬間真實值」**(L18 ON CONFLICT DO UPDATE),寫進去就會被信任。fabricate 一旦進 cache,view 邏輯再對也會選錯
+3. EF 容錯設計時辨清「**有資料但異常**」vs「**真實資料空**」:
+   - 有資料但異常(數字奇怪/單位錯)→ 修 parser
+   - 真實資料空(API 給「-」/null)→ **skip 寫入**,讓更上層 fallback 自然發生
+4. 同類風險檢查清單:任何「`?? fallback_value`」在寫入即時資料的 path 上都要審視 — fallback 值是真實同義(eg 換 fetch path 取同一物理量)還是相關但不等價(open ≠ 即時成交)。**只接受前者**
+
+**為什麼**:這是 [[L42]] 沉默 drift / [[L34]] 0 不是沒事 / [[L17]] 缺資料用 provisional 的延伸版。fabricate 進 cache 是「主動寫錯」比「被動缺資料」**更危險**——後者上層 fallback 看得到 NULL 會走 fallback,前者上層看到一個「真的 value」會直接 trust。容錯設計的預設假設是「上層永遠看得到 fallback 鏈」,絕不能因為「寧可給點什麼也不要空」就 fabricate。Andy 13:35 看到錯誤推播是 institutional-grade 系統的最低底線崩塌——這次發現靠 Andy 親口糾錯,**未來要有自動偵測機制**(若任一 symbol 同一 quoted_at 寫入後價格與其他 source 落差 > X%,自動 dead-letter)。
