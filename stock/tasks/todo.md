@@ -1414,6 +1414,61 @@ C) lending 換 token_2:
 
 ---
 
+## 純規則化持股訊號系統 v1 + v2(2026-05-21,結案)
+
+**起因**:Andy 問「持股建議停損判定是固定的嗎?還是會根據股本跟其他因素判斷」→ 發現原 advice 只有 PNL% 一條規則,**完全無波動/成交量/籌碼/技術面**。Andy 主提議「即時分析 6285」→ 我用 13 維度做手動分析(波動、成交量、相對 0050、跳空、量價背離)。Andy 確認「這分析很完整」→ 問「網頁+TG 是不是一定要 API?」→「我不要再另外付費」→ **純 SQL 規則化方向確立**。
+
+**v1 設計(20260521000001,12 訊號 jsonb 陣列)**:
+1. pnl_pct(pos/neg/extreme,with 觀察點 +20/+30/+40 / -10/-15)
+2. rsi_14(<30 oversold / >70 overbought)
+3. ma_pos(price vs ma20/ma60)
+4. bench_chg(0050 當日)— **解 Andy「我是不是只是大盤一起跌」之問**
+5. price_vol(滾動 20 日標準差/平均 → CV%)
+6. vol_ratio(成交量 / 20日均量)
+7. consecutive_down(連跌天數)
+8. tail_stats(長上影線 / 長下影線)
+9. kbar_array(近 5 日 K 棒 jsonb,red/green/cross 標籤)
+10. today_kbar(今日 K 棒 jsonb,跨越開盤判 cross)
+11. price_source/quoted_at(資料新鮮度 staleness 透明)
+12. signal_level overall(healthy/caution/warning/alert,by 紅色訊號數)
+
+**v2 加強(20260521000002,Andy 三項微調)**:
+- [x] **建議 1:長上影 + 振幅 > 1.5%** — 沒振幅的長上影是無效訊號(死水)。tail_stats 新增 amplitude_pct 判斷
+- [x] **建議 3:量價背離(#13 vol_div)** — 跌 + 量縮(<0.8x) = 沒人賣,屬「健康洗盤」(yellow);跌 + 量爆(>2x) = 恐慌或主力倒貨(orange)
+- [ ] **建議 2:市值分檔(中小型 OTC vs 權值 vs 0050)— v3 候選**,需 stock_universe.market_cap_billion 有值(以前全 null,2026-05-21 已 backfill,**v3 解鎖**)
+
+**UI / TG 串接**:
+- [x] /holdings 每張卡新增 SignalsGrid(3-6 col responsive),🚨 紅 / ⚠️ 橘 / 💛 黃 / 💚 綠 圓 dot 視覺化
+- [x] TG notify-holdings-telegram v3 加「即時訊號」row,top 5 紅/橘/黃 訊號 emoji 摘要
+- [x] color map + label map 一致(SIGNAL_STYLE / LEVEL_STYLE / LEVEL_EMOJI / OVERALL_LABEL)
+
+**Caveat**:純 SQL/jsonb 規則 = **無 LLM/API cost**(Andy 不付費前提)。**不會像人類分析師組合多訊號做語意推理**,但 13 維度紅綠燈 + Andy 自己組合判讀 = 客觀基線。
+
+---
+
+## market_cap_billion backfill(2026-05-21,解鎖 signals v3)
+
+**起因**:v2 第 2 項「市值分檔 vs 大盤」需要 `stock_universe.market_cap_billion`,但 reality check 發現該欄位**全 null**(reselect-industry-stocks-monthly EF 沒收這資料,獨立的修工程)。
+
+**做法(零 API quota,純本地資料)**:
+- [x] migration `20260521000003_backfill_market_cap_billion.sql`
+- [x] 從 `stock_shareholding.shares_issued`(每檔最新)× `price_daily.close`(每檔最新)/ 1e8 → 億元
+- [x] update stock_universe + industry_stocks(distinct on 各拿最新值)
+- [x] 144 檔填上(industry_stocks 主集合)
+
+**驗證**:
+- 2330 台積電 = 566,626 億元
+- 2454 聯發科 =  51,806 億元
+- 2308 台達電 =  49,743 億元
+- 2317 鴻海   =  33,514 億元
+- 3711 日月光  =  21,050 億元
+
+**未做(下一個 session 候選)**:
+- v_holdings_signals v3 加 #14 market_cap_tier(<300億小型 / 300-3000億中型 / >3000億權值)+ 與 0050 連動度(corr 30日)→ Andy 建議 2 完整實作
+- reselect-industry-stocks-monthly EF v2 也收 market_cap(避免月底 reselect 又把 backfilled 值蓋回 null)
+
+---
+
 ## 後續可考慮(M8-M11 範圍外)
 
 - 自動下單(券商 API 串接)
