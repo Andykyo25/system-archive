@@ -415,3 +415,26 @@ const price = toN(q.z) ?? toN(q.o);  // ❌
 4. 同類風險檢查清單:任何「`?? fallback_value`」在寫入即時資料的 path 上都要審視 — fallback 值是真實同義(eg 換 fetch path 取同一物理量)還是相關但不等價(open ≠ 即時成交)。**只接受前者**
 
 **為什麼**:這是 [[L42]] 沉默 drift / [[L34]] 0 不是沒事 / [[L17]] 缺資料用 provisional 的延伸版。fabricate 進 cache 是「主動寫錯」比「被動缺資料」**更危險**——後者上層 fallback 看得到 NULL 會走 fallback,前者上層看到一個「真的 value」會直接 trust。容錯設計的預設假設是「上層永遠看得到 fallback 鏈」,絕不能因為「寧可給點什麼也不要空」就 fabricate。Andy 13:35 看到錯誤推播是 institutional-grade 系統的最低底線崩塌——這次發現靠 Andy 親口糾錯,**未來要有自動偵測機制**(若任一 symbol 同一 quoted_at 寫入後價格與其他 source 落差 > X%,自動 dead-letter)。
+
+---
+
+## L42 類修法要 grep 全鏈,不能憑記憶 — fetch-finmind-fallback 漏網 24 小時(2026-05-21)
+
+### L46 — 「統一 N 個 EF 讀 view」這類掃全鏈修法,必須 grep 全部相關 EF 列「待升級清單」,憑印象/記憶必漏網
+**問題**:L42 修法把「價格類」4 EF(fetch-daily-prices / fetch-finmind-fundamentals / fetch-finmind-monthly-revenue / fetch-finmind-valuation)收料 universe 統一改讀 `v_fetch_universe`(根治 6285 transaction-log 持股漏收 drift)。**但 `fetch-finmind-fallback` 是第 5 個價格 EF,沒納入** L42 修法,仍讀舊 `holdings`(closed_at null)+ watchlist + industry + etf 四源,**漏 holdings_transactions + stock_universe**。
+- 2026-05-20 14:30 TWSE primary fetch T+1 延遲(L17)沒抓到 5-20 → 主力 0 row 5-20
+- 5-20 15:30 finmind fallback 跑:149 universe 但 quota 只剩 ~107,**末段持股/熱門股(2330 / 6285 等 51 檔)被 quota 砍斷**;且 **6285 在 holdings_transactions 完全沒進 set**(EF 沒讀此表)→ 即使 quota 充足也漏
+- 5-21 08:55 推播 6285「現價 292(⚠資料延遲 2026-05-19)」→ stale 1 天的價格被 user 看到,雖標警示但「292 不是真昨收 279」(279 沒寫進 price_daily)
+- 同類 L42 損害在 user 面前**再重演一次**,且**靠 user 親口糾錯**(L42 也是 Andy 截圖才發現)
+
+**做法**:
+1. **「統一 N EF 收料/讀某 view/換 schema」這類掃全鏈修法,必須機械式 grep**:
+   ```bash
+   grep -l "holdings\b\|closed_at is null\|watchlist\|industry_stocks" supabase/functions/*/index.ts
+   ```
+   列出所有 match 的 EF,**逐一比對是否要升級**,**不能憑記憶**(L42 commit 訊息只列 4 EF,漏了 fallback 顯然是「想到的時候只想到 daily-prices/fund/rev/val 四個」)
+2. **Quota 緊張時持股優先**:Set add 順序決定迭代順序 → 先 add `v_holdings_current`,再 union 其他。**保證 quota 砍斷時持股一定先寫**
+3. **防護層 cron**:每日早盤前(08:45 Taipei)cron 自動 invoke `fetch-finmind-backfill` 補持股最近 3 日 price_daily(token_2 獨立 quota,~5 calls/day,idempotent first-write-wins skip)。即使 fallback EF 又漏,防護層補上
+4. **修法 commit 訊息列「全鏈 EF 清單」**:L42 的 commit `c4e850f` 訊息列出「fetch-daily-prices/fundamentals/monthly-revenue/valuation」,但實際漏 fallback。**未來掃全鏈修法 commit 必含 grep 結果列表**,有審計痕跡
+
+**為什麼**:Andy 要 institutional-grade。partial migration([[L42]])、partial backfill([[L44]])、partial fallback fabrication([[L45]])是同一類型「掃了一些但沒掃完」的沉默 drift。每次重演成本:user 看到錯資料 → 親口糾錯 → 工程修補 → 寫 lesson → 仍可能下次又漏一個。**機械式 grep 是治本——它不靠記憶,可重複,可審計**。下次任何「統一/全鏈/掃一遍」性質的修法,**先跑 grep 列待修清單寫進 commit message**,prevent L42 第 N 次重演。

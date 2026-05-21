@@ -101,17 +101,38 @@ Deno.serve(async (req: Request) => {
   const FINMIND_TOKEN = tokenRes.data as string;
 
   // 取目標 symbols
-  const [holdings, watchlist, industry, etf] = await Promise.all([
-    supabase.from("holdings").select("symbol").is("closed_at", null),
-    supabase.from("watchlist").select("symbol"),
-    supabase.from("industry_stocks").select("symbol"),
-    supabase.from("etf_metadata").select("symbol"),
+  //
+  // 修法歷史 (L46,2026-05-21):
+  //   ❌ 舊版只讀 holdings(closed_at null)+ watchlist + industry + etf,**漏 holdings_transactions(M8.5)+ stock_universe**
+  //      → 6285 (transaction-log 記的持股) 完全沒進 set,5-20 fallback 跑時 6285 沒寫進 price_daily
+  //      → 推播誤導 stale price (L46:L42 修法漏網,partial migration 重演)
+  //   ✅ 新版同 c4e850f 修法,改用 v_fetch_universe(單一事實來源),fallback 保留舊邏輯
+  //
+  // 持股優先(L46 額外):quota 緊張時 v_holdings_current 先加進 set,Set 迭代依 insertion order
+  //   → 持股一定先抓,確保推播絕不 stale(即使 quota 跑不完整 universe)
+  const [holdingsCurrent, fu] = await Promise.all([
+    supabase.from("v_holdings_current").select("symbol"),
+    supabase.from("v_fetch_universe").select("symbol"),
   ]);
+
   const targetSymbols = new Set<string>();
-  for (const r of holdings.data ?? []) targetSymbols.add(r.symbol);
-  for (const r of watchlist.data ?? []) targetSymbols.add(r.symbol);
-  for (const r of industry.data ?? []) targetSymbols.add(r.symbol);
-  for (const r of etf.data ?? []) targetSymbols.add(r.symbol);
+  // 1. 持股優先進 set
+  for (const r of holdingsCurrent.data ?? []) targetSymbols.add(r.symbol);
+  // 2. v_fetch_universe(view 異常 → fallback 到原 4-source inline query,零退化)
+  if (fu.error) {
+    const [holdings, watchlist, industry, etf] = await Promise.all([
+      supabase.from("holdings").select("symbol").is("closed_at", null),
+      supabase.from("watchlist").select("symbol"),
+      supabase.from("industry_stocks").select("symbol"),
+      supabase.from("etf_metadata").select("symbol"),
+    ]);
+    for (const r of holdings.data ?? []) targetSymbols.add(r.symbol);
+    for (const r of watchlist.data ?? []) targetSymbols.add(r.symbol);
+    for (const r of industry.data ?? []) targetSymbols.add(r.symbol);
+    for (const r of etf.data ?? []) targetSymbols.add(r.symbol);
+  } else {
+    for (const r of fu.data ?? []) targetSymbols.add(r.symbol);
+  }
 
   if (targetSymbols.size === 0) {
     return Response.json({ skipped: "no_target_symbols" });

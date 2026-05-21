@@ -1327,6 +1327,31 @@ blast radius 小(單一 EF、不碰選股鏈/持股鏈/前端);風險在「又�
 
 ---
 
+## fetch-finmind-fallback L42 漏網 bug 修(2026-05-21,結案)
+
+**起因**:Andy 收到 2026-05-21 08:55 推播「6285 現價 292(⚠資料延遲 2026-05-19)」,實際 5-20 收盤 279。糾錯後深挖。
+
+**根因(3 層)**:
+1. **fetch-finmind-fallback EF 沒納入 L42 修法**(c4e850f 只修 4 個價格 EF,漏第 5 個):仍讀舊 `holdings` + watchlist + industry + etf 四源,**漏 holdings_transactions + stock_universe** → 6285 (transaction-log 持股) 完全沒進 set
+2. **Quota 砍斷後段持股**:fetch-finmind-fallback 15:30 跑時 quota 只剩 ~107,149 universe 跑到 107 即 break;**Set 迭代順序持股不優先** → 2330 / 6285 等熱門股被砍
+3. **5-20 主力 TWSE 也漏抓**(L17 T+1 延遲);finmind fallback 也漏抓 → price_daily 5-20 對 6285 完全沒寫 → v_latest_price_realtime fallback 到 5-19 close=292
+
+**修法(3 層,完成)**:
+- [x] **立即補資料**:SQL upsert 6285 5-20 = 279(從 cache 13:30 真實)+ invoke fetch-finmind-backfill 補 5-20 缺漏 51 sym(token_2,written 47)→ 5-20 total 108→156 完整
+- [x] **修 EF 根因**(L46):fetch-finmind-fallback v4→**v5**,改讀 v_fetch_universe + 持股優先進 set + fallback 保留舊邏輯(c4e850f 同 pattern)
+- [x] **加防護層 cron**:`holdings-staleness-backfill-preopen` 每日 08:45 Taipei invoke fetch-finmind-backfill 補持股最近 3 日(token_2,~5 calls/day,idempotent)。明日起即使 fallback EF 又漏,持股一定有資料
+
+**驗證**:
+- 5-20 price_daily total = 156(對齊 5-18/5-19);6285=279 / 2330=2185 / 2454=3230 全寫入
+- fetch-finmind-fallback v5 deploy ezbr sha 變、verify_jwt true 保留
+- staleness cron active,週一到週五 00:45 UTC 跑
+
+**lessons L46 寫入**:「統一 N EF」類修法必 grep 全鏈,憑記憶必漏網(L42→L46 同類重演)。Commit 訊息列「全鏈 EF 清單」可審計。
+
+**待 Railway redeploy 後 commit + push**:本次改動 = fetch-finmind-fallback/index.ts + lessons.md + todo.md。
+
+---
+
 ## 後續可考慮(M8-M11 範圍外)
 
 - 自動下單(券商 API 串接)
