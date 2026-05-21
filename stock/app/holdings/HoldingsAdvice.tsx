@@ -43,6 +43,24 @@ export interface HoldingAdviceRow {
   signal_strength: string | null;
 }
 
+// v_holdings_signals 規則層(L1+L2,純規則零 LLM)
+export interface SignalEntry {
+  key: string;
+  label: string;
+  level: "green" | "yellow" | "orange" | "red" | "gray";
+  value: string;
+}
+
+export interface SignalRow {
+  symbol: string;
+  signal_level: "healthy" | "caution" | "warning" | "alert";
+  today_chg_pct: number | string | null;
+  bench_chg_pct: number | string | null;
+  tail_days_5: number | null;
+  down_days_5: number | null;
+  signals: SignalEntry[];
+}
+
 type Status =
   | "NO_PRICE"
   | "STOP_LOSS"
@@ -212,7 +230,13 @@ function deriveStatus(r: HoldingAdviceRow): {
   };
 }
 
-export function HoldingsAdvice({ rows }: { rows: HoldingAdviceRow[] }) {
+export function HoldingsAdvice({
+  rows,
+  signalsMap,
+}: {
+  rows: HoldingAdviceRow[];
+  signalsMap?: Record<string, SignalRow>;
+}) {
   if (rows.length === 0) {
     return (
       <section>
@@ -232,14 +256,120 @@ export function HoldingsAdvice({ rows }: { rows: HoldingAdviceRow[] }) {
       </p>
       <div className="grid grid-cols-1 gap-3">
         {rows.map((r) => (
-          <AdviceCard key={r.symbol} row={r} />
+          <AdviceCard
+            key={r.symbol}
+            row={r}
+            signal={signalsMap?.[r.symbol]}
+          />
         ))}
       </div>
     </section>
   );
 }
 
-function AdviceCard({ row }: { row: HoldingAdviceRow }) {
+// 訊號燈顏色 + emoji map(配合 SQL view 的 5 level)
+const SIGNAL_STYLE: Record<
+  SignalEntry["level"],
+  { dot: string; bg: string; border: string; text: string; emoji: string }
+> = {
+  green: {
+    dot: "bg-emerald-500",
+    bg: "bg-emerald-950/40",
+    border: "border-emerald-900",
+    text: "text-emerald-200",
+    emoji: "🟢",
+  },
+  yellow: {
+    dot: "bg-yellow-500",
+    bg: "bg-yellow-950/40",
+    border: "border-yellow-900",
+    text: "text-yellow-200",
+    emoji: "🟡",
+  },
+  orange: {
+    dot: "bg-orange-500",
+    bg: "bg-orange-950/40",
+    border: "border-orange-900",
+    text: "text-orange-200",
+    emoji: "🟠",
+  },
+  red: {
+    dot: "bg-red-500",
+    bg: "bg-red-950/40",
+    border: "border-red-900",
+    text: "text-red-200",
+    emoji: "🔴",
+  },
+  gray: {
+    dot: "bg-zinc-600",
+    bg: "bg-zinc-900",
+    border: "border-zinc-800",
+    text: "text-zinc-500",
+    emoji: "⚪",
+  },
+};
+
+const LEVEL_STYLE: Record<
+  SignalRow["signal_level"],
+  { label: string; badge: string }
+> = {
+  healthy: { label: "健康", badge: "bg-emerald-950 text-emerald-200" },
+  caution: { label: "注意", badge: "bg-yellow-950 text-yellow-200" },
+  warning: { label: "警告", badge: "bg-orange-950 text-orange-200" },
+  alert: { label: "警報", badge: "bg-red-950 text-red-200" },
+};
+
+function SignalsGrid({ signal }: { signal: SignalRow }) {
+  const lv = LEVEL_STYLE[signal.signal_level];
+  return (
+    <div className="border-t border-zinc-800 px-4 py-3">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
+          即時訊號 ({signal.signals.length})
+        </span>
+        <span
+          className={`rounded-md px-2 py-0.5 text-[10px] font-semibold ${lv.badge}`}
+        >
+          綜合 · {lv.label}
+        </span>
+      </div>
+      <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-4 md:grid-cols-6">
+        {signal.signals.map((s) => {
+          const st = SIGNAL_STYLE[s.level];
+          return (
+            <div
+              key={s.key}
+              className={`flex flex-col items-start gap-0.5 rounded border ${st.border} ${st.bg} px-2 py-1.5`}
+              title={`${s.label}: ${s.value}`}
+            >
+              <div className="flex w-full items-center gap-1">
+                <span
+                  className={`inline-block h-1.5 w-1.5 rounded-full ${st.dot}`}
+                />
+                <span className="truncate text-[10px] text-zinc-400">
+                  {s.label}
+                </span>
+              </div>
+              <span
+                className={`block w-full truncate font-mono text-[11px] font-semibold ${st.text}`}
+              >
+                {s.value}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function AdviceCard({
+  row,
+  signal,
+}: {
+  row: HoldingAdviceRow;
+  signal?: SignalRow;
+}) {
   const { info } = deriveStatus(row);
   const pct = row.pct_change == null ? null : Number(row.pct_change);
   const pctColor =
@@ -301,6 +431,9 @@ function AdviceCard({ row }: { row: HoldingAdviceRow }) {
         </div>
         <p className="text-xs leading-relaxed text-zinc-400">{info.detail}</p>
       </div>
+
+      {/* 即時訊號燈(v_holdings_signals 規則層) */}
+      {signal && <SignalsGrid signal={signal} />}
 
       {/* 價位線 */}
       <div className="grid grid-cols-5 gap-0 border-t border-zinc-800 text-[10px]">

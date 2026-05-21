@@ -40,6 +40,19 @@ interface AdviceRow {
   signal_strength: string | null;
 }
 
+// v_holdings_signals 規則層
+interface SignalEntry {
+  key: string;
+  label: string;
+  level: "green" | "yellow" | "orange" | "red" | "gray";
+  value: string;
+}
+interface SignalRow {
+  symbol: string;
+  signal_level: "healthy" | "caution" | "warning" | "alert";
+  signals: SignalEntry[];
+}
+
 function decodeJwtPayload(jwt: string): Record<string, unknown> {
   const parts = jwt.split(".");
   if (parts.length !== 3) throw new Error("invalid jwt shape");
@@ -123,7 +136,37 @@ function isStale(r: AdviceRow, latestTradeDate: string | null): boolean {
   return d < latestTradeDate;
 }
 
-function buildMessage(rows: AdviceRow[], latestTradeDate: string | null): string {
+// 訊號 level → emoji
+const LEVEL_EMOJI: Record<SignalEntry["level"], string> = {
+  green: "🟢",
+  yellow: "🟡",
+  orange: "🟠",
+  red: "🔴",
+  gray: "⚪",
+};
+const OVERALL_LABEL: Record<SignalRow["signal_level"], string> = {
+  healthy: "🟢 健康",
+  caution: "🟡 注意",
+  warning: "🟠 警告",
+  alert: "🔴 警報",
+};
+
+// 從 signals 篩出「值得提的」(非 green / non-gray),最多 5 個
+function pickHighlightSignals(signals: SignalEntry[]): SignalEntry[] {
+  const order: Record<SignalEntry["level"], number> = {
+    red: 0, orange: 1, yellow: 2, gray: 3, green: 4,
+  };
+  return [...signals]
+    .filter((s) => s.level !== "green" && s.level !== "gray")
+    .sort((a, b) => order[a.level] - order[b.level])
+    .slice(0, 5);
+}
+
+function buildMessage(
+  rows: AdviceRow[],
+  signalsMap: Record<string, SignalRow>,
+  latestTradeDate: string | null,
+): string {
   const now = new Date();
   const taipei = now.toLocaleString("zh-TW", {
     timeZone: "Asia/Taipei",
@@ -156,6 +199,21 @@ function buildMessage(rows: AdviceRow[], latestTradeDate: string | null): string
     msg += `現價 ${mdEsc(price == null ? "—" : fmtMoney(price))} \\(${mdEsc(pctStr)}\\)${staleMark}\n`;
     msg += `*${mdEsc(s.headline)}*\n`;
     msg += `${mdEsc(s.detail)}\n`;
+
+    // 即時訊號摘要(v_holdings_signals 規則層,L1+L2 純規則)
+    const sigRow = signalsMap[r.symbol];
+    if (sigRow) {
+      const highlights = pickHighlightSignals(sigRow.signals);
+      msg += `${mdEsc(OVERALL_LABEL[sigRow.signal_level])}`;
+      if (highlights.length > 0) {
+        const parts = highlights.map(
+          (sg) => `${LEVEL_EMOJI[sg.level]}${mdEsc(sg.label)} ${mdEsc(sg.value)}`,
+        );
+        msg += ` · ${parts.join(" · ")}`;
+      }
+      msg += `\n`;
+    }
+
     msg += `📌 停損 ${mdEsc(fmtMoney(r.stop_loss_price))} \\| 加碼 ${mdEsc(fmtMoney(r.add_position_price))} \\| `;
     msg += `\\+20% ${mdEsc(fmtMoney(r.obs1_price))} \\| \\+30% ${mdEsc(fmtMoney(r.obs2_price))} \\| \\+40% ${mdEsc(fmtMoney(r.force_out_price))}\n`;
     msg += `_系統 \\#${r.expected_rank ?? "—"} · fund ${r.fund_count_pos ?? 0}/${r.fund_count_total ?? 0} · mom ${r.mom_count_pos ?? 0}/${r.mom_count_total ?? 0}`;
@@ -197,10 +255,17 @@ Deno.serve(async (req: Request) => {
   const TOKEN = tokenRes.data as string;
   const CHAT_ID = chatRes.data as string;
 
-  // 讀 advice rows
-  const { data: rows, error: rowsErr } = await sb.from("v_holdings_advice").select("*");
-  if (rowsErr) return Response.json({ error: `read v_holdings_advice: ${rowsErr.message}` }, { status: 500 });
-  const advice = (rows as AdviceRow[] | null) ?? [];
+  // 讀 advice rows + signals(平行)
+  const [adviceRes, signalsRes] = await Promise.all([
+    sb.from("v_holdings_advice").select("*"),
+    sb.from("v_holdings_signals").select("symbol, signal_level, signals"),
+  ]);
+  if (adviceRes.error) return Response.json({ error: `read v_holdings_advice: ${adviceRes.error.message}` }, { status: 500 });
+  const advice = (adviceRes.data as AdviceRow[] | null) ?? [];
+  const signalsMap: Record<string, SignalRow> = {};
+  for (const s of (signalsRes.data as SignalRow[] | null) ?? []) {
+    signalsMap[s.symbol] = s;
+  }
 
   if (advice.length === 0) {
     // 沒持股不發
@@ -228,7 +293,7 @@ Deno.serve(async (req: Request) => {
     });
   }
 
-  const message = buildMessage(advice, latestTradeDate);
+  const message = buildMessage(advice, signalsMap, latestTradeDate);
 
   // 送 Telegram
   const tgRes = await fetch(`https://api.telegram.org/bot${TOKEN}/sendMessage`, {

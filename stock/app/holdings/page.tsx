@@ -4,7 +4,11 @@ import { fmtMoney, fmtPct, pctColor } from "../_components/Format";
 import { PriceCell } from "../_components/PriceCell";
 import { SellDialog } from "./SellDialog";
 import { DeleteTxnButton } from "./DeleteTxnButton";
-import { HoldingsAdvice, type HoldingAdviceRow } from "./HoldingsAdvice";
+import {
+  HoldingsAdvice,
+  type HoldingAdviceRow,
+  type SignalRow,
+} from "./HoldingsAdvice";
 
 export const dynamic = "force-dynamic";
 
@@ -116,6 +120,7 @@ export default async function HoldingsPage() {
     { data: realized },
     { data: transactions },
     { data: advice },
+    { data: signals },
     fees,
   ] = await Promise.all([
     sb.from("v_holdings_summary").select("*").single(),
@@ -141,6 +146,11 @@ export default async function HoldingsPage() {
     sb
       .from("v_holdings_advice")
       .select("*"),
+    sb
+      .from("v_holdings_signals")
+      .select(
+        "symbol, signal_level, today_chg_pct, bench_chg_pct, tail_days_5, down_days_5, signals",
+      ),
     loadFeeSettings(),
   ]);
 
@@ -150,6 +160,10 @@ export default async function HoldingsPage() {
   const sum = (summary as Summary | null) ?? null;
   const portfolioSum = (portfolio as PortfolioSummary | null) ?? null;
   const adviceRows = (advice as HoldingAdviceRow[] | null) ?? [];
+  const signalsMap: Record<string, SignalRow> = {};
+  for (const s of (signals as SignalRow[] | null) ?? []) {
+    signalsMap[s.symbol] = s;
+  }
 
   return (
     <div className="space-y-8">
@@ -159,7 +173,7 @@ export default async function HoldingsPage() {
 
       <CurrentHoldingsSection rows={rows} fees={fees} />
 
-      <HoldingsAdvice rows={adviceRows} />
+      <HoldingsAdvice rows={adviceRows} signalsMap={signalsMap} />
 
       <RealizedSection rows={realizedRows} />
 
