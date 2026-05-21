@@ -52,11 +52,17 @@ export function formatPriceTimestamp(
     return { text: "—", tooltip: "無資料", provisional: false };
   }
 
-  // intraday 即時報價(twse_mis / yahoo / 其他)
-  if (source === "twse_mis" || source === "yahoo") {
+  // intraday 即時報價(twse_mis / twse_mis_mid 五檔中價 / yahoo / 其他)
+  if (source === "twse_mis" || source === "twse_mis_mid" || source === "yahoo") {
     const ago = minutesAgo(asOfTs);
-    const label = source === "twse_mis" ? "TWSE MIS 揭示" : "Yahoo Finance";
-    const text = ago == null ? `即時 · ${source}` : `${ago} min ago · ${source}`;
+    const label = source === "twse_mis"
+      ? "TWSE MIS 揭示(成交價)"
+      : source === "twse_mis_mid"
+      ? "TWSE MIS 五檔中價(z 被 throttle 時 fallback)"
+      : "Yahoo Finance";
+    // mid 標明非實際成交價
+    const tag = source === "twse_mis_mid" ? "twse_mis(中價)" : source;
+    const text = ago == null ? `即時 · ${tag}` : `${ago} min ago · ${tag}`;
     return {
       text,
       tooltip: `${label} ${formatLocalDateTime(asOfTs)}`,

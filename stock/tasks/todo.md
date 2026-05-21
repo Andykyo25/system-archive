@@ -1390,6 +1390,30 @@ C) lending 換 token_2:
 
 ---
 
+## mis 對 z 有 throttle → 五檔中價 fallback(2026-05-21,L47)
+
+**起因**:Andy 早盤看 /holdings 6285「16 min ago · twse_mis」糾錯「不可能 17 min 沒成交」。
+
+**根因**:免費 mis 對個股 z 有 throttle,即使該股持續成交(v 累積金額跳),z/pz 仍長期回 "-"。EF v4「z="-" skip」邏輯對(L45)但代價=cache 對熱門股寫入頻率 = mis z 偶發回應頻率(20 min 1-5 次)。
+
+**修法(v5,L47)**:
+- [x] EF v4→**v5**:多源 fallback,z 有值用 z(source=twse_mis 真成交),z="-" 但 a[0]/b[0] 有值 → 五檔中價 (a[0]+b[0])/2(source=twse_mis_mid)
+- [x] quoted_at 改用 fetchedAt(每分鐘 cron 必寫新 row,不受 mis tlong stuck 影響)
+- [x] Format.ts 加 twse_mis_mid 顯示「twse_mis(中價)」+ tooltip 標明
+- [x] deploy v5 verify_jwt 保留 ezbr sha 變
+
+**驗證**(09:39 第一次 v5 cron):
+- fetch_log rw 從 ~25 跳到 **139**(接近 universe 全寫入)
+- 6285 cache 09:39:03 = 288.25(source twse_mis_mid 五檔中價)
+- 2330 cache 09:39:02 = 2232.50 mid
+- v_latest_price_realtime 對 6285 = 288.25,< 1 min ago
+
+**Caveat**:source=twse_mis_mid 表示 mis 對 z throttle 時 fallback 到掛單中價,**不是實際成交價**(但通常誤差 < 1 元 / < 0.5%,institutional acceptable)。UI 顯示「twse_mis(中價)」明標。
+
+**未做**:真正「最新成交價 1 跳」需券商 API 或付費,scope 另案。
+
+---
+
 ## 後續可考慮(M8-M11 範圍外)
 
 - 自動下單(券商 API 串接)

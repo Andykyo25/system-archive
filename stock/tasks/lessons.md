@@ -438,3 +438,26 @@ const price = toN(q.z) ?? toN(q.o);  // ❌
 4. **修法 commit 訊息列「全鏈 EF 清單」**:L42 的 commit `c4e850f` 訊息列出「fetch-daily-prices/fundamentals/monthly-revenue/valuation」,但實際漏 fallback。**未來掃全鏈修法 commit 必含 grep 結果列表**,有審計痕跡
 
 **為什麼**:Andy 要 institutional-grade。partial migration([[L42]])、partial backfill([[L44]])、partial fallback fabrication([[L45]])是同一類型「掃了一些但沒掃完」的沉默 drift。每次重演成本:user 看到錯資料 → 親口糾錯 → 工程修補 → 寫 lesson → 仍可能下次又漏一個。**機械式 grep 是治本——它不靠記憶,可重複,可審計**。下次任何「統一/全鏈/掃一遍」性質的修法,**先跑 grep 列待修清單寫進 commit message**,prevent L42 第 N 次重演。
+
+---
+
+## 免費即時 API 文件行為 ≠ 實際行為,要實證(2026-05-21)
+
+### L47 — 「假設 API 文件描述符合行為」必須實證,免費 API 常有 throttle/cache 偏離文件
+**問題**:fetch-yahoo-intraday(twse mis)EF v4「z="-" skip」(L45)是邏輯正確。但 mis 文件雖說 z 是「最新成交價(尚未成交 = "-")」,實際**對個股 z 有 throttle**:即使該股持續成交(v 累積金額在跳、mis_t 持續更新),z/pz 仍長期回 "-"。Andy 2026-05-21 早盤看 /holdings 6285「16 min ago · twse_mis」糾錯:「不可能 17 min 沒成交,台股不是這樣運作」。我當時答「mis 常態回 z="-"」是把 throttle 誤當「真的沒成交」。
+- PowerShell 5 次連續 query mis(6285/2330/2454):v 累積金額在跳(=有交易)、mis_t 持續變,但 **z 對 3 個熱門股都一直 "-"**
+- mis 對 z 欄位有特殊 throttle(可能因為 z 是「會錢」資訊敏感欄位免費限縮),但 **a/b 五檔買賣盤**完整給(掛單反映即時)
+
+**做法**:
+1. 「免費 API + 即時資料」場景做**兩種對照驗證**:
+   - 連續 query N 次同 endpoint(間隔 5-30 秒),看「該動的欄位」(z)是否真動
+   - 同時觀察「該不動的欄位」(v 累積金額、mis_t 時間)是否正常變化
+   - 兩者對照才能斷定「該動的沒動」是 throttle 還是真實無變化
+2. **多源 fallback 設計**:即時 EF 不該只依賴單一欄位。要 plan 備用 source(mis a/b 中價、tv、v 推算)。z 有真值 → 用 z;z="-" 但 a/b 有值 → 用中價;**清楚標 source 區分**(twse_mis 真成交 vs twse_mis_mid 中價)
+3. **時間軸 vs 數值軸分離**:即時 cache 的 quoted_at 用「我們抓到資料的時間」(fetched_at)而非「該數值在源端的時間」(tlong)。理由:
+   - tlong 反映源端 cache 狀態,免費 API 常 stuck(2454 z=3550 多次 query mis_t 都同個)
+   - fetched_at 是我們系統真實「拉到此值的時點」
+   - user 看「N min ago」反映系統 freshness;**price 仍是源端真實值**(z 或 a/b 中價),source 標清楚 → 不矇騙
+4. 不違反 [[L45]] 「不偽造資料」:fallback 到中價是 mis **真實五檔算出來的數字**,不是憑空捏造。L45 是「該欄位真空就 skip 不寫」,L47 是「該欄位 throttle 時用同源另一個真實欄位」。差別:「沒有資料 vs 同源不同欄位資料」
+
+**為什麼**:Andy 要 institutional-grade。**API 文件常不寫真實 throttle/cache 行為**,程式碼按文件寫但 user 看到 stale。[[L34]] 教訓「不臆測系統行為」+ [[L45]] 「不偽造資料」延伸:**不只「資料表查證」,還要對「即時 API 動態行為」實證驗證**。Free-tier API 有 throttle 是常態,不該被假設成「文件 = 行為」。Andy 的「不可能 17 min 沒成交」是台股實務直覺糾錯,我憑 mis API 文件回應就是錯誤前提。下次設計即時 EF 前,**先做 30 秒 PowerShell 連續 query 對照測試**,確認 API 欄位真實更新頻率,再寫 EF。

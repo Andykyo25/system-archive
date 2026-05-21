@@ -31,13 +31,16 @@ const BATCH_THROTTLE_MS = 400;
 interface MisQuote {
   c?: string;     // symbol
   ch?: string;    // channel "tse_2330.tw_"
-  z?: string;     // 最新成交價(尚未成交 = "-")
+  z?: string;     // 最新成交價(免費 mis 對個股有 throttle,常 "-")
+  pz?: string;    // 前次成交價(也常被 throttle)
   y?: string;     // 昨日收盤
   o?: string;     // 開盤
   h?: string;     // 最高
   l?: string;     // 最低
-  tv?: string;    // 累積成交量
-  tlong?: string; // unix ms timestamp
+  a?: string;     // 五檔賣盤 "p1_p2_p3_p4_p5_"(下劃線分隔,p1=最佳賣)
+  b?: string;     // 五檔買盤 "p1_p2_p3_p4_p5_"(下劃線分隔,p1=最佳買)
+  tv?: string;    // 本次成交量
+  tlong?: string; // unix ms timestamp(mis 端時間,某些股 stuck)
   ex?: string;    // 'tse' or 'otc'
 }
 
@@ -49,7 +52,7 @@ interface IntradayRow {
   change_pct: number | null;
   market_state: string | null;
   currency: string | null;
-  source: "twse_mis";
+  source: "twse_mis" | "twse_mis_mid";
 }
 
 function decodeJwtPayload(jwt: string): Record<string, unknown> {
@@ -96,37 +99,54 @@ async function fetchMisBatch(channels: string[]): Promise<{
 }
 
 function quoteToRow(q: MisQuote, fallbackTs: string): IntradayRow | null {
-  // 最新價:只用 z(即時成交價)。z="-" → null → skip 不寫 cache。
-  //   ❌ 舊版 fallback 到 q.o(開盤價)製造大量 stale quote(整天 cache 都是 open),
-  //      使用者看到「現價=開盤價」假象(L45)。
-  //   ✅ 盤前 z 全空 → cache 整天首寫發生在開盤第一筆成交,之前 v_latest_price_realtime
-  //      自動 fallback 到 price_daily 昨收。
-  //   ✅ 盤中 5 分鐘間隙 z="-" → 該股 skip,保留上次真實 z(ON CONFLICT DO UPDATE 不覆寫)。
-  //   ✅ 盤後 z="-" → skip,保留 13:30 真實收盤,不被偽造蓋過。
-  const price = toN(q.z);
-  if (!price || price <= 0) return null;
+  // Price 多源 fallback(v5,L47):
+  //   問題:免費 mis 對個股 z 有 throttle,即使該股持續在成交(v 累積金額在跳),z/pz 仍長期回 "-"。
+  //         L45 v4 寫「z="-" → skip」是邏輯對的(不偽造),但代價是 cache 對 6285/2330 這類常 z="-" 的股
+  //         寫入頻率 = mis z 偶發回應頻率(20 min 1-5 次),user 看「16 min ago」。
+  //   解法:用 mis 的五檔買賣盤 a/b(每 5-10 秒真更新)當 fallback。
+  //     1. z 有真值 → 用 z(成交價,source="twse_mis")
+  //     2. z="-" 但 a[0]/b[0] 有值 → 用五檔中價 (a[0]+b[0])/2(掛單反映即時,source="twse_mis_mid")
+  //     3. z 跟 a/b 都 "-"(盤前/盤後/停牌) → skip 不寫
+  //   時間軸:quoted_at 用 fetchedAt(EF 跑當下),不用 q.tlong。
+  //     原因:q.tlong 對部分股 stuck(2454 z=3550 多次 query mis_t 都同個),用 fetchedAt 保證每分鐘 cron
+  //           跑都寫新 row → user 看「1 min ago」即時度;**price 仍是 mis 真實值**(z 或五檔中價),
+  //           只是時間軸用我們端,誠實標記 source。
+  const z = toN(q.z);
+  let price: number | null = null;
+  let source: "twse_mis" | "twse_mis_mid";
+  if (z != null && z > 0) {
+    price = z;
+    source = "twse_mis";
+  } else {
+    // 五檔買賣盤 "p1_p2_p3_p4_p5_"(下劃線分隔,p1=最佳),取最佳買 + 最佳賣中價
+    const ask = toN((q.a ?? "").split("_")[0]);
+    const bid = toN((q.b ?? "").split("_")[0]);
+    if (ask != null && bid != null && ask > 0 && bid > 0) {
+      price = (ask + bid) / 2;
+      source = "twse_mis_mid";
+    } else {
+      return null; // 盤前/盤後/停牌等,a/b/z 全空 → skip
+    }
+  }
+  if (price <= 0) return null;
 
   const prev = toN(q.y);
   const change_pct = (prev != null && prev > 0)
     ? ((price - prev) / prev) * 100
     : null;
 
-  const ts = q.tlong
-    ? new Date(parseInt(q.tlong, 10)).toISOString()
-    : fallbackTs;
-
   const symbol = q.c ?? "";
   if (!symbol) return null;
 
   return {
     symbol,
-    quoted_at: ts,
+    quoted_at: fallbackTs, // EF 端 fetched_at,每分鐘 cron 寫新 row,不受 mis tlong stuck 影響
     price,
     volume: toN(q.tv),
     change_pct,
-    market_state: "REGULAR",  // 能寫入 cache 即 z 有真實成交 → 必 REGULAR(舊版 z="-" 標 CLOSED 是 bug,盤中間隙誤標關市)
+    market_state: "REGULAR", // 能寫入 cache 即真實在盤中(z 或 a/b 有值) → 必 REGULAR
     currency: "TWD",
-    source: "twse_mis",
+    source,
   };
 }
 
