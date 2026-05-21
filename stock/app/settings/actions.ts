@@ -19,7 +19,6 @@ export async function updateSetting(formData: FormData): Promise<void> {
   revalidatePath("/settings");
   revalidatePath("/");
   revalidatePath("/holdings");
-  revalidatePath("/watchlist");
   revalidatePath("/etf");
   revalidatePath("/rank");
 }

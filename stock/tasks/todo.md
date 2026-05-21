@@ -1352,6 +1352,44 @@ blast radius 小(單一 EF、不碰選股鏈/持股鏈/前端);風險在「又�
 
 ---
 
+## A+C:產業 tab 拿掉 + lending 換 token_2 解 quota 爆(2026-05-21,完成)
+
+**起因**:Andy「產業 tab 整個拿掉,把扣打拿去讓排行/持股更即時」。診斷後發現:
+- 「產業 tab」實際=`/watchlist` route(TabNav label「產業」但 route 不一致;watchlist 表 0 sym)
+- industry_stocks 100 sym 是 stock_universe 148 的 99% 子集 → 移除 industry **不省 quota**(EF Set 去重後仍跑 stock_universe 148)
+- 真省 quota 必須砍 stock_universe(影響 backtest universe + alpha)
+- **lending 慢性 quota_exhausted**(每日跑到 2882 即爆,只跑 1/3 universe)→ 把 lending 移到 token_2 獨立 quota 是更直接的「即時度提升」
+
+**修法(Andy 拍板 A+C,不動 stock_universe)**:
+
+A) UI 清理:
+- [x] `TabNav.tsx` 移除「產業」項
+- [x] `Sidebar.tsx` 移除「產業」項
+- [x] `stocks/[symbol]/page.tsx` 「← 回產業列表」連結改 `/rank`
+- [x] `settings/actions.ts` 移除 `revalidatePath("/watchlist")`
+- [x] 刪 `app/watchlist/` folder(只 page.tsx 一個檔)
+- type check 0 errors(rm -rf .next 重 tsc)
+
+C) lending 換 token_2:
+- [x] `fetch-finmind-lending` EF 加 `body.token_key` 參數(同 fetch-finmind-backfill pattern):
+  - `useTok2 = body.token_key === "finmind_token_2"`
+  - vault RPC 切換 `read_finmind_token_2`,quota source 切到 `finmind_2`(獨立 quota_state row)
+  - fetch_log source 維持 `finmind_lending`(便聚合)
+- [x] Deploy v2→**v3**(verify_jwt true 保留、ezbr sha 變)
+- [x] `cron.alter_job` 改 lending command body 加 `'token_key':'finmind_token_2'`
+- 驗:今日 17:10 Taipei lending cron 跑時將用 token_2 600 獨立 quota,**不再 quota_exhausted**
+
+**預期效應**:
+- lending 從每日「跑到 2882 ~30% break」→ 完整跑 149 universe
+- 排行/持股的籌碼維度 chip_lending_drop 不再因 lending 不全而 null
+- token_1 quota 解壓(從 lending 移走 ~150 calls/day):fundamentals / valuation / institutional / margin 跑得更寬鬆
+- industry_stocks 表保留不動(行業分類資訊仍給 P/B 門檻、AdviceWidget「分散產業」、個股頁面用)
+
+**未做(被 Andy 否決)**:
+- B) 大刀縮 stock_universe 148→30 — 會傷 backtest universe 結構性 alpha,放棄
+
+---
+
 ## 後續可考慮(M8-M11 範圍外)
 
 - 自動下單(券商 API 串接)

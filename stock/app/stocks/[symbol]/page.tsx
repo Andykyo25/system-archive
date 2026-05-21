@@ -126,10 +126,10 @@ export default async function StockDetailPage({
     <div className="space-y-6">
       <div>
         <Link
-          href="/watchlist"
+          href="/rank"
           className="text-sm text-zinc-400 hover:text-zinc-200"
         >
-          ← 回產業列表
+          ← 回排名
         </Link>
       </div>
 

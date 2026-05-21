@@ -8,7 +8,6 @@ import { usePathname } from "next/navigation";
 const navItems = [
   { href: "/", label: "Dashboard", icon: "📊", desc: "總覽" },
   { href: "/holdings", label: "持股", icon: "💼", desc: "已實現 + 未實現" },
-  { href: "/watchlist", label: "產業", icon: "🏭", desc: "10 產業 × 10 股" },
   { href: "/etf", label: "ETF", icon: "🧺", desc: "市值/高股息/主題" },
   { href: "/rank", label: "排名", icon: "⭐", desc: "多因子 + 進場訊號" },
   { href: "/backtest", label: "Backtest", icon: "🧪", desc: "歷史視角回測" },
