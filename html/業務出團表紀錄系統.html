@@ -787,7 +787,7 @@ function renderAll() {
                 <button class="btn btn-sm btn-outline-danger  p-1 px-2" title="刪除"   onclick="deleteRecord('${e(row.id)}','${e(row.name)}')"><i class="fas fa-trash"></i></button>
             </td>
             <td>${e(row.date)}</td>
-            <td class="text-left fw-bold text-truncate" style="max-width:240px;" title="${e(row.tour)}">${categoryBadge(row.category)}${e(row.tour)}</td>
+            <td class="text-left fw-bold text-truncate" style="max-width:240px;" title="${e(row.tour)}">${e(row.tour)}</td>
             <td>${e(row.name)}</td>
             <td>${progressDotsHTML(row)}</td>
             <td class="fw-bold text-primary">${e(row.pax)}</td>
@@ -812,7 +812,7 @@ function renderAll() {
         // ── 手機卡片 ──
         mCardArr.push(`<div class="mobile-card ${urgent?'urgent':''}">
             <div class="d-flex justify-content-between align-items-start">
-                <div class="m-title">${categoryBadge(row.category)}${e(row.tour)}</div>
+                <div class="m-title">${e(row.tour)}</div>
                 <span class="badge bg-primary">${e(row.date)}</span>
             </div>
             <div class="row g-2 small">
