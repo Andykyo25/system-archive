@@ -1469,6 +1469,31 @@ C) lending 換 token_2:
 
 ---
 
+## v_holdings_current 平倉再建倉均價 bug(2026-05-26,結案)
+
+**起因**:Andy 親口「持有中的股票 2000 股 139.5,結果自動幫我便均價 126 多」。排查:2344 華邦電。
+
+**根因**:舊 view 算法 `avg_cost = SUM(buy_qty × buy_price) / SUM(buy_qty)`,把出清前的舊批次也累積。
+- 5/7 BUY 2000@113 → 5/11 SELL 2000@114(全平倉) → 5/26 BUY 2000@139.5
+- 舊算 = (113×2000 + 139.5×2000) / 4000 = **126.25** ❌
+- 正解 = 5/26 重新建倉的均價 **139.50** ✓
+
+**修法(migration 20260526000001)**:遞迴 CTE 時序走訪 + 移動平均法:
+- BUY → total_cost += qty×price ; net_qty += qty
+- SELL 全平倉(qty ≥ net_qty)→ **reset:total_cost=0 / net_qty=0**(關鍵)
+- SELL 部分減倉 → 按當前均價沖銷:total_cost −= avg×sell_qty(維持均價不變,會計慣例)
+- 對只 BUY 沒 SELL 過的持股 → 新舊算法結果完全一致(回歸 PASS)
+- net_qty 型別對齊 bigint(舊 view SUM promote 後是 bigint;CREATE OR REPLACE 必須 column type 一致)
+
+**驗證(2026-05-26)**:
+- v_holdings_current:2344 / net=2000 / **avg=139.50** / total=279000 ✓
+- v_holdings_advice / v_holdings_pnl 連帶修正(都 join v_holdings_current)
+- v_holdings_pnl 2344 unrealized_pnl=+1500(+0.54%)/ market_value=280500 / cost_basis=279000 ✓
+
+**衍生待辦(task #24)**:`v_holdings_pnl.opened_at` 用 `min(txn_date where BUY)` 算建倉日,沒考慮平倉重置,2344 顯示 5/7(實際 5/26 重建倉)。修法需 v_holdings_current 多 expose opened_at 欄位(append 到尾巴),v_holdings_pnl 改讀 — 連動 2 view,**等 Andy 拍板**(也可解讀為「我第一次接觸這檔的日期」)。
+
+---
+
 ## 後續可考慮(M8-M11 範圍外)
 
 - 自動下單(券商 API 串接)
