@@ -1537,7 +1537,12 @@ C) lending 換 token_2:
 
 ### A 組進度
 - [x] **A1 v_holdings_realized 平倉重置(同根漏修)** — 上週修 v_holdings_current 漏了 realized,同樣用 cum_buy/cum_qty UNBOUNDED 永不 reset。改成遞迴移動平均 + 全平倉 reset(migration 20260531000002)。**驗證**:5 筆平倉全對,2344 那筆 5/11 仍報 avg 113.00/+1121.06(不變),未來再賣會用 139.5(不再是 126.25)
-- [ ] **A2 mom_ret_diff 負報酬符號翻轉** — ⚠ **牽涉策略基準,待 Andy 拍板**。`ret_20d > ret_60d/3` 在 ret_60d<0 時門檻變負,跌深反彈股照樣過。實測 93 檔 TRUE 中 **20 檔是假動能**,3596(ret60 -1.2%)現在就排 **top5 rank5**。修法=加 `ret_60d>0` gate,但要兩處同步(v_price_factors 線上 + score_universe_at 回測),且會改 top5 + 改 +24.19 OOS 基準 → 需重跑 OOS(L36)
+- [x] **A2 mom_ret_diff 負報酬符號翻轉** — ✅ 完成(Andy 拍板全做)。`ret_20d > ret_60d/3` 在 ret_60d<0 時門檻變負,跌深反彈股照樣過。修法=加 `ret_60d>0` gate,兩處同步:
+  - migration `20260601000001`(v_price_factors 線上,傳導 v_factor_scores→v_stock_rank→前端/TG)+ `20260601000002`(score_universe_at 回測)
+  - **線上效果**:3596 rank5→rank13、2637 rank6→rank17(跌深反彈退出);新 top5 = 2317/2882/2408/2324/8110,ret60 全正
+  - **一致性驗證**:score_universe_at(today) vs v_stock_rank top8 逐檔 score 相等(無 drift)
+  - **OOS 對照(L36 閘)**:B0 改前 alpha **+24.19** → B1 改後 **+20.02**(−4.17pp);benchmark 一致(35.23,確認純 A2 效果);**MaxDD 18.5→17.16 改善、win 58.33 持平、sharpe 1.87→1.84**
+  - **結論**:alpha 降 4.17pp = 2025 那些假動能(跌深反彈)股恰好反彈賺到錢;移除後是更誠實的動能策略 alpha,且風險改善。**通過閘**(bug fix 非 curve-fit,改後仍顯著正 alpha)。**+24.19 OOS 基準更新為 +20.02**
 - [ ] **A3 Server Component 吞 error** — 全站唯讀 page 丟掉 Supabase error,DB 壞靜默變空表。抽 unwrap helper + app/error.tsx(前端,需 Railway deploy)
 - [ ] **A4 PerformanceWidget 累積報酬口徑** — 淨 pnl ÷ 毛 pct 反推成本→高估。後端 view 加已平倉成本基數欄 + 前端改用(需 Railway deploy)
 - [ ] **A5 v_holdings_signals ETF 還原價口徑** — 未還原 current_price 比已還原 MA→ETF 假偏離 8-10%。**潛伏:現持股只有 2344(非 ETF)未觸發**,買任何高股息 ETF 即爆。需先查清 adj 機制再統一口徑
