@@ -1564,6 +1564,27 @@ C) lending 換 token_2:
 - C2 [P0] 回測 universe 混入 watchlist/holdings_transactions = 事後選擇偏誤疊加存活者偏誤
 - C3 [P1] 回測期籌碼全 null = 實際 3 維,線上 4 維 = 用 A 策略歷史背書 B 策略
 - **C 組總評**:+24.19 OOS alpha 應視為「樂觀上界」非真實 edge 點估計(在 L38 caveat 之上的具體放大點)
+
+### 🚨 C 組執行結果(2026-06-01 夜間自主)— 重大誠實發現
+
+**migration 20260601000004(C1+C2 合併,已 apply 線上)**:
+- C1:fund_ranked 加發布落差(季報 period_end+45天/Q4年報+90天)、rev_ranked 加月營收次月10日(月初+40天)
+- C2:universe 移除 watchlist + holdings_transactions(只留 stock_universe∪industry∪etf)
+
+**OOS 對照(2025 t5 純策略,benchmark 一致 35.23 確認純效果)**:
+| 階段 | alpha | sharpe | MaxDD |
+|---|---|---|---|
+| 原始基準(B0) | +24.19 | 1.875 | 18.5% |
+| A2 後(mom_ret_diff gate) | +20.02 | 1.844 | 17.16% |
+| **C1+C2 後** | **−9.02** | **0.845** | **29.04%** |
+
+**決定性歸因**:C2 只移除 **2 檔**(009816/6285 = Andy 事後買的 transaction-log 持股),universe 161→159 → −29pp 暴跌**幾乎全來自 C1 財報前視偏誤**。win_rate 58.33% 三階段不變(選股方向對的比例一樣),但報酬幅度崩 → **alpha 來源是「財報季偷看未公告業績選到爆發股」,不是真實選股能力**。
+
+**結論**:**M9.4a top5 策略修掉所有偏誤後,2025 OOS 跑輸大盤 9pp**。原 +24.19「alpha」是前視偏誤假象。⚠ 這推翻策略核心價值,**需 Andy 醒來定奪**(見晨報)。
+
+**Caveat(避免過度悲觀)**:C1 用法定公告上限(45/90天)可能略保守(實際公告常更早),真實 alpha 在 −9 ~ +20 間,但**方向明確:遠低於 +20**。完整版需 backfill 真實 announce_date(stock_fundamentals_quarterly 無此欄)— 列 Next Action。
+
+**線上不受影響**:score_universe_at 僅回測用;線上 rank(v_factor_scores)用 DB 已公告財報,無前視問題,不需改。/rank /holdings 選股顯示照舊。
 - D 組:server-only 守衛(1行ROI最高)/ error.tsx,loading.tsx / EF 抽 _shared(解 B1B2 根因) / deriveStatus 對無資料持股仍顯示「持續抱」(L42 前端未根治) / view 依賴鏈深+N+1
 
 ---
