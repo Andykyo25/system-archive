@@ -185,23 +185,16 @@ Deno.serve(async (req: Request) => {
       ranking.sort((a, b) => b.avg - a.avg);
       const top10 = ranking.slice(0, 10);
 
-      // 3. 把舊 row(該 industry 且 locked=false)delete,並 insert 新 top10(skip 已 locked 的 symbol)
+      // 3. B3:先算 top10 toInsert(不動 DB),非空才 delete+insert。
+      //    原本無條件先 delete 再 insert → 若候選空 / price_daily 近 30 天無資料
+      //    使 top10 空,該產業舊 row 已刪、新 row 沒進 → 產業從 universe 消失(沉默
+      //    drift,月初一次、半年才發現)。改成非空才換。
       const { data: existing } = await supabase
         .from("industry_stocks")
         .select("symbol, locked")
         .eq("industry", industry);
       const lockedSet = new Set((existing ?? []).filter((r) => r.locked).map((r) => r.symbol));
 
-      // 刪除未 locked 的舊 row
-      const { data: removed } = await supabase
-        .from("industry_stocks")
-        .delete()
-        .eq("industry", industry)
-        .eq("locked", false)
-        .select("symbol");
-      totalRemoved += removed?.length ?? 0;
-
-      // insert top10(扣除 locked 已存在的)
       let order = 1;
       const toInsert: { industry: string; symbol: string; name: string | null; display_order: number; selected_at: string; locked: boolean }[] = [];
       for (const r of top10) {
@@ -215,7 +208,17 @@ Deno.serve(async (req: Request) => {
           locked: false,
         });
       }
+
       if (toInsert.length > 0) {
+        // 非空才刪舊未 locked row(delete 緊接 insert,失敗窗口最小化)
+        const { data: removed } = await supabase
+          .from("industry_stocks")
+          .delete()
+          .eq("industry", industry)
+          .eq("locked", false)
+          .select("symbol");
+        totalRemoved += removed?.length ?? 0;
+
         const { error } = await supabase
           .from("industry_stocks")
           .insert(toInsert);
@@ -225,6 +228,7 @@ Deno.serve(async (req: Request) => {
           byIndustry[industry] = toInsert.length;
         }
       } else {
+        // top10 空 → 保留舊 row 不刪(避免產業消失)
         byIndustry[industry] = 0;
       }
     }
