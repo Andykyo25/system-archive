@@ -1585,6 +1585,13 @@ C) lending 換 token_2:
 **Caveat(避免過度悲觀)**:C1 用法定公告上限(45/90天)可能略保守(實際公告常更早),真實 alpha 在 −9 ~ +20 間,但**方向明確:遠低於 +20**。完整版需 backfill 真實 announce_date(stock_fundamentals_quarterly 無此欄)— 列 Next Action。
 
 **線上不受影響**:score_universe_at 僅回測用;線上 rank(v_factor_scores)用 DB 已公告財報,無前視問題,不需改。/rank /holdings 選股顯示照舊。
+
+### C3 維度結構漂移量化(2026-06-01 夜間,聲明性質)
+
+- 回測期 2025-06-09 錨點 avg chip_count_total = **0.00**;2025 籌碼表(institutional/margin/shareholding)**全 0 rows** → 回測期籌碼維度完全沒生效
+- 現在線上 avg chip_count_total = **4.33**(institutional recent 1349 rows)
+- **結論**:回測(不論 +24.19 還是 C1+C2 後 −9.02)驗的都是「fund+mom+rev **三維版**」策略;線上現在跑「**四維版**」(含籌碼)。**連 −9.02 都不是現在四維策略的真實 OOS**(是三維版的)。要驗四維版需 backfill 2025 籌碼歷史 + 重跑,或等 paper-track 累積真實四維 OOS。
+- **疊加總結**:M9.4a top5 的可信度受三重打擊 —— ① C1 財報前視(alpha 假象,修後 −9)② C3 回測≠線上策略(三維 vs 四維)③ L38 倖存者偏差。**+24.19 不該再當策略 edge 引用**。
 - D 組:server-only 守衛(1行ROI最高)/ error.tsx,loading.tsx / EF 抽 _shared(解 B1B2 根因) / deriveStatus 對無資料持股仍顯示「持續抱」(L42 前端未根治) / view 依賴鏈深+N+1
 
 ---
