@@ -1494,6 +1494,34 @@ C) lending 換 token_2:
 
 ---
 
+## v_holdings_signals v3 — Andy 建議 2 完整實作(2026-05-31,結案)
+
+**起因**:v2 留下 TODO「市值分檔等 market_cap 資料補齊」,5/21 backfill 完 144 檔,5/31 動工。
+
+**設計**(2 個變更,12 個訊號原樣不動):
+- 改 **#11 vs_bench** 依市值分檔調整門檻
+  | 分檔 | green | yellow | orange | red |
+  |---|---|---|---|---|
+  | 權值 >3000億 | >+1pp | >-1pp | >-3pp | else |
+  | 中型 300-3000億 / null | >+2pp | >-2pp | >-5pp | else |
+  | 小型 <300億 | >+3pp | >-3pp | >-8pp | else |
+- 新增 **#14 mcap_tier**(純資訊 gray)— 顯示「權值 5198 億 / 中型 1200 億 / 小型 280 億」
+
+**理由**:權值股本來就跟 0050 高度連動,日差 ±2pp 對權值股太鬆(會把「正常跟盤」當成 green);小型股獨立行情 ±2pp 太嚴(會把「正常獨立走勢」當成 red)。**分檔讓訊號解讀更貼近實況**。
+
+**Reality check(必要的歸納)**:Andy 原建議 2 還提到「中小型 vs OTC, 權值 vs 0050」— OTC vs TWSE 差異**沒做**(因為 0050 已是 TWSE 50 ETF,OTC 股本來就跟它連動度低,落在「小型放寬」這個 case 已隱含覆蓋)。如未來要顯式區分上市 vs 上櫃,再加 #15。
+
+**驗證(2026-05-31 apply 成功)**:
+- 2344 華新科 mcap_b=5197.5 → **權值 5198 億** ✓
+- vs_bench: 0.0pp · level=yellow ✓(權值門檻 ±1pp,0.0pp 落 yellow 區;v2 的 ±2pp 會回 green,v3 更嚴格)
+- 14 訊號 jsonb_array_length 確認
+
+**signal_level 主規則不動**(避免邏輯複雜化、保持回歸性)。
+
+**前置依賴**:`stock_universe.market_cap_billion`(5/21 backfill,reselect EF 不動此表,長期安全)
+
+---
+
 ## 後續可考慮(M8-M11 範圍外)
 
 - 自動下單(券商 API 串接)
