@@ -1522,6 +1522,38 @@ C) lending 換 token_2:
 
 ---
 
+## 全系統審查(2026-05-31,4 subagent 平行深審)
+
+**起因**:換 Opus 4.8,Andy 要求檢視整個股票系統找優化點。派 4 個專責 subagent 平行審:資料管線 / SQL view / 前端部署 / 策略回測。
+
+**好消息(健康面)**:
+- 資安乾淨(service_role 沒洩漏到 client bundle,寫操作全走 server action)
+- 回測↔線上工程一致(同日 score_universe_at vs v_stock_rank top-12 完全相同、156/161 分數逐檔相等 = 無因子 drift)
+- 未實現損益三表交叉一致
+
+**發現分 4 組(~25 項)**:
+- A 線上數字正確性 / B 資料管線韌性 / C 策略可信度 / D 工程韌性
+- Andy 拍板先做 **A 組**
+
+### A 組進度
+- [x] **A1 v_holdings_realized 平倉重置(同根漏修)** — 上週修 v_holdings_current 漏了 realized,同樣用 cum_buy/cum_qty UNBOUNDED 永不 reset。改成遞迴移動平均 + 全平倉 reset(migration 20260531000002)。**驗證**:5 筆平倉全對,2344 那筆 5/11 仍報 avg 113.00/+1121.06(不變),未來再賣會用 139.5(不再是 126.25)
+- [ ] **A2 mom_ret_diff 負報酬符號翻轉** — ⚠ **牽涉策略基準,待 Andy 拍板**。`ret_20d > ret_60d/3` 在 ret_60d<0 時門檻變負,跌深反彈股照樣過。實測 93 檔 TRUE 中 **20 檔是假動能**,3596(ret60 -1.2%)現在就排 **top5 rank5**。修法=加 `ret_60d>0` gate,但要兩處同步(v_price_factors 線上 + score_universe_at 回測),且會改 top5 + 改 +24.19 OOS 基準 → 需重跑 OOS(L36)
+- [ ] **A3 Server Component 吞 error** — 全站唯讀 page 丟掉 Supabase error,DB 壞靜默變空表。抽 unwrap helper + app/error.tsx(前端,需 Railway deploy)
+- [ ] **A4 PerformanceWidget 累積報酬口徑** — 淨 pnl ÷ 毛 pct 反推成本→高估。後端 view 加已平倉成本基數欄 + 前端改用(需 Railway deploy)
+- [ ] **A5 v_holdings_signals ETF 還原價口徑** — 未還原 current_price 比已還原 MA→ETF 假偏離 8-10%。**潛伏:現持股只有 2344(非 ETF)未觸發**,買任何高股息 ETF 即爆。需先查清 adj 機制再統一口徑
+
+### B/C/D 組(未做,待排)
+- B1 [P0] FinMind quota read-modify-write race(非原子,並行覆蓋,quota gate 失效)
+- B2 [P0] fetch-yahoo-intraday + fetch-stock-news 沒納統一 universe(L46 漏網重演,news 漏 ~150 檔+watchlist,yahoo 持股讀舊 holdings 表)
+- B3 [P1] reselect-industry-stocks delete-then-insert 非交易性(中途失敗整產業消失)
+- C1 [P0] score_universe_at 財報/月營收用會計期間當可得日 = 前視偏誤(實證 2330 在 4/30 看到 Q1)
+- C2 [P0] 回測 universe 混入 watchlist/holdings_transactions = 事後選擇偏誤疊加存活者偏誤
+- C3 [P1] 回測期籌碼全 null = 實際 3 維,線上 4 維 = 用 A 策略歷史背書 B 策略
+- **C 組總評**:+24.19 OOS alpha 應視為「樂觀上界」非真實 edge 點估計(在 L38 caveat 之上的具體放大點)
+- D 組:server-only 守衛(1行ROI最高)/ error.tsx,loading.tsx / EF 抽 _shared(解 B1B2 根因) / deriveStatus 對無資料持股仍顯示「持續抱」(L42 前端未根治) / view 依賴鏈深+N+1
+
+---
+
 ## 後續可考慮(M8-M11 範圍外)
 
 - 自動下單(券商 API 串接)
