@@ -106,22 +106,31 @@ Deno.serve(async (req: Request) => {
   if (!SERVICE_ROLE) return Response.json({ error: "missing SUPABASE_SERVICE_ROLE_KEY env" }, { status: 500 });
   const supabase = createClient(Deno.env.get("SUPABASE_URL")!, SERVICE_ROLE);
 
-  // 收集所有 target symbol + 中文名(用於搜尋關鍵字)
-  const [holdings, industry, etf] = await Promise.all([
-    supabase.from("holdings").select("symbol").is("closed_at", null),
+  // 收集所有 target symbol + 中文名(搜尋關鍵字用)。
+  // B2(L46):target 改讀 v_fetch_universe(= 持股 v_holdings_current ∪ watchlist
+  //   ∪ industry ∪ stock_universe ∪ etf),取代原「holdings(舊表)+industry+etf」
+  //   — 原本漏 stock_universe ~150 檔自選池 + watchlist + transaction-log 持股。
+  const [fu, universe, industry, etf] = await Promise.all([
+    supabase.from("v_fetch_universe").select("symbol"),
+    supabase.from("stock_universe").select("symbol, name"),
     supabase.from("industry_stocks").select("symbol, name").order("symbol"),
     supabase.from("etf_metadata").select("symbol, name").order("symbol"),
   ]);
 
+  // name lookup(搜尋關鍵字):industry > etf > universe
+  const nameLookup = new Map<string, string | null>();
+  for (const r of industry.data ?? []) if (!nameLookup.has(r.symbol)) nameLookup.set(r.symbol, r.name);
+  for (const r of etf.data ?? []) if (!nameLookup.has(r.symbol)) nameLookup.set(r.symbol, r.name);
+  for (const r of universe.data ?? []) if (!nameLookup.has(r.symbol)) nameLookup.set(r.symbol, r.name);
+
+  // target = v_fetch_universe(持股優先全涵蓋);fallback:view 異常退回舊三源(零退化)
   const nameMap = new Map<string, string | null>();
-  for (const r of industry.data ?? []) {
-    if (!nameMap.has(r.symbol)) nameMap.set(r.symbol, r.name);
-  }
-  for (const r of etf.data ?? []) {
-    if (!nameMap.has(r.symbol)) nameMap.set(r.symbol, r.name);
-  }
-  for (const r of holdings.data ?? []) {
-    if (!nameMap.has(r.symbol)) nameMap.set(r.symbol, null);
+  if (fu.error) {
+    const { data: oldH } = await supabase.from("holdings").select("symbol").is("closed_at", null);
+    for (const r of oldH ?? []) nameMap.set(r.symbol, nameLookup.get(r.symbol) ?? null);
+    for (const [s, n] of nameLookup) if (!nameMap.has(s)) nameMap.set(s, n);
+  } else {
+    for (const r of fu.data ?? []) nameMap.set(r.symbol, nameLookup.get(r.symbol) ?? null);
   }
 
   if (nameMap.size === 0) return Response.json({ skipped: "no_target_symbols" });
@@ -153,8 +162,10 @@ Deno.serve(async (req: Request) => {
   }
 
   // 清舊資料(NEWS_RETENTION_DAYS 之前 published 的)
+  // B2 衍生:null published_at(pubDate 解析失敗)對 lt 永不成立 → 永久殘留表膨脹。
+  //   改 or(is null OR < cutoff)一併清掉解析失敗的舊 row。
   const cutoff = new Date(Date.now() - NEWS_RETENTION_DAYS * 86400 * 1000).toISOString();
-  await supabase.from("stock_news").delete().lt("published_at", cutoff);
+  await supabase.from("stock_news").delete().or(`published_at.is.null,published_at.lt.${cutoff}`);
 
   await supabase.from("fetch_log").update({
     finished_at: new Date().toISOString(),

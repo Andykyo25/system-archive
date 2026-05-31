@@ -165,12 +165,13 @@ Deno.serve(async (req: Request) => {
 
   // 收集 target symbol + market
   // - stock_universe(已有 market 欄位):權威來源
-  // - holdings_transactions / watchlist / industry_stocks / etf_metadata:無 market → default 'twse'
+  // - v_holdings_current(當前持股)/ watchlist / industry / etf:無 market → default 'twse'
   // - 若 symbol 同時出現在 universe 跟其他表,以 universe 為準
-  const [universe, holdings, txn, watchlist, industry, etf] = await Promise.all([
+  // B2:持股改讀 v_holdings_current(當前淨持股)取代舊 holdings 表 + holdings_transactions
+  //   (後者含已平倉,過度收料;且舊 holdings 表可能與 v_holdings_current 不一致)
+  const [universe, holdingsCurrent, watchlist, industry, etf] = await Promise.all([
     supabase.from("stock_universe").select("symbol, market"),
-    supabase.from("holdings").select("symbol").is("closed_at", null),
-    supabase.from("holdings_transactions").select("symbol"),
+    supabase.from("v_holdings_current").select("symbol"),
     supabase.from("watchlist").select("symbol"),
     supabase.from("industry_stocks").select("symbol"),
     supabase.from("etf_metadata").select("symbol"),
@@ -183,8 +184,13 @@ Deno.serve(async (req: Request) => {
   const addIfMissing = (sym: string) => {
     if (!symbolToMarket.has(sym)) symbolToMarket.set(sym, "twse");
   };
-  for (const r of holdings.data ?? []) addIfMissing(r.symbol);
-  for (const r of txn.data ?? []) addIfMissing(r.symbol);
+  // B2:持股優先 add(v_holdings_current);fallback view 異常退回舊 holdings 表(零退化)
+  if (holdingsCurrent.error) {
+    const { data: oldH } = await supabase.from("holdings").select("symbol").is("closed_at", null);
+    for (const r of oldH ?? []) addIfMissing(r.symbol);
+  } else {
+    for (const r of holdingsCurrent.data ?? []) addIfMissing(r.symbol);
+  }
   for (const r of watchlist.data ?? []) addIfMissing(r.symbol);
   for (const r of industry.data ?? []) addIfMissing(r.symbol);
   for (const r of etf.data ?? []) addIfMissing(r.symbol);
