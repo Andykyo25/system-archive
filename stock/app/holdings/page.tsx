@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { unwrap } from "@/lib/db";
 import { addBuyTransaction } from "./actions";
 import { fmtMoney, fmtPct, pctColor } from "../_components/Format";
 import { PriceCell } from "../_components/PriceCell";
@@ -116,7 +117,7 @@ export default async function HoldingsPage() {
   const [
     { data: summary },
     { data: portfolio },
-    { data: holdings },
+    holdingsR,
     { data: realized },
     { data: transactions },
     { data: advice },
@@ -153,6 +154,9 @@ export default async function HoldingsPage() {
       ),
     loadFeeSettings(),
   ]);
+
+  // 持股核心 query 失敗 → throw 到 app/error.tsx(不靜默空表,A3/L42)
+  const holdings = unwrap(holdingsR, "v_holdings_pnl");
 
   const rows = (holdings as CurrentHolding[] | null) ?? [];
   const realizedRows = (realized as RealizedRow[] | null) ?? [];

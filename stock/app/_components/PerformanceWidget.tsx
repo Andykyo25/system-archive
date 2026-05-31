@@ -24,6 +24,7 @@ export interface PerfRealizedRow {
   realized_pnl: number | string | null;
   realized_pct: number | string | null;
   qty_sold: number | string | null;
+  avg_cost_at_sell: number | string | null; // A1 移動均價(賣出當下),算精確 cost basis 用
   first_buy_date: string | null; // join 進來的
 }
 
@@ -60,16 +61,19 @@ export function PerformanceWidget({
     .filter((v) => Number.isFinite(v));
   const avgPct = pcts.length > 0 ? pcts.reduce((a, b) => a + b, 0) / pcts.length : null;
 
-  // 加權:用 realized_pnl 與 realized_pct 反推「該筆成本基數」≈ pnl / (pct/100)
-  // 避免 pct=0 → 除 0
+  // 加權累積報酬 = sum(淨 pnl) / sum(真實成本基數)。
+  //   成本基數 = avg_cost_at_sell × qty_sold(A1 修後 v_holdings_realized 提供賣出當下
+  //   移動均價,精確)。舊版用「淨 pnl ÷ 毛 pct」反推 → 分子已扣 fee/tax、分母沒扣,
+  //   口徑不一致使 sumCost 偏小、cumulativePct 系統性高估(A4 修)。
   let sumPnl = 0;
   let sumCost = 0;
   for (const r of realized) {
     const pnl = Number(r.realized_pnl);
-    const pct = Number(r.realized_pct);
-    if (!Number.isFinite(pnl) || !Number.isFinite(pct) || pct === 0) continue;
-    const cost = pnl / (pct / 100);
-    if (!Number.isFinite(cost) || cost <= 0) continue;
+    const avgCost = Number(r.avg_cost_at_sell);
+    const qty = Number(r.qty_sold);
+    if (!Number.isFinite(pnl) || !Number.isFinite(avgCost) || !Number.isFinite(qty)) continue;
+    const cost = avgCost * qty;
+    if (cost <= 0) continue;
     sumPnl += pnl;
     sumCost += cost;
   }

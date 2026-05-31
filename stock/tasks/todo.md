@@ -1543,9 +1543,18 @@ C) lending 換 token_2:
   - **一致性驗證**:score_universe_at(today) vs v_stock_rank top8 逐檔 score 相等(無 drift)
   - **OOS 對照(L36 閘)**:B0 改前 alpha **+24.19** → B1 改後 **+20.02**(−4.17pp);benchmark 一致(35.23,確認純 A2 效果);**MaxDD 18.5→17.16 改善、win 58.33 持平、sharpe 1.87→1.84**
   - **結論**:alpha 降 4.17pp = 2025 那些假動能(跌深反彈)股恰好反彈賺到錢;移除後是更誠實的動能策略 alpha,且風險改善。**通過閘**(bug fix 非 curve-fit,改後仍顯著正 alpha)。**+24.19 OOS 基準更新為 +20.02**
-- [ ] **A3 Server Component 吞 error** — 全站唯讀 page 丟掉 Supabase error,DB 壞靜默變空表。抽 unwrap helper + app/error.tsx(前端,需 Railway deploy)
-- [ ] **A4 PerformanceWidget 累積報酬口徑** — 淨 pnl ÷ 毛 pct 反推成本→高估。後端 view 加已平倉成本基數欄 + 前端改用(需 Railway deploy)
-- [ ] **A5 v_holdings_signals ETF 還原價口徑** — 未還原 current_price 比已還原 MA→ETF 假偏離 8-10%。**潛伏:現持股只有 2344(非 ETF)未觸發**,買任何高股息 ETF 即爆。需先查清 adj 機制再統一口徑
+- [x] **A3 Server Component 吞 error(核心完成 + 漸進)** — 建基礎安全網:
+  - `lib/db.ts` unwrap helper(error 就 throw,不靜默回 null)
+  - `app/error.tsx` boundary(之前**完全沒有** error boundary,任何 throw 都整頁崩)
+  - `lib/supabase/server.ts` 加 `import "server-only"`(D 組順手,把「service_role 不進 client bundle」紅線變編譯期保證)
+  - dashboard(app/page.tsx)+ holdings 核心 query(v_portfolio_summary/v_holdings_full/v_holdings_pnl)套 unwrap
+  - **漸進 todo**:rank/etf/backtest×3/settings/stocks 5 page 套 unwrap(機械工作,error.tsx 已接住真故障/DB 連線失敗,剩餘是防 view drift 靜默空表,ROI 遞減)
+- [x] **A4 PerformanceWidget 累積報酬口徑** — ✅ 改用 `avg_cost_at_sell × qty_sold`(A1 提供賣出當下精確移動均價)算 cost basis,取代「淨pnl ÷ 毛pct」反推(分子已扣fee/tax、分母沒扣→cost偏小→高估)。app/page.tsx realized query + PerfRealizedRow + sumCost 三處改。tsc 過
+- [x] **A5 v_holdings_signals ETF 還原價口徑 — 實證為誤報,不需修(L47)**。agent 假設「未還原 current vs 已還原 MA = 假偏離 8-10%」。實證推翻:
+  - 0050/0056 過去 20 天 adj_factor 全=1.0 → raw MA20 = adj MA20 **完全相同**,+8.5%/+9.9% 是**真實**偏離
+  - 機制:`adj_factor[今天]` 恆=1 → `current(raw today)=current(adj today)`,跟 adj MA **同口徑**(都還原到今天基準)→ 比較正確
+  - 唯一口徑差:持有期跨除息的 ETF(00878 差 ~1.4pp),但 adj MA(還原)才對(反映真實總報酬),raw 反因除息假跌偏低
+  - **結論**:signals 現狀正確,agent P0 誇大。教訓呼應 L47:審查 P0 必須實證,不可照單全收(避免為不存在的 bug 加複雜度)
 
 ### B/C/D 組(未做,待排)
 - B1 [P0] FinMind quota read-modify-write race(非原子,並行覆蓋,quota gate 失效)

@@ -1,6 +1,7 @@
 import { Fragment } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import { unwrap } from "@/lib/db";
 import { fmtMoney, fmtPct, pctColor } from "./_components/Format";
 import { PriceCell } from "./_components/PriceCell";
 import { analyzeRow, summarizeForRow } from "./_components/Analyze";
@@ -128,8 +129,8 @@ function buildScoreTooltip(analysis: { headline: string; notes: string[] }): str
 export default async function Dashboard() {
   const sb = createClient();
   const [
-    { data: summary },
-    { data: holdings },
+    summaryR,
+    holdingsR,
     { data: signals },
     { data: perfSummary },
     { data: realizedRows },
@@ -156,7 +157,7 @@ export default async function Dashboard() {
       .single(),
     sb
       .from("v_holdings_realized")
-      .select("symbol, sell_date, realized_pnl, realized_pct, qty_sold")
+      .select("symbol, sell_date, realized_pnl, realized_pct, qty_sold, avg_cost_at_sell")
       .order("sell_date", { ascending: false })
       .order("created_at", { ascending: false }),
     sb
@@ -174,6 +175,11 @@ export default async function Dashboard() {
       .order("expected_rank", { ascending: true })
       .limit(30),
   ]);
+
+  // 核心 query 失敗 → throw 到 app/error.tsx,不靜默變空表(A3/L42)。
+  // 次要/lookup(signals/perf/realized/ranks)容忍 null,失敗只影響該區塊。
+  const summary = unwrap(summaryR, "v_portfolio_summary");
+  const holdings = unwrap(holdingsR, "v_holdings_full");
 
   // entry signal name lookup(原邏輯)+ rank picks name lookup(新邏輯)合併一次取
   const signalRows = (signals as EntrySignalSummary[] | null) ?? [];
@@ -234,6 +240,7 @@ export default async function Dashboard() {
             realized_pnl: number | string | null;
             realized_pct: number | string | null;
             qty_sold: number | string | null;
+            avg_cost_at_sell: number | string | null;
           }[]
         | null) ?? []
     ).map((r) => ({
