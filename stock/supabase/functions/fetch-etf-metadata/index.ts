@@ -158,9 +158,8 @@ Deno.serve(async (req: Request) => {
   }
 
   // 1 個 API call
-  await supabase.from("api_quota_state")
-    .update({ used: usedSoFar + 1 })
-    .eq("source", "finmind").eq("quota_date", today);
+  // B1:原子遞增(取代 read-modify-write,並行不覆蓋)
+  await supabase.rpc("increment_quota", { p_source: "finmind", p_date: today, p_n: 1 });
 
   await supabase.from("fetch_log").update({
     finished_at: new Date().toISOString(),

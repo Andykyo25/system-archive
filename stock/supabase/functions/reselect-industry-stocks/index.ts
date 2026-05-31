@@ -238,11 +238,8 @@ Deno.serve(async (req: Request) => {
     { source: "finmind", quota_date: today, used: 0, budget: FINMIND_DAILY_BUDGET },
     { onConflict: "source,quota_date", ignoreDuplicates: true },
   );
-  const { data: q } = await supabase.from("api_quota_state").select("used")
-    .eq("source", "finmind").eq("quota_date", today).single();
-  await supabase.from("api_quota_state")
-    .update({ used: (q?.used ?? 0) + 1 })
-    .eq("source", "finmind").eq("quota_date", today);
+  // B1:原子遞增(取代 read-modify-write,並行不覆蓋;免去先 select 再寫的 race)
+  await supabase.rpc("increment_quota", { p_source: "finmind", p_date: today, p_n: 1 });
 
   await supabase.from("fetch_log").update({
     finished_at: new Date().toISOString(),

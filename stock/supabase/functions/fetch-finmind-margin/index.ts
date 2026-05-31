@@ -181,9 +181,8 @@ Deno.serve(async (req: Request) => {
     }
   }
 
-  await supabase.from("api_quota_state")
-    .update({ used: usedSoFar + apiCalls })
-    .eq("source", "finmind").eq("quota_date", today);
+  // B1:原子遞增(取代 read-modify-write,並行 EF 不互相覆蓋使 quota gate 失效)
+  await supabase.rpc("increment_quota", { p_source: "finmind", p_date: today, p_n: apiCalls });
 
   await supabase.from("fetch_log").update({
     finished_at: new Date().toISOString(),
