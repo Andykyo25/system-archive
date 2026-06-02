@@ -81,6 +81,21 @@ interface EntrySignalSummary {
   chip_count_total: number;
 }
 
+// 持股的 19 因子綜合判斷(餵「真實持股」表,讓基本面 score 旁也顯示綜合排名 + 進場燈)
+interface HeldRank {
+  symbol: string;
+  expected_rank: number | null;
+  weighted_score: number | string | null;
+  is_entry_signal: boolean | null;
+  signal_strength: "strong" | "normal" | "none" | "insufficient_data" | null;
+  fund_count_pos: number | null;
+  fund_count_total: number | null;
+  mom_count_pos: number | null;
+  mom_count_total: number | null;
+  chip_count_pos: number | null;
+  chip_count_total: number | null;
+}
+
 function scoreClass(score: number): string {
   if (score >= 6) return "bg-green-600 text-white";
   if (score >= 5) return "bg-green-700 text-white";
@@ -225,6 +240,26 @@ export default async function Dashboard() {
     }
   }
 
+  // 「真實持股」表也顯示系統綜合判斷:持股的 expected_rank + 進場燈。
+  // 動機:基本面 6 條 score 對景氣循環股(如記憶體)反轉初期偏嚴 → score 低
+  // 但 19 因子綜合排名可能很前面 + 進場燈亮。並列兩者避免被單一 score 誤導。
+  const holdingRows = (holdings as HoldingFull[] | null) ?? [];
+  const heldRankMap: Record<string, HeldRank> = {};
+  if (holdingRows.length > 0) {
+    const { data: heldRanks } = await sb
+      .from("v_entry_signal")
+      .select(
+        "symbol, expected_rank, weighted_score, is_entry_signal, signal_strength, fund_count_pos, fund_count_total, mom_count_pos, mom_count_total, chip_count_pos, chip_count_total",
+      )
+      .in(
+        "symbol",
+        holdingRows.map((h) => h.symbol),
+      );
+    for (const r of (heldRanks as HeldRank[] | null) ?? []) {
+      heldRankMap[r.symbol] = r;
+    }
+  }
+
   // 持股表現 widget 預備:realized rows + 每 symbol first BUY date
   const firstBuyMap = new Map<string, string>();
   for (const t of (buyTxns as { symbol: string; txn_date: string }[] | null) ?? []) {
@@ -249,9 +284,7 @@ export default async function Dashboard() {
     }));
 
   // 持有中的 symbol → 排除掉(可關注標的不該推「已經持有的」)
-  const heldSymbols = new Set(
-    ((holdings as HoldingFull[] | null) ?? []).map((h) => h.symbol),
-  );
+  const heldSymbols = new Set(holdingRows.map((h) => h.symbol));
   const advicePicks: AdvicePickRow[] = rankRowsRaw
     .filter((r) => !heldSymbols.has(r.symbol))
     .map((r) => ({
@@ -272,7 +305,7 @@ export default async function Dashboard() {
       />
       <AdviceWidget picks={advicePicks} />
       <EntrySignalWidget rows={signalRows} nameMap={nameMap} />
-      <HoldingsAnalysis rows={(holdings as HoldingFull[] | null) ?? []} />
+      <HoldingsAnalysis rows={holdingRows} rankMap={heldRankMap} />
     </div>
   );
 }
@@ -461,7 +494,13 @@ function Stat({
   );
 }
 
-function HoldingsAnalysis({ rows }: { rows: HoldingFull[] }) {
+function HoldingsAnalysis({
+  rows,
+  rankMap,
+}: {
+  rows: HoldingFull[];
+  rankMap: Record<string, HeldRank>;
+}) {
   if (rows.length === 0) return null;
   const COL_COUNT = 13;
   return (
@@ -475,7 +514,7 @@ function HoldingsAnalysis({ rows }: { rows: HoldingFull[] }) {
           <thead className="border-b border-zinc-800 bg-zinc-950 text-left text-xs text-zinc-400">
             <tr>
               <th className="px-3 py-2">股號</th>
-              <th className="px-3 py-2 text-center" title="hover 看完整中文分析">分</th>
+              <th className="px-3 py-2 text-center" title="上=基本面 6 條規則;下=19 因子綜合排名(⭐=進場訊號)">分 / 綜合</th>
               <th className="px-3 py-2 text-right">股數</th>
               <th className="px-3 py-2 text-right">均價</th>
               <th className="px-3 py-2 text-right">現價</th>
@@ -496,6 +535,14 @@ function HoldingsAnalysis({ rows }: { rows: HoldingFull[] }) {
               const analysis = analyzeRow(h);
               const tooltip = buildScoreTooltip(analysis);
               const summary = summarizeForRow(analysis);
+              const rank = rankMap[h.symbol];
+              // 基本面 score 低但綜合排名靠前 + 進場燈 → 典型景氣循環股反轉初期
+              // (基本面尺背著過去低谷;股價與綜合排名已反映復甦)。提示別只看 score。
+              const cyclicalHint =
+                h.score <= 3 &&
+                rank?.expected_rank != null &&
+                rank.expected_rank <= 30 &&
+                rank.is_entry_signal === true;
               const grossPnl = Number(h.unrealized_pnl);
               const netPnl = Number(h.net_pnl_est);
               const feeDiff =
@@ -518,9 +565,25 @@ function HoldingsAnalysis({ rows }: { rows: HoldingFull[] }) {
                     )}
                   </td>
                   <td className="px-3 py-2 text-center" title={tooltip}>
-                    <span className={`cursor-help rounded px-2 py-0.5 text-xs font-semibold tabular-nums ${scoreClass(h.score)}`}>
-                      {h.score}/6
-                    </span>
+                    <div className="flex flex-col items-center gap-0.5">
+                      <span className={`cursor-help rounded px-2 py-0.5 text-xs font-semibold tabular-nums ${scoreClass(h.score)}`}>
+                        {h.score}/6
+                      </span>
+                      {rank && (
+                        <span
+                          className="whitespace-nowrap text-[10px] text-zinc-400"
+                          title={`19 因子綜合排名 #${rank.expected_rank ?? "—"}　·　基本面 ${rank.fund_count_pos ?? 0}/${rank.fund_count_total ?? 0}　·　動能 ${rank.mom_count_pos ?? 0}/${rank.mom_count_total ?? 0}　·　籌碼 ${rank.chip_count_total ? `${rank.chip_count_pos}/${rank.chip_count_total}` : "—"}`}
+                        >
+                          綜合{" "}
+                          <span className="font-semibold text-zinc-200">
+                            #{rank.expected_rank ?? "—"}
+                          </span>
+                          {rank.is_entry_signal && (
+                            <span className="ml-0.5 text-yellow-400">⭐</span>
+                          )}
+                        </span>
+                      )}
+                    </div>
                   </td>
                   <td className="px-3 py-2 text-right tabular-nums">{h.qty}</td>
                   <td className="px-3 py-2 text-right tabular-nums">{fmtMoney(h.avg_cost, 2)}</td>
@@ -554,6 +617,11 @@ function HoldingsAnalysis({ rows }: { rows: HoldingFull[] }) {
                 </tr>
                 <tr className="border-t border-zinc-900/30 bg-zinc-950/30">
                   <td colSpan={COL_COUNT} className="px-3 pb-2 pt-1 text-[11px] leading-snug text-zinc-500">
+                    {cyclicalHint && (
+                      <span className="text-amber-400">
+                        ⚠ 基本面分偏嚴(常見於景氣循環股反轉初期);系統綜合排名 #{rank.expected_rank} 靠前且進場燈亮,別只看 {h.score}/6 ·{" "}
+                      </span>
+                    )}
                     {summary}
                   </td>
                 </tr>
@@ -564,7 +632,9 @@ function HoldingsAnalysis({ rows }: { rows: HoldingFull[] }) {
         </table>
       </div>
       <p className="mt-2 text-xs text-zinc-500">
-        評分 0-6:EPS 連 4 季正 / ROE&gt;15% / FCF&gt;0 / PEG&lt;1 / PB&lt;產業門檻 / 月營收 YoY&gt;0 ·
+        「分」0-6 = 基本面 6 條:EPS 連 4 季正 / ROE&gt;15% / FCF&gt;0 / PEG&lt;1 / PB&lt;產業門檻 / 月營收 YoY&gt;0。
+        「綜合 #」= 19 因子綜合排名(基本面+動能+籌碼),⭐ = 進場訊號 —{" "}
+        <span className="text-zinc-400">基本面分對景氣循環股偏嚴,綜合排名才是系統完整判斷</span>。
         淨損益已扣手續費(0.0855%×2)+ 證交稅(現股 0.3%、ETF 0.1%)
       </p>
     </section>

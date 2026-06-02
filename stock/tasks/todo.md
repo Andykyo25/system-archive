@@ -1627,6 +1627,20 @@ C) lending 換 token_2:
 
 **待時間驗證**:隔日各 cron 跑後查 `api_quota_state.used` 是否準確累計(B1 原子遞增線上實效)。
 
+### ✅ Dashboard「真實持股」表並列綜合排名 + 進場燈 + 循環股提醒(2026-06-02)
+
+**起因**:Andy 看 2344(華邦電,記憶體循環股)連日衝高/漲停,但 dashboard 持股卡顯示基本面 **2/6** 困惑。診斷:dashboard `HoldingsAnalysis`(app/page.tsx)只從 `v_holdings_full` 拿基本面 score(6 條價值股規則),對**景氣循環股反轉初期系統性低估**(過去虧損 / 低 ROE / 高 PB 全是循環特性);而系統主力 19 因子排名其實給 2344 **expected_rank #13 + is_entry_signal=true**。兩套尺不一致、持股卡只顯示會低估的那套。
+
+**改動(純前端 app/page.tsx,不動 DB)**:
+- 新增 `HeldRank` interface + Dashboard 查 `v_entry_signal in 持股symbols` → `heldRankMap`
+- `HoldingsAnalysis` 分數欄上下並列:上 `score/6`(基本面)、下 `綜合 #rank ⭐`(19 因子排名 + 進場燈),hover 看 fund/mom/chip 維度
+- `cyclicalHint`:`score≤3 && expected_rank≤30 && is_entry_signal` → 失分行前加「基本面分偏嚴(景氣循環股反轉初期),綜合排名 #X 靠前+進場燈,別只看 X/6」
+- 表頭「分」→「分/綜合」、底部說明補綜合排名口徑
+
+**驗證**:`next build` + tsc 通過;dev server 早期 `GET / 200 in ~1s` 實際 render 成功(含改動零 runtime error,`v_entry_signal` 查詢無報錯)。截圖未成:dev 連 **production DB**,preview 每 2s full-render force-dynamic dashboard 把既有重 view(`v_holdings_full`/`v_portfolio_summary`)打 `statement timeout` + 連線池耗盡 → 已停 dev 止血。**非本次改動造成**(早期 render 200 證明),但暴露既有議題:**dashboard force-dynamic + 深 view 高頻請求會 DB timeout**(見 D 組「view 依賴鏈深+N+1」,未來優化候選:dashboard 加快取 / 重 view 物化 / 連線池調大)。
+
+**設計選擇**:循環股提醒用「基本面分 vs 綜合排名落差」啟發式觸發,**不硬編產業清單**(系統定位=儀表板不臆測產業循環性;落差直接解決「被單一 score 誤導」痛點)。
+
 ---
 
 ## 後續可考慮(M8-M11 範圍外)
