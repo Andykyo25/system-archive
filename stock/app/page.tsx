@@ -1,6 +1,7 @@
 import { Fragment } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import { unstable_cache } from "next/cache";
 import { unwrap } from "@/lib/db";
 import { fmtMoney, fmtPct, pctColor } from "./_components/Format";
 import { PriceCell } from "./_components/PriceCell";
@@ -141,31 +142,102 @@ function buildScoreTooltip(analysis: { headline: string; notes: string[] }): str
   return [analysis.headline, "", ...analysis.notes].join("\n");
 }
 
-export default async function Dashboard() {
-  const sb = createClient();
-  const [
-    summaryR,
-    holdingsR,
-    { data: signals },
-    { data: perfSummary },
-    { data: realizedRows },
-    { data: buyTxns },
-    { data: ranks },
-  ] = await Promise.all([
-    sb.from("v_portfolio_summary").select("*").single(),
-    sb
-      .from("v_holdings_full")
-      .select("*")
-      .order("market_value", { ascending: false, nullsFirst: false }),
-    sb
+interface RankPick {
+  symbol: string;
+  weighted_score: number | string | null;
+  fund_count_pos: number;
+  fund_count_total: number;
+  expected_rank: number;
+}
+
+// === 慢變資料快取 ===
+// dashboard 是 force-dynamic,每次 render 並發 ~11 個 DB 查詢;高頻刷新時把
+// PostgREST 連線池打爆(statement / pool timeout)。把「與即時報價/持股無關」的
+// 慢變查詢(進場訊號 / 排名 / 名稱對照,皆日更或 cron 級)用 unstable_cache 快取,
+// 高頻 render 命中快取不打 DB,連線並發降到只剩即時查詢(報價/損益/持股)。
+// 報價/損益維持每次即時;買賣經 holdings action revalidatePath('/') 一併刷新;
+// 排名/名稱最多舊 60~300s,對日更資料無感。server.ts 用 service_role 無 cookies,
+// 可安全在 cache scope 內 createClient(unstable_cache 限制:scope 內不可用 cookies)。
+const getCachedEntrySignals = unstable_cache(
+  async (): Promise<EntrySignalSummary[]> => {
+    const sb = createClient();
+    const { data } = await sb
       .from("v_entry_signal")
       .select(
         "symbol, weighted_score, expected_rank, signal_strength, fund_count_pos, fund_count_total, mom_count_pos, mom_count_total, chip_count_pos, chip_count_total, is_entry_signal",
       )
       .eq("is_entry_signal", true)
       .order("weighted_score", { ascending: false, nullsFirst: false })
-      .limit(10),
-    // 「我的交易表現」widget 用
+      .limit(10);
+    return (data as EntrySignalSummary[] | null) ?? [];
+  },
+  ["dashboard:entry-signals"],
+  { revalidate: 60 },
+);
+
+const getCachedTopRanks = unstable_cache(
+  async (): Promise<RankPick[]> => {
+    const sb = createClient();
+    const { data } = await sb
+      .from("v_stock_rank")
+      .select(
+        "symbol, weighted_score, fund_count_pos, fund_count_total, expected_rank",
+      )
+      .gte("fund_count_pos", 5)
+      .order("expected_rank", { ascending: true })
+      .limit(30);
+    return (data as RankPick[] | null) ?? [];
+  },
+  ["dashboard:top-ranks"],
+  { revalidate: 60 },
+);
+
+const getCachedNames = unstable_cache(
+  async (): Promise<{
+    nameMap: Record<string, string | null>;
+    industryMap: Record<string, string | null>;
+  }> => {
+    const sb = createClient();
+    const [is, su, em] = await Promise.all([
+      sb.from("industry_stocks").select("symbol, name, industry"),
+      sb.from("stock_universe").select("symbol, name"),
+      sb.from("etf_metadata").select("symbol, name"),
+    ]);
+    const nameMap: Record<string, string | null> = {};
+    const industryMap: Record<string, string | null> = {};
+    for (const r of (em.data as { symbol: string; name: string | null }[] | null) ?? []) {
+      if (r.name) nameMap[r.symbol] = r.name;
+    }
+    for (const r of (su.data as { symbol: string; name: string | null }[] | null) ?? []) {
+      if (!nameMap[r.symbol] && r.name) nameMap[r.symbol] = r.name;
+    }
+    for (const r of (is.data as
+      | { symbol: string; name: string | null; industry: string | null }[]
+      | null) ?? []) {
+      if (!nameMap[r.symbol] && r.name) nameMap[r.symbol] = r.name;
+      if (r.industry) industryMap[r.symbol] = r.industry;
+    }
+    return { nameMap, industryMap };
+  },
+  ["dashboard:names"],
+  { revalidate: 300 },
+);
+
+export default async function Dashboard() {
+  const sb = createClient();
+  // 即時查詢:報價 / 損益 / 持股,每次 render 要最新,不快取
+  const [
+    summaryR,
+    holdingsR,
+    { data: perfSummary },
+    { data: realizedRows },
+    { data: buyTxns },
+  ] = await Promise.all([
+    sb.from("v_portfolio_summary").select("*").single(),
+    sb
+      .from("v_holdings_full")
+      .select("*")
+      .order("market_value", { ascending: false, nullsFirst: false }),
     sb
       .from("v_holdings_summary")
       .select("total_realized_pnl, total_invested, count_closed")
@@ -180,65 +252,20 @@ export default async function Dashboard() {
       .select("symbol, txn_date")
       .eq("txn_type", "BUY")
       .order("txn_date", { ascending: true }),
-    // 「給 Andy 的建議」widget 用 — top 30 取夠用,後續再 filter
-    sb
-      .from("v_stock_rank")
-      .select(
-        "symbol, weighted_score, fund_count_pos, fund_count_total, expected_rank",
-      )
-      .gte("fund_count_pos", 5)
-      .order("expected_rank", { ascending: true })
-      .limit(30),
   ]);
 
-  // 核心 query 失敗 → throw 到 app/error.tsx,不靜默變空表(A3/L42)。
-  // 次要/lookup(signals/perf/realized/ranks)容忍 null,失敗只影響該區塊。
+  // 核心 query 失敗 → throw 到 app/error.tsx,不靜默變空表(A3/L42),fail-fast
   const summary = unwrap(summaryR, "v_portfolio_summary");
   const holdings = unwrap(holdingsR, "v_holdings_full");
 
-  // entry signal name lookup(原邏輯)+ rank picks name lookup(新邏輯)合併一次取
-  const signalRows = (signals as EntrySignalSummary[] | null) ?? [];
-  const rankRowsRaw =
-    (ranks as
-      | {
-          symbol: string;
-          weighted_score: number | string | null;
-          fund_count_pos: number;
-          fund_count_total: number;
-        }[]
-      | null) ?? [];
-
-  const allLookupSymbols = Array.from(
-    new Set([...signalRows.map((s) => s.symbol), ...rankRowsRaw.map((r) => r.symbol)]),
-  );
-
-  const nameMap: Record<string, string | null> = {};
-  const industryMap: Record<string, string | null> = {};
-  if (allLookupSymbols.length > 0) {
-    const [is, su, em] = await Promise.all([
-      sb
-        .from("industry_stocks")
-        .select("symbol, name, industry")
-        .in("symbol", allLookupSymbols),
-      sb
-        .from("stock_universe")
-        .select("symbol, name")
-        .in("symbol", allLookupSymbols),
-      sb.from("etf_metadata").select("symbol, name").in("symbol", allLookupSymbols),
-    ]);
-    for (const r of (em.data as { symbol: string; name: string | null }[] | null) ?? []) {
-      if (r.name) nameMap[r.symbol] = r.name;
-    }
-    for (const r of (su.data as { symbol: string; name: string | null }[] | null) ?? []) {
-      if (!nameMap[r.symbol] && r.name) nameMap[r.symbol] = r.name;
-    }
-    for (const r of (is.data as
-      | { symbol: string; name: string | null; industry: string | null }[]
-      | null) ?? []) {
-      if (!nameMap[r.symbol] && r.name) nameMap[r.symbol] = r.name;
-      if (r.industry) industryMap[r.symbol] = r.industry;
-    }
-  }
+  // 慢變查詢走快取(進場訊號 / 排名 / 名稱對照),高頻 render 命中快取不打 DB,
+  // 大幅降低連線並發(根因緩解 dashboard 高頻 PostgREST 連線池 timeout)
+  const [signalRows, rankRowsRaw, names] = await Promise.all([
+    getCachedEntrySignals(),
+    getCachedTopRanks(),
+    getCachedNames(),
+  ]);
+  const { nameMap, industryMap } = names;
 
   // 「真實持股」表也顯示系統綜合判斷:持股的 expected_rank + 進場燈。
   // 動機:基本面 6 條 score 對景氣循環股(如記憶體)反轉初期偏嚴 → score 低

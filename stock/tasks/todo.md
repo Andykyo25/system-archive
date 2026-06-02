@@ -1641,6 +1641,19 @@ C) lending 換 token_2:
 
 **設計選擇**:循環股提醒用「基本面分 vs 綜合排名落差」啟發式觸發,**不硬編產業清單**(系統定位=儀表板不臆測產業循環性;落差直接解決「被單一 score 誤導」痛點)。
 
+### ✅ Dashboard 慢變查詢快取 + 套件漏洞修復(2026-06-02)
+
+Andy 要處理上段揭露的兩個遺留:① dashboard 高頻 DB timeout ② GitHub moderate 漏洞。
+
+**任務 1 — dashboard 高頻 DB timeout**:
+- **根因**:dashboard 用 service_role(`statement_timeout=null`,查詢不被砍),真瓶頸是 **PostgREST 連線池耗盡**(`Timed out acquiring connection from pool`)— force-dynamic 每次 render 並發 ~11 查詢 × 高頻 → pool 滿。連線池大小 = Supabase 平台層改不了 → **應用層降載**。
+- **修法**(app/page.tsx 純前端):進場訊號 / 排名 / 名稱對照三類**慢變查詢**改 `unstable_cache`(revalidate 60/60/300s);報價 / 損益 / 持股 / held-rank 維持每次即時。高頻 render 命中快取,DB 並發 **11 → 6**。
+- **權衡**:**保 force-dynamic**(不引入 build-time prerender 依賴 production DB 的脆弱性 + 報價維持即時),而非整頁 ISR。`server.ts` service_role 無 cookies → 可安全在 cache scope 內 createClient(unstable_cache 硬限制)。買賣經 holdings action `revalidatePath('/')` 一併刷新;排名/名稱最多舊 60-300s(日更資料無感)。
+- **限制**:非 100% 根治(即時查詢仍每次跑),但顯著降載 + 零即時性損失 + 零 build 風險。**正常使用本就不發生此 timeout**(僅 preview 每 2s 機器人刷新觸發);要 100% 根治需整頁 ISR(犧牲報價即時 + build 依賴 DB)或物化 view,ROI 低暫不做。
+- **驗證**:`next build` + tsc 通過,`/` 仍 ƒ(Dynamic) 未被 prerender。
+
+**任務 2 — 套件漏洞**:`npm audit fix` 修 2 個 moderate(`brace-expansion` DoS / `ws` 記憶體洩漏,皆 transitive dev 依賴、lockfile 內 patch、無 major bump)→ **found 0 vulnerabilities**,build 通過。(GitHub dependabot 報 1 / npm audit 報 2,差在去重與掃描範圍;兩個都修了)
+
 ---
 
 ## 後續可考慮(M8-M11 範圍外)
