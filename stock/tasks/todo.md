@@ -1669,6 +1669,23 @@ Andy 要處理上段揭露的兩個遺留:① dashboard 高頻 DB timeout ② Gi
 
 **口徑註記**:K 線帶用 raw close(視覺一致)、持股燈用 adj_close(分析正確);近期無除息股(如 2344,adj 最近=1)兩者一致,除息股圖求視覺/燈求正確,context 差異合理。
 
+### ✅ 效能優化 A:清理 intraday cache + 自動 cron(2026-06-02)
+
+**起因**:Andy 問 p99 6-9s 是否有優化空間。診斷:`v_holdings_full`(dashboard 每次 render)單次 **4.1s**,DB 內瓶頸(非網路/cold start)。
+
+**根因**(EXPLAIN ANALYZE 量出):
+1. `price_intraday_cache` 累積 **42.8 萬列**(每分鐘寫、3 週沒清),取「今天報價」filter `quoted_at::date = current_date` 是 **expression 不走 index** → seq scan 全表 ~2s
+2. `daily_recent` 取每檔最近收盤掃 `price_daily` **12.7 萬全歷史**(`trade_date < today` 無下界)~1.85s
+- ⚠ Supabase performance advisor **完全沒抓到**(只看 FK 缺 index / unused index,不看「expression filter 害 index 失效」)→ 只能靠實際 EXPLAIN 量(同 L48「審查工具不能照單全收」)
+
+**A 做法**(Andy 選先做 A):
+- 一次性 `DELETE` >3 天(**42.8 萬 → 8.3 萬**,保留近 3 天 = view 只用今天 + 時區/跨日緩衝)+ `VACUUM` 釋放
+- migration `20260602000002`:每日 18:00 UTC(02:00 Taipei 盤後)cron `purge-intraday-cache` 自動清 >3 天,維持表小不再無限長
+
+**效果**:`v_holdings_full` **4124ms → 2374ms**(−1.75s / −42%)。剩餘 ~2.37s 主要是 `daily_recent` 掃 12.7 萬 = **優化 B 範疇**(改 `v_latest_price_realtime`:intraday filter 改 sargable 範圍走 index + daily 加時間下界),未做,等 Andy 要再說。
+
+**零風險**:view 邏輯/語義零改,純清快取資料(view 只用今天,刪 3 天前不影響)+ 加清理 cron。
+
 ---
 
 ## 後續可考慮(M8-M11 範圍外)
