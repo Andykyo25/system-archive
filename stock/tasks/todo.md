@@ -1605,6 +1605,28 @@ C) lending 換 token_2:
 - **疊加總結**:M9.4a top5 的可信度受三重打擊 —— ① C1 財報前視(alpha 假象,修後 −9)② C3 回測≠線上策略(三維 vs 四維)③ L38 倖存者偏差。**+24.19 不該再當策略 edge 引用**。
 - D 組:server-only 守衛(1行ROI最高)/ error.tsx,loading.tsx / EF 抽 _shared(解 B1B2 根因) / deriveStatus 對無資料持股仍顯示「持續抱」(L42 前端未根治) / view 依賴鏈深+N+1
 
+### ✅ B1 剩餘 7 EF deploy 完成(2026-06-02,commit 8206d7d 線上同步)
+
+接 2026-06-01 夜間「已 deploy 6 / 剩 7」尾巴,本 session 全 deploy 完(MCP `deploy_edge_function`,verify_jwt 全 true):
+
+| EF | 版本 | 備註 |
+|---|---|---|
+| fetch-finmind-margin | v2→v3 | |
+| fetch-finmind-lending | v3→v4 | 雙 token 保留 |
+| fetch-finmind-shareholding | v2→v3 | |
+| fetch-finmind-fallback | v5→v6 | L46 v_fetch_universe+持股優先保留 |
+| fetch-finmind-fundamentals | v2→v3 | |
+| fetch-finmind-backfill | v4→v5 | 9 dataset branch + corp_action recompute |
+| reselect-industry-stocks | v1→**v3** | 含 B1+B3;v2 中文 keyword 手寫誤植,v3 機械修正 |
+
+**B1/B2/B3 全鏈完成**:11 個 quota EF 全改 `increment_quota` 原子 RPC(B1)、yahoo+news 納 v_fetch_universe(B2)、reselect 非空才 delete+insert(B3)。`increment_quota` runtime 已驗(finmind_2 today used=1)。
+
+**🔴 過程踩雷 → L49**:reselect v2 用「手寫重現 content」deploy,`classifyIndustry` 正則內中文股名 keyword 產生 8 處形近誤植+漏字(鈺創→鈕創/宇瞻→宇瞩/辛耘→辛耀/富采→富採/聯鈞→聯鈔/為昇科→為昃科/漏華東/妥協→妄協)→ 個股靜默分類錯。**驗證階段 `get_edge_function` 拉回核對抓到**,改用 PowerShell 機械 ASCII-escape(中文→\uXXXX)重產 content → v3 拉回核對 8 處全對。**教訓 L49:deploy EF content 必機械產生不可手打,deploy 後必拉回核對執行路徑字串**。memory [[stock_ef_invoke_via_pgnet]] 早寫明用 JSON.stringify,沒遵循才中標。
+
+**遺留(cosmetic,非必要)**:其他 6 EF 手寫 deploy,中文僅在註解(執行字串全英文、已確認功能正確),但線上註解可能有同類手寫錯字 → 線上≠repo byte-identical。若日後要完全一致,用 L49 機械 escape 法重 deploy 即可;功能無影響故本 session 未做(影響最小原則)。
+
+**待時間驗證**:隔日各 cron 跑後查 `api_quota_state.used` 是否準確累計(B1 原子遞增線上實效)。
+
 ---
 
 ## 後續可考慮(M8-M11 範圍外)

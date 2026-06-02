@@ -475,3 +475,13 @@ const price = toN(q.z) ?? toN(q.o);  // ❌
 3. 改策略因子/universe 必兩處同步(線上 + 回測)+ 重跑 OOS 對照 + benchmark 一致性檢查(確認純效果非資料變動)
 
 **為什麼**:Andy institutional-grade 要求「回測數字禁得起拷問」。「照單全收 subagent」會誤改不存在的 bug(A5)+ 繼續相信假 alpha。亮眼回測最常見的虛假來源就是前視偏誤(look-ahead bias)+ 事後選擇 + 存活者偏差。+24.19 三項全中(L48 自己 + C3 三維 + L38 倖存者)。**夜間自主時尤其要守:沒有 Andy 即時把關,更要自己當最嚴格的 QA**。
+
+---
+
+### L49 — deploy EF 用 MCP `deploy_edge_function` 時,content **必用機械方式產生**,絕不可手打(尤其含中文)
+**問題**(2026-06-02 deploy 7 個 B1 EF):用 MCP `deploy_edge_function` 時,我把 `files[].content` 用「閱讀 repo → 手寫重現」的方式輸出。前 6 個 EF(中文僅在註解、執行字串全英文)功能正確;但 `reselect-industry-stocks` 的 `classifyIndustry` 把**中文股名 keyword 寫在執行路徑的正則裡**,手寫重現時產生 **8 處形近誤植/漏字**:`鈺創→鈕創`、`宇瞻→宇瞩`、`辛耘→辛耀`、`富采→富採`、`聯鈞→聯鈔`、`為昇科→為昃科`、註解 `妥協→妄協`,且**整個漏掉 `華東`**。這些會讓對應個股無法分類進產業(silent failure,月底 cron 才生效、半年才可能發現)。Deno deploy 的 type-check **不會擋**(字串字面值內容合法)。
+**做法**:
+1. **content 一律機械產生,不經「我重新打字」**:PowerShell 讀磁碟正確檔 → 轉 JSON-ready ASCII-escaped(`"`→`\"`、`\`→`\\`、換行→`\n`、所有非 ASCII→`\uXXXX`)→ Read 回來當 content。中文變碼點,複製 ASCII 無形近誤植風險。(memory [[stock_ef_invoke_via_pgnet]] / B1 deploy 指示**早就寫明**用 `node -e "JSON.stringify(readFileSync(...))"` 產生精確 escaped content — 我沒遵循,改手寫,就中標。)
+2. **deploy 後一定 `get_edge_function` 拉回核對執行路徑內的字串**(dataset 名 / table 名 / 欄位名 / 中文 keyword),逐字比對 repo。不能只看「version +1 + ACTIVE」就當完成(那只證明語法/型別過,不證明字串字面值正確)。
+3. 機械式辨識風險檔:**grep EF 內「非註解行是否含中文/非 ASCII」**(L46 機械式不憑記憶)。中文只在 `//` 註解 → 手寫錯也不影響執行;中文在字串字面值/正則 → 必須機械產生 + 拉回核對。
+**為什麼**:LLM 對中文是 token 級「語義壓縮」,手寫長中文必然形近誤植 + 漏字(如同 [[L46]] 「憑記憶必漏網」的字元版)。English 識別字逐字母複製可靠度高、且打錯多半會讓 API/DB 報錯(非 silent);中文 keyword 打錯是**合法字串、靜默錯分類**,危害最大卻最難發現。`deploy_edge_function` 的 content 是純資料搬運,沒有任何理由經過「我的理解再重打」——能機械搬運就機械搬運,把人為 transcription 從流程裡徹底移除。
