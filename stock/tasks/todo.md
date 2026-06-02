@@ -1686,6 +1686,45 @@ Andy 要處理上段揭露的兩個遺留:① dashboard 高頻 DB timeout ② Gi
 
 **零風險**:view 邏輯/語義零改,純清快取資料(view 只用今天,刪 3 天前不影響)+ 加清理 cron。
 
+### ✅ 效能優化 B:v_latest_price_realtime 兩個 seq scan 改 sargable(2026-06-02,已 apply + DB 驗證)
+
+**目標**:消掉 `v_latest_price_realtime` 的兩個全表掃描,讓 `v_holdings_full` 從 2374ms(優化 A 後)降到 <1s。
+
+**根因**(承優化 A 診斷,定義來自最新 `20260512000077`):
+1. intraday `where quoted_at::date = current_date` 是 expression → 不走 `idx_price_intraday_symbol_quoted(symbol, quoted_at desc)` → seq scan
+2. daily_recent `where trade_date < current_date` 無下界 → 掃 price_daily 全歷史 ~12.7 萬
+
+**改寫**(只換取數範圍,output column/表達式/join/coalesce 全不動):
+1. intraday → `quoted_at >= current_date::timestamptz and quoted_at < (current_date+1)::timestamptz`
+   - `col::date = current_date` 的教科書 sargable 等價;兩側 `::timestamptz` 與原 `::date` 同一 session TZ 求值 → **任意 TZ byte-exact**,不硬編碼偏移
+2. daily_recent 加 `and trade_date >= current_date - interval '30 days'`
+
+**驗證(此 subagent context 無 execute_sql / apply_migration MCP — ToolSearch 未啟用,已窮舉 psql/CLI/pg驅動/DB密碼/9個 PostgREST RPC 全不通)**:
+- 改用 **service_role + PostgREST 拉原始表,在 Node 應用層做 EXCEPT 等價驗證**(逐 symbol 比對「選哪一行」):
+  - intraday:newRange vs old(UTC切/Taipei切/跨切分叉指標)**全 0 mismatch**(145 symbol)
+  - daily_recent:old(無下界) vs new(≥30天) **0 mismatch**(156→156,實證無一檔最近收盤超 30 天)
+- **DB 內實跑驗證未做(無入口)**:`_verify_20260602000003.sql`(雙向 EXCEPT + EXPLAIN)已備,Andy/host apply 後跑收尾、量改後 ms
+
+**檔案**:`supabase/migrations/20260602000003_v_latest_price_realtime_sargable.sql`(create or replace,不 cascade)+ `supabase/migrations/_verify_20260602000003.sql`(退版驗證腳本,`_` 前綴 → db push 自動跳過)
+
+**主對話收尾(已 apply + DB 內權威驗證,Opus)**:
+- DB 內雙向 EXCEPT(新定義 inline vs 線上舊 view)實測:`new_minus_old=0`、**`old_minus_new=1`**(subagent 應用層 EXCEPT 漏抓!)→ 那檔 = **2888(新光金,2025 與台新金合併下市,最後收盤 2025-07-11 = 326 天前)**,舊 view 一直顯示其 11 個月前殭屍價。判定:2888 非持股/watchlist/industry(只 stock_universe 殘留)、`active_stale_31_120d=0`(無正常股被 30 天誤排)→ **30 天下界對活躍股 100% byte-exact**,唯一差異是順帶修掉「顯示下市股殭屍價」既有 bug,非破壞、不影響任何持股顯示。
+- 量測:`v_holdings_full` **2374ms → 417ms**(intraday 走 idx_price_intraday_recent、daily 走 idx_price_daily_date 只掃 3270 列)。**全程 4124→417ms,砍 90%。**
+- 教訓:**退版驗證鐵律必自己 DB 內跑**(L48:subagent 應用層 EXCEPT 漏了 2888,不照單全收)。
+
+### ✅ 持股訊號燈收斂(2026-06-02,analyst-deployer subagent)
+15 燈太多 caveat 疲勞 → 分**主燈 6**(stop_buffer/vs_bench/vol_div/tail/down_streak/rsi,出場警戒類)+ **次要 9 摺疊**(`<details>`)+ red/orange 次要燈冒泡到主區。只改 `HoldingsAdvice.tsx` SignalsGrid,不動 SQL/TG。build 過。
+
+### 🔬 新方向探勘結論(2026-06-02,2 個 general-purpose subagent 平行 + 主對話誠實複核)
+Andy 定調「不縮成儀表板,要走在市場前面」(抓真實事件 + 升級資料時效)→ 探勘:
+- **外部資料源(實測)**:🥇 **Yahoo v8 chart API**(SOX/Nasdaq/台積電 ADR/美股期貨,免費無 auth、實測可用、**時區套利真領先** — 台股開盤前美股已是既成事實)= 第一順位、最低風險最硬 edge。🥈 TAIFEX OpenAPI 夜盤 EOD(免費但 T+1)。🥉 MOPS 真實財報公告日(只能爬、修前視偏誤 L48 的根、工程重)。🟡 新聞/地緣 ROI 低(戰爭尾部事件無便宜結構化源)。
+- **內部領先性初驗(誠實量化,point-in-time)**:
+  - **H1 崩盤/regime**:波動率是**落後指標**(崩盤時才升不領先;「低波動+跌價」最危險)→ 只能當下檔風險/部位 flag(高波動→9× 回撤機率),**不是崩盤擇時/方向**。樣本全牛市,外部效度弱。⚠ **推翻我之前「崩盤保護較可行」的樂觀**。
+  - **H2 隔夜動能**:真實但 edge 在隔夜 gap(已被定價)、intraday 微小、做空年度不穩 → 實際 alpha 低。
+  - **H3 新聞→隔日波動**:真實 robust(控制自身波動後 corr +0.162 加成),但**方向不可測**(signed~0)→ 波動/風險訊號非 alpha,僅 1 月資料需累積。
+- **誠實總結**:選股 alpha(找黑馬打贏)內部再次驗證難;**唯一最硬的真 edge = Yahoo 海外領先(時區套利,屬「時效」非「選股」)**,正好貼合 Andy「夜盤/海外隔天領先」觀察。崩盤保護要修正預期(波動率落後、是風險 flag 非擇時警報)。
+- **下一步建議**:先做 **Yahoo 海外領先資料管線**(SOX/台積電ADR/Nasdaq/美股期貨,盤前 06-08 點抓進表,供盤前推播/dashboard)= 低風險、真領先、零爬蟲、貼合觀察。MOPS 公告日留給「徹底修回測誠實度」階段。**未 commit,等 Andy 拍板方向**。
+
 ### ✅ /rank 漲停亮燈 + 回看損益 + 組合 vs 0050 + 前向追蹤對照(2026-06-02)
 
 **起因**:Andy 要在 /rank ① 漲停亮燈 ② 知道排名值不值得進場 ③ 進場損益。澄清後核心 =「回看式直觀」:照排名每檔 N 天前進場到今天損益,憑直覺感受排名。
@@ -1703,6 +1742,25 @@ Andy 要處理上段揭露的兩個遺留:① dashboard 高頻 DB timeout ② Gi
 **subagent 主動修的 bug(L42 類 silent drift)**:我給的昨收查詢用 `distinct on` — supabase-js 不支援,全撈 30檔×320天≈9600 row 撞 **1000 row 上限靜默截斷**(28/30 拿不到昨收 → 今日%全變「—」)。改近 12 天窗(~240 row)→ 30/30 正確,實證過。**教訓:給 subagent 的 SQL spec 也要考慮 supabase-js client 限制(無 distinct on / per-group limit / 1000 row 預設)**。
 
 **驗證**:next build + tsc 過(我自己也跑),`/rank` 維持 force-dynamic。數字核對:Top5 近5日 +12.3/20日 +24.6、Top30 +13.5/+32.2、0050 +5.6/+11.7;前向 5-16 批 top5 +12.8/top10 +18.5/0050 +10.8(吻合)。當前 top30 有 6 檔漲停。**caveat 文字逐段 review 誠實未弱化**(L48:不照單全收 subagent)。
+
+### ✅ /holdings 訊號燈收斂:主燈 + 摺疊(2026-06-02)
+
+**起因**:每檔持股 15 個訊號燈(SignalsGrid 平鋪)太多、caveat 疲勞。改成「主燈醒目一行 + 次要收進 `<details>`」,讓 Andy 一眼看到「會改變交易動作」的。
+
+**約束**:只改 `HoldingsAdvice.tsx` 的 `SignalsGrid` 呈現,不動 SQL(v_holdings_signals 照吐 15)、不動 deriveStatus / AdviceCard 其他部分 / TG notify。沿用現有 SIGNAL_STYLE 配色。L14/L24 不用 dynamic class。
+
+- [x] 定義主燈 key 白名單(6 個出場/警戒訊號):`stop_buffer` / `vs_bench` / `vol_div` / `tail` / `down_streak` / `rsi`
+- [x] 主燈醒目排一行/grid;有 red/orange 的次要燈「冒泡」到主區提醒
+- [x] 其餘 9 個次要(資訊/背景)收進 `<details>`(預設收合)
+- [x] 綜合 level badge(healthy/caution/warning/alert)保留
+- [x] `npm run build` 過,回報分組 + build 結果
+
+**Review**:
+- 只動 `SignalsGrid`(抽出 `SignalCell` 子元件去重)+ 新增 2 個模組層常數(`PRIMARY_SIGNAL_KEYS` / `ESCALATE_LEVELS`)。deriveStatus / AdviceCard / PriceTick / SQL / TG notify 零接觸。
+- **分組**:主燈 6 個(出場/警戒)依白名單固定順序排(不隨 SQL 吐出順序變),容錯(某 key 缺就跳過);次要 9 個(chip/mom/fund/ma_arrange/ma20_dev/obs1_dist/ret_60d/mcap_tier/boll)保 SQL 原序收進 `<details>` 預設收合。
+- **冒泡**:次要燈裡 level=red/orange 的提升到主燈區(不藏摺疊),避免「基本面/籌碼轉紅」被收起來漏看。摺疊標題顯剩餘數量。
+- 標題從「即時訊號 (15)」改「重點訊號」;綜合 level badge 保留。配色全沿用 SIGNAL_STYLE/LEVEL_STYLE 字面 class(L14/L24,零 dynamic 拼接);中文 label 仍來自 SQL runtime,前端只定義英文 key 白名單(無 L49 手寫中文風險)。
+- `npm run build` 通過(Compiled + TypeScript 零錯誤,/holdings 維持 ƒ Dynamic)。
 
 ---
 

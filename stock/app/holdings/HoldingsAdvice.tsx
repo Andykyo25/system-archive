@@ -319,13 +319,67 @@ const LEVEL_STYLE: Record<
   alert: { label: "警報", badge: "bg-red-950 text-red-200" },
 };
 
+// 主燈白名單:直接影響「該不該出場/加碼」的 6 個出場/警戒訊號。
+// 順序即主燈區排列順序(穩定,不隨 SQL 吐出順序變動)。
+// 其餘 key(chip/mom/fund/ma_arrange/ma20_dev/obs1_dist/ret_60d/mcap_tier/boll)為資訊性背景,收進「更多訊號」摺疊。
+const PRIMARY_SIGNAL_KEYS = [
+  "stop_buffer", // 距停損
+  "vs_bench", // vs 0050
+  "vol_div", // 量價背離
+  "tail", // 長上影
+  "down_streak", // 連跌
+  "rsi", // 過熱
+] as const;
+
+// 次要燈達此 level 即「冒泡」到主區(高警示不該藏在摺疊裡)
+const ESCALATE_LEVELS: ReadonlySet<SignalEntry["level"]> = new Set([
+  "red",
+  "orange",
+]);
+
+function SignalCell({ s }: { s: SignalEntry }) {
+  const st = SIGNAL_STYLE[s.level];
+  return (
+    <div
+      className={`flex flex-col items-start gap-0.5 rounded border ${st.border} ${st.bg} px-2 py-1.5`}
+      title={`${s.label}: ${s.value}`}
+    >
+      <div className="flex w-full items-center gap-1">
+        <span className={`inline-block h-1.5 w-1.5 rounded-full ${st.dot}`} />
+        <span className="truncate text-[10px] text-zinc-400">{s.label}</span>
+      </div>
+      <span
+        className={`block w-full truncate font-mono text-[11px] font-semibold ${st.text}`}
+      >
+        {s.value}
+      </span>
+    </div>
+  );
+}
+
 function SignalsGrid({ signal }: { signal: SignalRow }) {
   const lv = LEVEL_STYLE[signal.signal_level];
+
+  const byKey = new Map(signal.signals.map((s) => [s.key, s]));
+  const primaryKeySet: ReadonlySet<string> = new Set(PRIMARY_SIGNAL_KEYS);
+
+  // 主燈:依白名單固定順序取(SQL 漏吐某 key 就跳過,容錯)
+  const primary = PRIMARY_SIGNAL_KEYS.map((k) => byKey.get(k)).filter(
+    (s): s is SignalEntry => s != null,
+  );
+
+  // 次要:非主燈的其餘訊號,保留 SQL 原始順序
+  const secondary = signal.signals.filter((s) => !primaryKeySet.has(s.key));
+
+  // 冒泡:次要燈裡達 red/orange 的提升到主區(附「更多」標記),其餘留摺疊
+  const escalated = secondary.filter((s) => ESCALATE_LEVELS.has(s.level));
+  const collapsed = secondary.filter((s) => !ESCALATE_LEVELS.has(s.level));
+
   return (
     <div className="border-t border-zinc-800 px-4 py-3">
       <div className="mb-2 flex items-center justify-between gap-2">
         <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
-          即時訊號 ({signal.signals.length})
+          重點訊號
         </span>
         <span
           className={`rounded-md px-2 py-0.5 text-[10px] font-semibold ${lv.badge}`}
@@ -333,32 +387,31 @@ function SignalsGrid({ signal }: { signal: SignalRow }) {
           綜合 · {lv.label}
         </span>
       </div>
+
+      {/* 主燈 + 冒泡的高警示次要燈 */}
       <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-4 md:grid-cols-6">
-        {signal.signals.map((s) => {
-          const st = SIGNAL_STYLE[s.level];
-          return (
-            <div
-              key={s.key}
-              className={`flex flex-col items-start gap-0.5 rounded border ${st.border} ${st.bg} px-2 py-1.5`}
-              title={`${s.label}: ${s.value}`}
-            >
-              <div className="flex w-full items-center gap-1">
-                <span
-                  className={`inline-block h-1.5 w-1.5 rounded-full ${st.dot}`}
-                />
-                <span className="truncate text-[10px] text-zinc-400">
-                  {s.label}
-                </span>
-              </div>
-              <span
-                className={`block w-full truncate font-mono text-[11px] font-semibold ${st.text}`}
-              >
-                {s.value}
-              </span>
-            </div>
-          );
-        })}
+        {primary.map((s) => (
+          <SignalCell key={s.key} s={s} />
+        ))}
+        {escalated.map((s) => (
+          <SignalCell key={s.key} s={s} />
+        ))}
       </div>
+
+      {/* 次要(資訊/背景)訊號:預設收合 */}
+      {collapsed.length > 0 && (
+        <details className="group mt-2">
+          <summary className="flex cursor-pointer list-none items-center gap-1 text-[10px] text-zinc-500 hover:text-zinc-300">
+            <span className="transition-transform group-open:rotate-90">▸</span>
+            更多訊號 ({collapsed.length})
+          </summary>
+          <div className="mt-1.5 grid grid-cols-3 gap-1.5 sm:grid-cols-4 md:grid-cols-6">
+            {collapsed.map((s) => (
+              <SignalCell key={s.key} s={s} />
+            ))}
+          </div>
+        </details>
+      )}
     </div>
   );
 }
