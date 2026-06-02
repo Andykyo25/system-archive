@@ -1686,6 +1686,24 @@ Andy 要處理上段揭露的兩個遺留:① dashboard 高頻 DB timeout ② Gi
 
 **零風險**:view 邏輯/語義零改,純清快取資料(view 只用今天,刪 3 天前不影響)+ 加清理 cron。
 
+### ✅ /rank 漲停亮燈 + 回看損益 + 組合 vs 0050 + 前向追蹤對照(2026-06-02)
+
+**起因**:Andy 要在 /rank ① 漲停亮燈 ② 知道排名值不值得進場 ③ 進場損益。澄清後核心 =「回看式直觀」:照排名每檔 N 天前進場到今天損益,憑直覺感受排名。
+
+**策略 caveat(關鍵)**:排名含動能因子 →「排名靠前」部分 = 最近已漲。用當前排名配回看報酬會**系統性高估「排名準」**(同期相關非事先預測力)。真驗證只有前向追蹤(凍結名單再往前看)。**UI 明確標此 caveat,不包裝成「排名能賺」**(memory +24.19 教訓延伸)。
+
+**做法**(analyst-deployer subagent + 我逐段 review,改 app/rank/page.tsx 單檔):
+1. 漲停亮燈:今日%欄(current_price/昨收−1),≥9.5% 標 🔴。台股紅漲綠跌
+2. 回看欄:加近 5 日%(ret_5d_pct ≈ 一週)配既有 20 日%
+3. 組合摘要卡:當前 Top-N 回看平均(近 5/20 日)vs 0050,附誠實 caveat(同期相關偏樂觀)
+4. 前向追蹤對照:5-16 凍結批 top5/top10 浮動 vs 0050(零前視真驗證),標樣本少僅觀察
+
+**資料源**(全驗證):`v_rank_with_cost`(ret_5d/20d/current_price)、`v_price_factors`(0050 基準 5.59/11.73)、`price_daily`(昨收近窗)、`paper_picks` 5-16 cohort join `v_latest_price_realtime`。
+
+**subagent 主動修的 bug(L42 類 silent drift)**:我給的昨收查詢用 `distinct on` — supabase-js 不支援,全撈 30檔×320天≈9600 row 撞 **1000 row 上限靜默截斷**(28/30 拿不到昨收 → 今日%全變「—」)。改近 12 天窗(~240 row)→ 30/30 正確,實證過。**教訓:給 subagent 的 SQL spec 也要考慮 supabase-js client 限制(無 distinct on / per-group limit / 1000 row 預設)**。
+
+**驗證**:next build + tsc 過(我自己也跑),`/rank` 維持 force-dynamic。數字核對:Top5 近5日 +12.3/20日 +24.6、Top30 +13.5/+32.2、0050 +5.6/+11.7;前向 5-16 批 top5 +12.8/top10 +18.5/0050 +10.8(吻合)。當前 top30 有 6 檔漲停。**caveat 文字逐段 review 誠實未弱化**(L48:不照單全收 subagent)。
+
 ---
 
 ## 後續可考慮(M8-M11 範圍外)
