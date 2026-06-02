@@ -6,7 +6,12 @@ import {
   ColorType,
   CandlestickSeries,
   HistogramSeries,
+  LineSeries,
+  LineStyle,
   type IChartApi,
+  type LineData,
+  type WhitespaceData,
+  type Time,
 } from "lightweight-charts";
 
 export interface OHLCV {
@@ -16,6 +21,40 @@ export interface OHLCV {
   low: number;
   close: number;
   volume?: number;
+}
+
+// 布林軌道(標準 20/2,資訊呈現,非買賣訊號):中軌=MA20、上下軌=±2σ(樣本標準差,對齊
+// SQL 持股燈的 stddev_samp)。用圖上 raw close 算,與 K 線視覺一致;前 19 根不足窗留白。
+function bollingerBands(
+  data: OHLCV[],
+  period = 20,
+  mult = 2,
+): {
+  upper: (LineData<Time> | WhitespaceData<Time>)[];
+  middle: (LineData<Time> | WhitespaceData<Time>)[];
+  lower: (LineData<Time> | WhitespaceData<Time>)[];
+} {
+  const upper: (LineData<Time> | WhitespaceData<Time>)[] = [];
+  const middle: (LineData<Time> | WhitespaceData<Time>)[] = [];
+  const lower: (LineData<Time> | WhitespaceData<Time>)[] = [];
+  for (let i = 0; i < data.length; i++) {
+    const time = data[i].time as unknown as Time;
+    if (i < period - 1) {
+      upper.push({ time });
+      middle.push({ time });
+      lower.push({ time });
+      continue;
+    }
+    const win = data.slice(i - period + 1, i + 1).map((d) => d.close);
+    const ma = win.reduce((a, b) => a + b, 0) / period;
+    const variance =
+      win.reduce((a, b) => a + (b - ma) ** 2, 0) / (period - 1); // 樣本(n-1)
+    const sd = Math.sqrt(variance);
+    upper.push({ time, value: ma + mult * sd });
+    middle.push({ time, value: ma });
+    lower.push({ time, value: ma - mult * sd });
+  }
+  return { upper, middle, lower };
 }
 
 export function KLineChart({ data }: { data: OHLCV[] }) {
@@ -69,6 +108,34 @@ export function KLineChart({ data }: { data: OHLCV[] }) {
       })),
     );
 
+    // 布林軌道(20,2)疊在 K 線上 — 資訊呈現,非買賣訊號(走 B)
+    const boll = bollingerBands(data);
+    const bbUpper = chart.addSeries(LineSeries, {
+      color: "#a78bfa", // violet-400
+      lineWidth: 1,
+      priceLineVisible: false,
+      lastValueVisible: false,
+      crosshairMarkerVisible: false,
+    });
+    bbUpper.setData(boll.upper);
+    const bbMid = chart.addSeries(LineSeries, {
+      color: "#71717a", // zinc-500
+      lineWidth: 1,
+      lineStyle: LineStyle.Dashed,
+      priceLineVisible: false,
+      lastValueVisible: false,
+      crosshairMarkerVisible: false,
+    });
+    bbMid.setData(boll.middle);
+    const bbLower = chart.addSeries(LineSeries, {
+      color: "#a78bfa",
+      lineWidth: 1,
+      priceLineVisible: false,
+      lastValueVisible: false,
+      crosshairMarkerVisible: false,
+    });
+    bbLower.setData(boll.lower);
+
     // 成交量副圖(底下 30%)
     const volumes = data
       .filter((d) => d.volume != null && d.volume > 0)
@@ -111,5 +178,12 @@ export function KLineChart({ data }: { data: OHLCV[] }) {
       </div>
     );
   }
-  return <div ref={containerRef} className="w-full" />;
+  return (
+    <div>
+      <div ref={containerRef} className="w-full" />
+      <p className="mt-1 text-[10px] text-zinc-600">
+        紫線 = 布林上/下軌(20,2)· 灰虛線 = 中軌 MA20 · 走 B:位置參考,非買賣訊號(趨勢股沿上軌走屬正常)
+      </p>
+    </div>
+  );
 }

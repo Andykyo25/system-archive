@@ -1654,6 +1654,21 @@ Andy 要處理上段揭露的兩個遺留:① dashboard 高頻 DB timeout ② Gi
 
 **任務 2 — 套件漏洞**:`npm audit fix` 修 2 個 moderate(`brace-expansion` DoS / `ws` 記憶體洩漏,皆 transitive dev 依賴、lockfile 內 patch、無 major bump)→ **found 0 vulnerabilities**,build 通過。(GitHub dependabot 報 1 / npm audit 報 2,差在去重與掃描範圍;兩個都修了)
 
+### ✅ 布林軌道(走 B:資訊呈現,不進選股/回測)(2026-06-02)
+
+**起因**:Andy 問「加布林軌道會不會過度擬合」。判斷:① 進選股/回測=**會**(且系統已證選股無穩定 edge,疊技術指標=擬合雜訊,勿做)② 當資訊燈/圖上帶=**不算**(標準 20/2 不調參、0 個被優化自由度)。另提醒布林是**均值回歸**,對抱趨勢股(2344 記憶體)會太早喊賣(同 L36 停損對 top5 有害),故只當參考。Andy 拍板走 B。
+
+**Part 1 — K 線疊布林帶**(app/_components/KLineChart.tsx):前端 rolling MA20±2σ(樣本 n-1,對齊 SQL stddev_samp),用圖上 raw close(與 K 線視覺一致),前 19 根 whitespace 留白;3 條 LineSeries(上下軌紫 violet-400 / 中軌灰虛線),priceLine/lastValue/crosshairMarker 全關;圖下圖例 +「位置參考非買賣訊號」。
+
+**Part 2 — 持股燈第 15 格**(migration 20260602000001 v4):v3→v4 **機械複製**(Copy + 精確 Edit,L49:不手寫複製大量中文)+ boll CTE(adj_close 還原權值,與 ma20_dev 同口徑)+ 第 15 訊號。%B 位置(破上軌/近上軌/中段/近下軌/破下軌 + %B%);level 中段 gray、近軌/破軌 yellow(中性提醒不指方向)。**不進 signal_level、不參與排名、append-only**(現有 14 訊號零改動);SignalsGrid 通用渲染自動顯示,前端零改動。
+
+**驗證**:
+- Part 2 apply 後 execute_sql 核對 2344:**15 訊號 ✓**、14 個現有 label 中文全對(機械複製零 regression)✓、布林手算對照 cur 184.5 / upper 163.69 / lower 91.29 → **%B 129%「破上軌」yellow ✓**
+- 2344「破上軌·129%」沿上軌狂奔(漲停)正好印證「布林對抱趨勢股會太早喊賣」→ yellow 中性不指方向的設計正確
+- Part 1 `next build` + tsc 通過
+
+**口徑註記**:K 線帶用 raw close(視覺一致)、持股燈用 adj_close(分析正確);近期無除息股(如 2344,adj 最近=1)兩者一致,除息股圖求視覺/燈求正確,context 差異合理。
+
 ---
 
 ## 後續可考慮(M8-M11 範圍外)
