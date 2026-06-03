@@ -15,7 +15,15 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 // only (never user path, L02); per-symbol try/catch graceful; writes fetch_log.
 
 const YF = "https://query1.finance.yahoo.com/v8/finance/chart/";
-const DEFAULT_SYMBOLS = ["^SOX", "TSM", "^IXIC", "NQ=F", "^VIX", "UMC"];
+// US leaders by sector - drive sector-matched TW stocks (most TW names have no
+// ADR, so the US sector leader is the proxy): MU=memory (Winbond 2344 / Nanya /
+// Macronix), NVDA=AI/GPU chain, AAPL=Apple chain (Foxconn / Largan),
+// AVGO=ASIC/networking, AMD=CPU/GPU, ^SOX=semis broad, TSM/UMC=direct ADR,
+// ^IXIC/NQ=F/^VIX=market/risk.
+const DEFAULT_SYMBOLS = [
+  "^SOX", "TSM", "UMC", "^IXIC", "NQ=F", "^VIX",
+  "MU", "NVDA", "AAPL", "AVGO", "AMD",
+];
 const UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36";
 
