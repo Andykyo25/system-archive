@@ -1762,6 +1762,25 @@ Andy 定調「不縮成儀表板,要走在市場前面」(抓真實事件 + 升�
 - 標題從「即時訊號 (15)」改「重點訊號」;綜合 level badge 保留。配色全沿用 SIGNAL_STYLE/LEVEL_STYLE 字面 class(L14/L24,零 dynamic 拼接);中文 label 仍來自 SQL runtime,前端只定義英文 key 白名單(無 L49 手寫中文風險)。
 - `npm run build` 通過(Compiled + TypeScript 零錯誤,/holdings 維持 ƒ Dynamic)。
 
+### ✅ 海外領先資訊管線 階段 0+1(2026-06-02,Andy 拍板「走在市場前面」、驗證先行)
+
+承「新方向探勘」做最硬的真 edge = 海外/隔夜領先(時區套利)。**驗證先行,沒過就誠實停**。
+
+**階段 0(資料管線,完成)**:
+- schema `overseas_indicators`(migration `20260602000004`):symbol / quoted_date(=美股收盤的台北日期=台股盤前日)/ last_price / prev_close / change_pct。
+- EF `fetch-overseas-leading`(v1,**全英文避 L49**):Yahoo v8 chart API 抓 ^SOX/TSM/^IXIC/NQ=F/^VIX/UMC。即時 range=5d / 回填 range=2y 通用;`taipeiDate(unix+8h)` 對齊 quoted_date。
+- 回填:pg_net invoke range=2y → **3010 列、6 標的、0 錯誤、2 年歷史**。
+- cron(migration `20260602000005`):盤前 06:30 + 08:30 Taipei 抓 range=5d。
+- Yahoo v8 **我自己 WebFetch 實測過**(^SOX 13726 / TSM 446.69,error null)— L47 不照單全收 subagent。
+
+**階段 1(領先性驗證,PASS — 誠實版)**:
+- corr(adj 還原權值,n≈470):**TSM ADR → 2330/0050 領先力在 intraday(0.28)>> gap(0.1)** → **反** subagent H2「gap 已定價」預期,**是可交易方向、不是賺不到的開盤跳空**。SOX/NQ 泛指數弱(<0.1)→ 領先集中**台積電 ADR 直接對標**。
+- 分桶(ADR 昨夜 → 2330 今天開盤後 intraday):**完美單調** — ADR>+2% → **+0.60% / 勝率 65%**(n100);ADR<−2% → **−0.44% / 31%**(n70);中間單調過渡。
+- **誠實定位**:effect 0.4–0.6% — 當**擇時/紀律**用(ADR 大跌今天別追高/減碼、大漲可抱加碼,不算來回成本)**價值明確**;當**當沖 alpha**(開盤買收盤賣)扣台股來回成本 ~0.47% 後淨剩 ~0.13%,**薄、脆弱,不建議當賺錢策略**。
+- **限制**:2 年單一 regime(台積電/AI 主軸期 ADR 領先特別強)、corr/分桶非實盤(滑價/開盤競價)、外部效度需更多年。
+
+**結論**:探勘以來**第一個誠實驗證 PASS 的真領先訊號**(非選股 alpha、是時效擇時,正中 Andy 觀察)。設計的「2a 驗證過」分支 → 下一步**階段 2**:盤前訊號/推播當擇時參考(ADR 昨夜 → 今天半導體偏多偏空),**不包裝成當沖金雞**。等 Andy 拍板階段 2。
+
 ---
 
 ## 後續可考慮(M8-M11 範圍外)
