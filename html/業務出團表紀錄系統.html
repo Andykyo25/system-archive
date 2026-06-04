@@ -481,7 +481,7 @@ const FIELD_LABELS = {
 
 // 草稿需要儲存的表單欄位 IDs
 const FORM_FIELD_IDS = [
-    'f_date','f_tour','f_category','f_name','f_pax','f_bookingId',
+    'f_date','f_tour','f_name','f_pax','f_bookingId',
     'f_tourFee','f_estRev','f_actRev','f_ticketingDate',
     'f_contract','f_contractUploaded','f_paperSent','f_preTripNotify',
     'f_deposit','f_balance','f_billSent','f_list','f_room','f_simCard','f_note'
@@ -938,11 +938,10 @@ async function batchDelete() {
 async function saveRecord() {
     const btn = document.getElementById('submitBtn');
     btn.disabled = true;
-    const getV = id => document.getElementById(id).value;
+    const getV = id => document.getElementById(id)?.value || '';
 
     const record = {
         date: getV('f_date'), tour: getV('f_tour'),
-        category: (getV('f_category')||'').trim() || null,
         name: getV('f_name'),
         pax: Number(getV('f_pax'))||0, bookingId: getV('f_bookingId'),
         tourFee: Number(getV('f_tourFee'))||0, estRev: Number(getV('f_estRev'))||0,
