@@ -1806,3 +1806,16 @@ Andy 定調「不縮成儀表板,要走在市場前面」(抓真實事件 + 升�
 - 跨市場(美股、加密貨幣)
 - Tab 6 Alerts(觸發紀錄 + LINE 通知)
 - ML 升級(XGBoost / LightGBM)— 待 backtest 證明統計版有效再評估
+
+---
+
+## 權益曲線績效頁(2026-06-05,本地未 commit)
+
+**需求**:Andy 要把「本金動態」做成內建線圖。前置已反推本金 = 期末現金 407,500 − 累計已實現現金損益 204,496 = **203,004**(14 筆交易全平倉、逐筆滾動精準對上 407,500、中途無存提 → 假設成立)。
+
+**實作**(plan:`.claude/plans/parallel-launching-curry.md`):
+- **migration `20260605000001_v_equity_curve.sql`**(已 apply 線上):seed `app_settings.initial_capital`(萬單位 20.3004,沿用 budget_ntd 繞 numeric(10,6) 整數僅 4 位)+ view `v_equity_curve`(交易事件 running sum,**BUY delta=−fee / SELL delta=+realized_pnl**)。**MCP 驗證**:14 筆事件、終點 equity=407,499.89(≈407,500,0.11 為本金 round 尾差)、逐筆 delta 與 v_holdings_realized 對齊。
+- **前端**:`EquityLadderChart.tsx`(移植 backtest `EquityOverlay` 純 SVG,`pathFor` 改階梯線、Y 軸絕對金額 NT$、本金基準線)+ `/performance` 頁(summary 4 卡 + 曲線 + 14 列明細)+ TabNav「績效」tab + settings `CapitalRow`(萬單位+NT$換算)。
+- **驗證**:`npm run build` 過(編譯+tsc+靜態生成全綠);資料層 MCP 精準驗證。⚠ 本機 dev 視覺未截到 — **沙箱連不到外網 Supabase(fetch failed,既有 dashboard 同根因),非 code 問題**;頁面邏輯確認走到正確 `unwrap(equity-curve)`。**視覺待 Railway 部署看(專案慣例)**。
+- **口徑 caveat**:單一本金假設、階梯不含未實現浮動(Andy 選)、009816/6285 缺每日價故暫不做每日市值版。
+- **待辦**:commit + push 觸發 Railway 部署;部署後 Andy 確認視覺;未來多次入金需 capital_flows 表。

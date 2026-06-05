@@ -48,8 +48,13 @@ export default async function SettingsPage() {
   const budgetSetting = settingsList.find((s) => s.key === "budget_ntd") ?? null;
   const defaultTopNSetting =
     settingsList.find((s) => s.key === "default_top_n") ?? null;
+  const capitalSetting =
+    settingsList.find((s) => s.key === "initial_capital") ?? null;
   const otherSettings = settingsList.filter(
-    (s) => s.key !== "budget_ntd" && s.key !== "default_top_n",
+    (s) =>
+      s.key !== "budget_ntd" &&
+      s.key !== "default_top_n" &&
+      s.key !== "initial_capital",
   );
 
   return (
@@ -64,6 +69,21 @@ export default async function SettingsPage() {
         ) : (
           <p className="rounded-lg border border-zinc-800 bg-zinc-900 p-3 text-sm text-zinc-500">
             budget_ntd 設定尚未建立(套用 migration 71 後會自動出現)
+          </p>
+        )}
+      </section>
+
+      <section>
+        <h2 className="mb-1 text-lg font-semibold">初始本金</h2>
+        <p className="mb-4 text-xs text-zinc-500">
+          /performance 權益曲線的起點。**單位:萬 NT$**(輸 20.3004 = NT$
+          203,004)。反推自交易紀錄,可手動校正為實際入金。
+        </p>
+        {capitalSetting ? (
+          <CapitalRow setting={capitalSetting} />
+        ) : (
+          <p className="rounded-lg border border-zinc-800 bg-zinc-900 p-3 text-sm text-zinc-500">
+            initial_capital 設定尚未建立(套用 migration 後會自動出現)
           </p>
         )}
       </section>
@@ -155,6 +175,38 @@ function BudgetRow({ setting }: { setting: AppSetting }) {
         step="1"
         min="0"
         placeholder="20 = 20 萬,0 = 不 filter"
+        defaultValue={String(setting.value)}
+        className={inputCls}
+      />
+      <button className={btnCls + " w-full"}>儲存</button>
+    </form>
+  );
+}
+
+function CapitalRow({ setting }: { setting: AppSetting }) {
+  // 初始本金以「萬」單位存(同 budget_ntd,繞 numeric(10,6) 整數僅 4 位)。
+  const v = Number(setting.value);
+  const ntd =
+    Number.isFinite(v) && v > 0 ? Math.round(v * 10000).toLocaleString() : null;
+  return (
+    <form
+      action={updateSetting}
+      className="grid grid-cols-1 gap-2 rounded-lg border border-zinc-800 bg-zinc-900 p-3 md:grid-cols-[1fr_240px_100px]"
+    >
+      <div>
+        <div className="font-mono text-sm text-zinc-200">{setting.key}</div>
+        <div className="text-xs text-zinc-500">
+          初始本金(單位:**萬** NT$)
+          {ntd && <span className="ml-2 text-emerald-400">= NT$ {ntd}</span>}
+        </div>
+      </div>
+      <input type="hidden" name="key" value={setting.key} />
+      <input
+        name="value"
+        type="number"
+        step="0.0001"
+        min="0"
+        placeholder="20.3004 = NT$ 203,004"
         defaultValue={String(setting.value)}
         className={inputCls}
       />
