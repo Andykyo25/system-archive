@@ -146,3 +146,62 @@ export async function deleteTransaction(formData: FormData): Promise<void> {
   revalidatePath("/holdings");
   revalidatePath("/");
 }
+
+// 讀當沖證交稅率(減半:現股 0.15% / ETF 0.05%)
+async function loadDayTradeTax(isEtf: boolean): Promise<number> {
+  const sb = createClient();
+  const { data } = await sb
+    .from("app_settings")
+    .select("key, value")
+    .in("key", ["day_trade_tax_stock", "day_trade_tax_etf"]);
+  const map = new Map<string, number>(
+    ((data ?? []) as { key: string; value: number | string }[]).map((r) => [
+      r.key,
+      Number(r.value),
+    ]),
+  );
+  return isEtf
+    ? (map.get("day_trade_tax_etf") ?? 0.0005)
+    : (map.get("day_trade_tax_stock") ?? 0.0015);
+}
+
+// 新增當沖(day trade)— 同日買賣沖銷,獨立於持股(寫 day_trades 表,不碰移動平均)
+export async function addDayTradeTransaction(formData: FormData): Promise<void> {
+  const symbol = String(formData.get("symbol") ?? "").trim();
+  const qty = Number(formData.get("qty"));
+  const buyPrice = Number(formData.get("buy_price"));
+  const sellPrice = Number(formData.get("sell_price"));
+  const tradeDateRaw = String(formData.get("trade_date") ?? "").trim();
+  const note = String(formData.get("note") ?? "").trim() || null;
+
+  if (!symbol) throw new Error("股號必填");
+  if (!Number.isFinite(qty) || qty <= 0) throw new Error("股數必須是正整數");
+  if (!Number.isFinite(buyPrice) || buyPrice <= 0)
+    throw new Error("買價必須是正數");
+  if (!Number.isFinite(sellPrice) || sellPrice <= 0)
+    throw new Error("賣價必須是正數");
+
+  const { feeRate } = await loadFeeSettings();
+  const dayTradeTax = await loadDayTradeTax(isEtfSymbol(symbol));
+  const buyFee = calcFee(qty, buyPrice, feeRate);
+  const sellFee = calcFee(qty, sellPrice, feeRate);
+  const tax = calcTax(qty, sellPrice, dayTradeTax);
+  const tradeDate = tradeDateRaw || new Date().toISOString().slice(0, 10);
+
+  const sb = createClient();
+  const { error } = await sb.from("day_trades").insert({
+    symbol,
+    trade_date: tradeDate,
+    qty,
+    buy_price: buyPrice,
+    sell_price: sellPrice,
+    buy_fee: buyFee,
+    sell_fee: sellFee,
+    tax,
+    note,
+  });
+  if (error) throw new Error(error.message);
+  revalidatePath("/holdings");
+  revalidatePath("/");
+  revalidatePath("/performance");
+}

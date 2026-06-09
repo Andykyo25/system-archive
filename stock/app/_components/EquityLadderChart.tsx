@@ -7,7 +7,7 @@ import { fmtMoney } from "./Format";
 export interface EquityPoint {
   event_date: string;
   symbol: string;
-  event_type: "BUY" | "SELL";
+  event_type: "BUY" | "SELL" | "DAY_TRADE";
   qty: number | string;
   price: number | string;
   delta: number | string | null;
@@ -89,13 +89,14 @@ export function EquityLadderChart({
 
         {/* SELL 跳升點:圓點 + 標的 + X 軸日期 */}
         {points.map((p, idx) => {
-          if (p.event_type !== "SELL") return null;
+          if (p.event_type === "BUY") return null;
           const i = idx + 1; // series 偏移(t0 起點在最前)
           const px = x(i);
           const py = yScale(Number(p.equity));
+          const isDt = p.event_type === "DAY_TRADE";
           return (
             <g key={idx}>
-              <circle cx={px} cy={py} r="3.5" fill="#f59e0b" />
+              <circle cx={px} cy={py} r="3.5" fill={isDt ? "#fb7185" : "#f59e0b"} />
               <text
                 x={px}
                 y={py - 8}

@@ -1819,3 +1819,20 @@ Andy 定調「不縮成儀表板,要走在市場前面」(抓真實事件 + 升�
 - **驗證**:`npm run build` 過(編譯+tsc+靜態生成全綠);資料層 MCP 精準驗證。⚠ 本機 dev 視覺未截到 — **沙箱連不到外網 Supabase(fetch failed,既有 dashboard 同根因),非 code 問題**;頁面邏輯確認走到正確 `unwrap(equity-curve)`。**視覺待 Railway 部署看(專案慣例)**。
 - **口徑 caveat**:單一本金假設、階梯不含未實現浮動(Andy 選)、009816/6285 缺每日價故暫不做每日市值版。
 - **待辦**:commit + push 觸發 Railway 部署;部署後 Andy 確認視覺;未來多次入金需 capital_flows 表。
+
+---
+
+## 現股當沖(day trade)支援(2026-06-09)
+
+**需求**:Andy 6/8 想「賣 2408 庫存 @364.5 停損 + 340 買回」,券商執行成**現股當沖**(先賣 324 後買 340 回補),庫存維持 1000@364.5、另賠 17,053。系統移動平均成本法不支援當沖(無法賠錢又不動持股)→ Andy 選**根治 + 完整 UI**。
+
+**方案**:獨立 `day_trades` 表(零風險隔離,不碰移動平均遞迴,L37/L42),損益加法 union 進彙總/曲線/明細。
+
+**實作**(plan `.claude/plans/parallel-launching-curry.md`):
+- **migration A `20260609000001`**(已 apply 線上):`day_trades` 表 + `v_day_trades_realized`(realized=(賣−買)×qty−買費−賣費−稅,欄位對齊 v_holdings_realized + is_day_trade)+ app_settings 當沖稅率(stock 0.15% / etf 0.05%)
+- **migration B `20260609000002`**(已 apply):`v_holdings_summary.total_realized_pnl/total_pnl` 加當沖;`v_equity_curve` events union `DAY_TRADE`(delta=realized_pnl)
+- **前端**:`addDayTradeTransaction` action(+ loadDayTradeTax)+ `DayTradeDialog.tsx`(輸股號/股數/買價/賣價即時算損益)+ /holdings「記當沖」入口 + 已實現歷史 union 當沖徽章 + /performance DAY_TRADE 文案 + EquityLadderChart 當沖標點
+- **記 6/8**:2408 buy340/sell324/qty1000 → realized **−17,053**(費 290+277、稅 486)
+- **MCP 驗證全通過**:當沖 −17,053;**持股 2408 仍 1000@364.5 零影響**(核心目標達成);summary realized 205,680→188,627;equity 終點 407,189→**390,136**;`v_holdings_realized` 不含當沖。`npm run build` 過。
+- **caveat**:當沖假設同日;稅 0.15% 可在 /settings 調;當沖不計入 count_closed/週轉統計,只進 total_realized_pnl + 曲線。
+- **待辦**:commit + push 觸發 Railway 部署。

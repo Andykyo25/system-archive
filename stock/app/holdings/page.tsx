@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { unwrap } from "@/lib/db";
 import { addBuyTransaction } from "./actions";
+import { DayTradeDialog } from "./DayTradeDialog";
 import { fmtMoney, fmtPct, pctColor } from "../_components/Format";
 import { PriceCell } from "../_components/PriceCell";
 import { SellDialog } from "./SellDialog";
@@ -47,6 +48,8 @@ interface RealizedRow {
   fee: number | string;
   tax: number | string;
   note: string | null;
+  created_at?: string;
+  is_day_trade?: boolean;
 }
 
 interface Transaction {
@@ -84,6 +87,8 @@ interface FeeSettings {
   feeRate: number;
   taxStock: number;
   taxEtf: number;
+  dayTaxStock: number;
+  dayTaxEtf: number;
 }
 
 async function loadFeeSettings(): Promise<FeeSettings> {
@@ -96,6 +101,8 @@ async function loadFeeSettings(): Promise<FeeSettings> {
       "commission_base_rate",
       "sell_tax_stock",
       "sell_tax_etf",
+      "day_trade_tax_stock",
+      "day_trade_tax_etf",
     ]);
   const rows = (data ?? []) as { key: string; value: number | string }[];
   const map = new Map<string, number>(
@@ -105,6 +112,8 @@ async function loadFeeSettings(): Promise<FeeSettings> {
     feeRate: (map.get("commission_discount") ?? 1) * (map.get("commission_base_rate") ?? 0.001425),
     taxStock: map.get("sell_tax_stock") ?? 0.003,
     taxEtf: map.get("sell_tax_etf") ?? 0.001,
+    dayTaxStock: map.get("day_trade_tax_stock") ?? 0.0015,
+    dayTaxEtf: map.get("day_trade_tax_etf") ?? 0.0005,
   };
 }
 
@@ -119,6 +128,7 @@ export default async function HoldingsPage() {
     { data: portfolio },
     holdingsR,
     { data: realized },
+    { data: dayTrades },
     { data: transactions },
     { data: advice },
     { data: signals },
@@ -135,6 +145,11 @@ export default async function HoldingsPage() {
       .order("market_value", { ascending: false, nullsFirst: false }),
     sb
       .from("v_holdings_realized")
+      .select("*")
+      .order("sell_date", { ascending: false })
+      .order("created_at", { ascending: false }),
+    sb
+      .from("v_day_trades_realized")
       .select("*")
       .order("sell_date", { ascending: false })
       .order("created_at", { ascending: false }),
@@ -159,7 +174,13 @@ export default async function HoldingsPage() {
   const holdings = unwrap(holdingsR, "v_holdings_pnl");
 
   const rows = (holdings as CurrentHolding[] | null) ?? [];
-  const realizedRows = (realized as RealizedRow[] | null) ?? [];
+  const realizedRows = [
+    ...((realized as RealizedRow[] | null) ?? []),
+    ...((dayTrades as RealizedRow[] | null) ?? []),
+  ].sort((a, b) => {
+    if (a.sell_date !== b.sell_date) return a.sell_date < b.sell_date ? 1 : -1;
+    return (a.created_at ?? "") < (b.created_at ?? "") ? 1 : -1;
+  });
   const txnRows = (transactions as Transaction[] | null) ?? [];
   const sum = (summary as Summary | null) ?? null;
   const portfolioSum = (portfolio as PortfolioSummary | null) ?? null;
@@ -173,7 +194,7 @@ export default async function HoldingsPage() {
     <div className="space-y-8">
       <SummarySection summary={sum} portfolio={portfolioSum} />
 
-      <AddBuySection />
+      <AddBuySection fees={fees} />
 
       <CurrentHoldingsSection rows={rows} fees={fees} />
 
@@ -264,10 +285,17 @@ function Card({
   );
 }
 
-function AddBuySection() {
+function AddBuySection({ fees }: { fees: FeeSettings }) {
   return (
     <section>
-      <h2 className="mb-3 text-lg font-semibold">新增買入</h2>
+      <div className="mb-3 flex items-center justify-between">
+        <h2 className="text-lg font-semibold">新增買入</h2>
+        <DayTradeDialog
+          feeRate={fees.feeRate}
+          taxStock={fees.dayTaxStock}
+          taxEtf={fees.dayTaxEtf}
+        />
+      </div>
       <form
         action={addBuyTransaction}
         className="grid grid-cols-1 gap-3 md:grid-cols-6"
@@ -445,7 +473,14 @@ function RealizedSection({ rows }: { rows: RealizedRow[] }) {
               {rows.map((r) => (
                 <tr key={r.txn_id} className="border-t border-zinc-800">
                   <td className="px-3 py-2 text-zinc-400">{r.sell_date}</td>
-                  <td className="px-3 py-2 font-mono">{r.symbol}</td>
+                  <td className="px-3 py-2 font-mono">
+                    {r.symbol}
+                    {r.is_day_trade && (
+                      <span className="ml-1.5 rounded bg-amber-900/50 px-1.5 py-0.5 text-[10px] text-amber-300">
+                        當沖
+                      </span>
+                    )}
+                  </td>
                   <td className="px-3 py-2 text-right tabular-nums">
                     {r.qty_sold}
                   </td>

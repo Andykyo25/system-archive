@@ -485,3 +485,13 @@ const price = toN(q.z) ?? toN(q.o);  // ❌
 2. **deploy 後一定 `get_edge_function` 拉回核對執行路徑內的字串**(dataset 名 / table 名 / 欄位名 / 中文 keyword),逐字比對 repo。不能只看「version +1 + ACTIVE」就當完成(那只證明語法/型別過,不證明字串字面值正確)。
 3. 機械式辨識風險檔:**grep EF 內「非註解行是否含中文/非 ASCII」**(L46 機械式不憑記憶)。中文只在 `//` 註解 → 手寫錯也不影響執行;中文在字串字面值/正則 → 必須機械產生 + 拉回核對。
 **為什麼**:LLM 對中文是 token 級「語義壓縮」,手寫長中文必然形近誤植 + 漏字(如同 [[L46]] 「憑記憶必漏網」的字元版)。English 識別字逐字母複製可靠度高、且打錯多半會讓 API/DB 報錯(非 silent);中文 keyword 打錯是**合法字串、靜默錯分類**,危害最大卻最難發現。`deploy_edge_function` 的 content 是純資料搬運,沒有任何理由經過「我的理解再重打」——能機械搬運就機械搬運,把人為 transcription 從流程裡徹底移除。
+
+---
+
+### L50 — 本機 dev server 連不到外網 Supabase,前端視覺只能 Railway 部署後驗;別花步驟試本機 preview
+**問題**(2026-06-05 權益曲線 /performance 頁):實作完前端想本機截圖驗視覺,起 dev server(`preview_start`)+ 導航 + screenshot + eval fetch,折騰多步才從 server log 發現**所有頁面(含既有 dashboard `/`)都 `TypeError: fetch failed`** — **沙箱環境連不到外網 Supabase API**,非 code 問題。本機 dev 拿不到任何資料,頁面只走 error boundary,截圖全黑,無從驗視覺。
+**做法**:
+1. 這專案前端視覺驗證**只能靠 Railway 部署後**(線上環境才連得到 Supabase)。本機 `npm run dev` + preview 對「需要 Supabase 資料的頁面」一律無效,**別再花步驟試**(memory `stock_current_state` 早寫「Railway 部署後實際看前端」,此為根因實證)。
+2. 本機驗證上限 = `npm run build`(編譯+tsc+靜態生成)+ MCP `execute_sql` 驗資料層(view 數字對)+ 讀 server log 確認「頁面邏輯走到正確 `unwrap`」。三者齊備即可 commit/部署,視覺缺口交給部署後人眼(Andy 第一個看)。
+3. 真要本機驗視覺需 mock 或本機 supabase stack(此專案沒設,不值得為單次視覺臨時搭)。
+**為什麼**:Andy 要 token 紀律([[L40]])。「起 dev server 截圖」直覺上是「實際展示正確性」(CLAUDE.md #4),但此環境網路阻斷讓它**必然失敗** — 投入多步換 0 資訊。先認清「本機連不到 Supabase」是環境常數,把驗證預算放在 build + MCP 資料驗證(此環境有效且充分),視覺等部署。[[L42]]「宣告環境受限前先窮舉」的反面:這次是**實證**受限(非臆測),確認後就不該再耗。

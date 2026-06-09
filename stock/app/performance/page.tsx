@@ -108,7 +108,8 @@ export default async function PerformancePage() {
             </thead>
             <tbody>
               {points.map((p, idx) => {
-                const isSell = p.event_type === "SELL";
+                const isBuy = p.event_type === "BUY";
+                const isDayTrade = p.event_type === "DAY_TRADE";
                 const delta = Number(p.delta ?? 0);
                 return (
                   <tr
@@ -120,10 +121,12 @@ export default async function PerformancePage() {
                     </td>
                     <td className="px-3 py-2 font-mono">{p.symbol}</td>
                     <td className="px-3 py-2">
-                      {isSell ? (
-                        <span className="text-rose-400">賣出</span>
-                      ) : (
+                      {isBuy ? (
                         <span className="text-sky-400">買進</span>
+                      ) : isDayTrade ? (
+                        <span className="text-amber-400">當沖</span>
+                      ) : (
+                        <span className="text-rose-400">賣出</span>
                       )}
                     </td>
                     <td className="px-3 py-2 text-right tabular-nums">
@@ -134,12 +137,16 @@ export default async function PerformancePage() {
                     </td>
                     <td
                       className={`px-3 py-2 text-right tabular-nums ${
-                        isSell ? "text-rose-400" : "text-zinc-500"
+                        isBuy
+                          ? "text-zinc-500"
+                          : delta < 0
+                            ? "text-green-400"
+                            : "text-rose-400"
                       }`}
                     >
-                      {isSell ? "+" : ""}
+                      {!isBuy && delta > 0 ? "+" : ""}
                       {fmtMoney(delta)}
-                      {!isSell && (
+                      {isBuy && (
                         <span className="ml-1 text-[10px] text-zinc-600">
                           手續費
                         </span>
