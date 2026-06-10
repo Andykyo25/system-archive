@@ -83,6 +83,11 @@ function deriveStatus(r: AdviceRow): { icon: string; headline: string; detail: s
   if (pct <= -10) {
     return { icon: "⛔", headline: stopVerb, detail: `跌 ${pct.toFixed(2)}% 超過 -10% 紀律線。不凹單。` };
   }
+  // L42: fund+mom factor both empty -> rank/signal unreliable, do NOT default to HOLD.
+  // After stop-loss: the -10% pure-price rule stays valid even with missing factors.
+  if (fundTotal === 0 && (r.mom_count_total ?? 0) === 0) {
+    return { icon: "🚧", headline: "因子無料,分析失效", detail: "fund/mom factor 全缺,排名與訊號不可信;僅 -10% 價格紀律有效,先查資料管線。" };
+  }
   if (pct <= -7) {
     return { icon: "⚠", headline: "警戒", detail: `現價 ${pct.toFixed(2)}%。沒量爆轉強就 -10% 出。` };
   }

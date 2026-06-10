@@ -277,15 +277,19 @@ function EquityCurveChart({ summary }: { summary: BacktestSummary }) {
   const yScale = (v: number) =>
     padT + (H - padT - padB) * (1 - (v - minV) / (maxV - minV));
 
-  const pathFor = (curve: number[]) =>
-    curve.length === 0
-      ? ""
-      : curve
-          .map(
-            (v, i) =>
-              `${i === 0 ? "M" : "L"} ${padL + i * xStep} ${yScale(v)}`,
-          )
-          .join(" ");
+  // path 點數 stride 取樣到 ~240(viewBox 800px 已超像素密度),x 用原索引保對齊、
+  // 保尾點 — 長 curve(數百期)HTML path 字串瘦身,視覺無差
+  const pathFor = (curve: number[]) => {
+    if (curve.length === 0) return "";
+    const step = Math.max(1, Math.ceil(curve.length / 240));
+    const pts: string[] = [];
+    for (let i = 0; i < curve.length; i += step) {
+      pts.push(`${pts.length === 0 ? "M" : "L"} ${padL + i * xStep} ${yScale(curve[i])}`);
+    }
+    const last = curve.length - 1;
+    if (last % step !== 0) pts.push(`L ${padL + last * xStep} ${yScale(curve[last])}`);
+    return pts.join(" ");
+  };
 
   // x-axis tick labels(取首中尾)
   const labelIdxs = [

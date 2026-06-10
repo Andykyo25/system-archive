@@ -271,14 +271,17 @@ function EquityOverlay({ runs }: { runs: ColoredRun[] }) {
   const yScale = (v: number) =>
     padT + (H - padT - padB) * (1 - (v - minV) / (maxV - minV));
 
+  // path 點數 stride 取樣到 ~240,x 用原索引保多 run 對齊、保尾點(HTML 瘦身,視覺無差)
   function pathFor(curve: number[]): string {
     if (curve.length === 0) return "";
-    return curve
-      .map(
-        (v, i) =>
-          `${i === 0 ? "M" : "L"} ${padL + i * xStep} ${yScale(v)}`,
-      )
-      .join(" ");
+    const step = Math.max(1, Math.ceil(curve.length / 240));
+    const pts: string[] = [];
+    for (let i = 0; i < curve.length; i += step) {
+      pts.push(`${pts.length === 0 ? "M" : "L"} ${padL + i * xStep} ${yScale(curve[i])}`);
+    }
+    const last = curve.length - 1;
+    if (last % step !== 0) pts.push(`L ${padL + last * xStep} ${yScale(curve[last])}`);
+    return pts.join(" ");
   }
 
   // X 軸 tick:取首中尾 + 若 maxLen > 6,中間多幾個

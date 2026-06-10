@@ -535,7 +535,79 @@ function RankTable({
 }) {
   return (
     <section>
-      <div className="overflow-x-auto rounded-lg border border-zinc-800 bg-zinc-900">
+      {/* 手機卡牌版(md 以下):16 欄橫滑體驗差,改整卡可點直列 */}
+      <div className="space-y-2 md:hidden">
+        {rows.map((r) => {
+          const sig = signalMap.get(r.symbol);
+          const isEntry = sig?.is_entry_signal ?? false;
+          const strength = sig?.signal_strength ?? "none";
+          const chg = todayChgMap.get(r.symbol) ?? null;
+          return (
+            <Link
+              key={r.symbol}
+              href={`/stocks/${r.symbol}`}
+              className={`block rounded-lg border border-zinc-800 px-3 py-2.5 ${
+                isEntry ? "bg-yellow-950/15" : "bg-zinc-900"
+              }`}
+            >
+              <div className="flex items-baseline justify-between">
+                <span className="flex items-baseline gap-2">
+                  <span className="text-xs tabular-nums text-zinc-500">
+                    #{r.expected_rank}
+                  </span>
+                  <span className="font-mono text-blue-400">{r.symbol}</span>
+                  <span className="text-sm text-zinc-300">
+                    {nameMap[r.symbol] ?? ""}
+                  </span>
+                  {isEntry && (
+                    <span
+                      className={
+                        strength === "strong" ? "text-yellow-300" : "text-yellow-500"
+                      }
+                    >
+                      ⭐
+                    </span>
+                  )}
+                </span>
+                <span className="rounded bg-zinc-800 px-2 py-0.5 text-xs font-semibold tabular-nums">
+                  {fmtPctValue(r.weighted_score)}
+                </span>
+              </div>
+              <div className="mt-1.5 flex flex-wrap items-baseline gap-x-3 text-sm tabular-nums">
+                <span>{fmtMoney(r.current_price ?? r.latest_close, 2)}</span>
+                <span>
+                  今日 <TodayChangeCell chg={chg} />
+                </span>
+                <span className={pctColor(r.ret_5d_pct)}>
+                  5日 {fmtPct(r.ret_5d_pct)}
+                </span>
+                <span className={pctColor(r.ret_20d_pct)}>
+                  20日 {fmtPct(r.ret_20d_pct)}
+                </span>
+                <span className="text-zinc-400">RSI {fmtMoney(r.rsi14, 1)}</span>
+              </div>
+              <div className="mt-1 text-xs tabular-nums text-zinc-500">
+                <span className="text-blue-400">
+                  基 {r.fund_count_pos}/{r.fund_count_total}
+                </span>
+                {" · "}
+                <span className="text-amber-400">
+                  動 {r.mom_count_pos}/{r.mom_count_total}
+                </span>
+                {" · "}
+                <span className="text-violet-400">
+                  反 {r.rev_count_pos}/{r.rev_count_total}
+                </span>
+                {" · "}
+                <span className="text-emerald-400">
+                  籌 {r.chip_count_pos}/{r.chip_count_total}
+                </span>
+              </div>
+            </Link>
+          );
+        })}
+      </div>
+      <div className="hidden overflow-x-auto rounded-lg border border-zinc-800 bg-zinc-900 md:block">
         <table className="w-full text-sm">
           <thead className="border-b border-zinc-800 bg-zinc-950 text-left text-xs text-zinc-400">
             <tr>

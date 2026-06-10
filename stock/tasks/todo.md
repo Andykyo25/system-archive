@@ -1853,3 +1853,10 @@ Andy 定調「不縮成儀表板,要走在市場前面」(抓真實事件 + 升�
 - P1b:`app/_components/Skeleton.tsx` + 5 路由 loading.tsx(/、/holdings、/rank、/stocks/[symbol]、/performance)。dev preview 證實 skeleton 立即顯示(體感改善主力,因全站 force-dynamic TTFB 數百 ms~1s)
 - P2:`OverseasWidget.tsx`(dashboard SummaryCards 下方)。11 源分組(指數/ADR/產業龍頭)、台股紅漲綠跌、VIX 中性色;持股對應源 ★ 高亮(industry→源:記憶體→MU/IC設計+封測→TSM 已驗證,AI伺服器→NVDA 未驗證不觸發警示);下檔警示(對應源 ≤−2% 紅框「勿急著低接」)、上檔 ≥+2% 中性「勝率僅 48% 別當買訊」(不對稱性照圖譜)。getCachedOverseas unstable_cache 300s(資料一天只更新 2 次)。**僅呈現已有資料,Stage 2 推播維持暫緩**
 - 驗證:npm run build 過;preview server HTML 含全部新內容(skeleton/海外 widget/★);preview 瀏覽器停在 skeleton 是背景 tab rAF 凍結(streaming swap 不跑),非程式問題
+
+### 追加 4 項(Andy「4點都做」,2026-06-10 下午)
+- [x] 1. mv_factor_scores 物化(migration 20260610000002):DO block 機械替換 v_stock_rank/v_holdings_signals 源(零手打 drift,pattern 不符 fail-fast)+ unique index + cron refresh(平日 08:50/14:50/15:50/16:50/17:50 Taipei)。**v_stock_rank 327→2ms / v_entry_signal 301→2ms / v_holdings_advice 649→129ms / v_holdings_signals 941→104ms**。mv vs view EXCEPT 0/0。⚠ 手動 backfill 後要手動 refresh mv
+- [x] 2. deriveStatus INSUFFICIENT(L42 前端根治):fund+mom total 全 0 → 🚧「因子無料,分析失效」紅 badge,不再默認「持續抱」;停損(-10% 純價格)優先序保留在其上。HoldingsAdvice.tsx + notify-holdings-telegram **v4 deploy**(get_edge_function 拉回核對中文字串 PASS,L49)
+- [x] 3. /rank 手機卡牌式:md 以下整卡可點直列(rank#/股號名稱⭐/總分/現價/今日%/5d/20d/RSI/4 維 count),表格 hidden md:block
+- [x] 4. equity_curve SVG path stride 取樣 ~240 點(backtest/[id] + compare 兩處 pathFor,x 用原索引保對齊+保尾點,HTML 瘦身視覺無差)
+- 驗證:build 過;dev warm /holdings 771ms /rank 987ms(mv 前光 DB 即 ~1.6s);/rank 卡牌 markup 確認

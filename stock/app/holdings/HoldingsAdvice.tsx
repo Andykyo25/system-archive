@@ -63,6 +63,7 @@ export interface SignalRow {
 
 type Status =
   | "NO_PRICE"
+  | "INSUFFICIENT"
   | "STOP_LOSS"
   | "WARNING"
   | "CONSIDER_ADD"
@@ -118,6 +119,22 @@ function deriveStatus(r: HoldingAdviceRow): {
         icon: "⛔",
         headline: `${stopVerb}`,
         detail: `現價已跌 ${pct.toFixed(2)}%(超過 -10% 紀律線)。不凹單,認錯出場。`,
+      },
+    };
+  }
+
+  // L42 沉默殘缺主動警示:fund+mom factor 全缺 → 排名/訊號是假象,不可默認「持續抱」。
+  // 放停損之後:-10% 純價格紀律不受 factor 缺料影響,仍最優先。
+  if (fundTotal === 0 && (r.mom_count_total ?? 0) === 0) {
+    return {
+      status: "INSUFFICIENT",
+      info: {
+        badge: "資料不足",
+        badgeColor: "bg-red-950 text-red-200",
+        icon: "🚧",
+        headline: "因子無料,分析失效",
+        detail:
+          "基本面/動能 factor 全缺,排名與進場訊號不可信(沉默殘缺,非『沒問題』)。僅 -10% 價格紀律有效,先查資料管線是否漏抓此持股。",
       },
     };
   }
