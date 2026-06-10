@@ -15,6 +15,10 @@ import {
   AdviceWidget,
   type AdvicePickRow,
 } from "./_components/AdviceWidget";
+import {
+  OverseasWidget,
+  type OverseasRow,
+} from "./_components/OverseasWidget";
 
 export const dynamic = "force-dynamic";
 
@@ -223,6 +227,29 @@ const getCachedNames = unstable_cache(
   { revalidate: 300 },
 );
 
+// 海外隔夜領先(11 源,cron 一天只更新 2 次:06:30/08:30 Taipei)→ 300s 快取綽綽有餘。
+// 各源最新日期不同(美股=前一交易日 bar、NQ=F/VIX 期貨=即時)→ 拉近 7 天再各取最新一筆。
+const getCachedOverseas = unstable_cache(
+  async (): Promise<OverseasRow[]> => {
+    const sb = createClient();
+    const since = new Date(Date.now() - 7 * 86400_000)
+      .toISOString()
+      .slice(0, 10);
+    const { data } = await sb
+      .from("overseas_indicators")
+      .select("symbol, quoted_date, last_price, prev_close, change_pct")
+      .gte("quoted_date", since)
+      .order("quoted_date", { ascending: false });
+    const latest = new Map<string, OverseasRow>();
+    for (const r of (data as OverseasRow[] | null) ?? []) {
+      if (!latest.has(r.symbol)) latest.set(r.symbol, r); // 已按日期 desc,首見即最新
+    }
+    return [...latest.values()];
+  },
+  ["dashboard:overseas"],
+  { revalidate: 300 },
+);
+
 export default async function Dashboard() {
   const sb = createClient();
   // 即時查詢:報價 / 損益 / 持股,每次 render 要最新,不快取
@@ -260,10 +287,11 @@ export default async function Dashboard() {
 
   // 慢變查詢走快取(進場訊號 / 排名 / 名稱對照),高頻 render 命中快取不打 DB,
   // 大幅降低連線並發(根因緩解 dashboard 高頻 PostgREST 連線池 timeout)
-  const [signalRows, rankRowsRaw, names] = await Promise.all([
+  const [signalRows, rankRowsRaw, names, overseasRows] = await Promise.all([
     getCachedEntrySignals(),
     getCachedTopRanks(),
     getCachedNames(),
+    getCachedOverseas(),
   ]);
   const { nameMap, industryMap } = names;
 
@@ -323,9 +351,16 @@ export default async function Dashboard() {
       industry: industryMap[r.symbol] ?? null,
     }));
 
+  // 海外快照的持股對應源高亮:持股 symbol → industry(getCachedNames 的 industryMap)
+  const overseasHoldings = holdingRows.map((h) => ({
+    symbol: h.symbol,
+    industry: industryMap[h.symbol] ?? h.primary_industry ?? null,
+  }));
+
   return (
     <div className="space-y-6">
       <SummaryCards summary={summary as PortfolioSummary | null} />
+      <OverseasWidget rows={overseasRows} holdings={overseasHoldings} />
       <PerformanceWidget
         summary={perfSummary as PerfSummary | null}
         realized={perfRealized}
