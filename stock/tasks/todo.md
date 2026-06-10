@@ -1836,3 +1836,20 @@ Andy 定調「不縮成儀表板,要走在市場前面」(抓真實事件 + 升�
 - **MCP 驗證全通過**:當沖 −17,053;**持股 2408 仍 1000@364.5 零影響**(核心目標達成);summary realized 205,680→188,627;equity 終點 407,189→**390,136**;`v_holdings_realized` 不含當沖。`npm run build` 過。
 - **caveat**:當沖假設同日;稅 0.15% 可在 /settings 調;當沖不計入 count_closed/週轉統計,只進 total_realized_pnl + 曲線。
 - **待辦**:commit + push 觸發 Railway 部署。
+
+---
+
+## 2026-06-10 session — 優化盤點(載入速度 + 判斷能力)
+
+實證盤點(2 subagent + pg_stat_statements + view 計時):熱點 = v_holdings_signals 941ms(boll CTE 對 price_daily 無日期下界全表掃 12.8 萬列,同 B 優化 pattern);全站 8 頁無 loading.tsx;海外領先 11 源資料躺表中零 UI 呈現(管線正常,6/9 隔夜 11 源完整)。
+
+- [x] P1a:v_holdings_signals v5 — boll CTE 加 sargable 90 天下界(migration 20260610000001),EXCEPT 雙向迴歸 + 計時對比
+- [x] P1b:loading.tsx skeleton — /(dashboard)、/holdings、/rank、/stocks/[symbol]、/performance 共 5 路由(backtest/etf/settings 查詢輕,不加)
+- [x] P2:Dashboard 海外隔夜快照 widget — overseas_indicators 各 symbol 最新一筆,指數/ADR/產業龍頭分組,持股對應源高亮(記憶體→MU 已驗證),MU≤-2% 下檔警示(歷史 -0.93%)、≥+2% 標「上檔弱勝率48%別當買訊」,unstable_cache 300s,read-only 不碰推播(Stage 2 推播維持暫緩)
+- [x] 驗證:npm run build + view 迴歸 + commit/push
+
+**Review(2026-06-10)**:
+- P1a:migration `20260610000001` apply 線上。EXCEPT 雙向迴歸 PASS(唯一 diff = bench_chg_pct 時變欄位,0050 即時報價 snapshot 後又進一筆;排除後 0/0)。**誠實計時:941→871ms 只省 ~7%** — plan 證實 boll Seq Scan 已消失,但真正大頭是 v_factor_scores(320 天視窗 WindowAgg 32,869 列 + 籌碼 4 表)在 plan 內被重複展開 3 次(advice 內部 1 次 + signals left join 又 1 次等)。**根治候選 = mv_factor_scores 物化 + 資料更新後 refresh**(結構改動,牽涉 view 鏈,待 Andy 拍板,見下方提案)
+- P1b:`app/_components/Skeleton.tsx` + 5 路由 loading.tsx(/、/holdings、/rank、/stocks/[symbol]、/performance)。dev preview 證實 skeleton 立即顯示(體感改善主力,因全站 force-dynamic TTFB 數百 ms~1s)
+- P2:`OverseasWidget.tsx`(dashboard SummaryCards 下方)。11 源分組(指數/ADR/產業龍頭)、台股紅漲綠跌、VIX 中性色;持股對應源 ★ 高亮(industry→源:記憶體→MU/IC設計+封測→TSM 已驗證,AI伺服器→NVDA 未驗證不觸發警示);下檔警示(對應源 ≤−2% 紅框「勿急著低接」)、上檔 ≥+2% 中性「勝率僅 48% 別當買訊」(不對稱性照圖譜)。getCachedOverseas unstable_cache 300s(資料一天只更新 2 次)。**僅呈現已有資料,Stage 2 推播維持暫緩**
+- 驗證:npm run build 過;preview server HTML 含全部新內容(skeleton/海外 widget/★);preview 瀏覽器停在 skeleton 是背景 tab rAF 凍結(streaming swap 不跑),非程式問題
