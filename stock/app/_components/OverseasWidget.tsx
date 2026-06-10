@@ -9,6 +9,7 @@
 // 階段 2(盤前推播)維持 Andy 暫緩;本 widget 僅 dashboard 呈現已有資料。
 
 import { fmtPct, pctColor } from "./Format";
+import { SOURCE_META, INDUSTRY_SOURCE, GATE_THRESHOLD } from "./overseas-map";
 
 export interface OverseasRow {
   symbol: string;
@@ -18,38 +19,8 @@ export interface OverseasRow {
   change_pct: number | string | null;
 }
 
-// 顯示名 + 分組(指數 / ADR / 產業龍頭代理)
-const SOURCE_META: Record<
-  string,
-  { label: string; group: "index" | "adr" | "proxy"; neutral?: boolean }
-> = {
-  "^SOX": { label: "費半", group: "index" },
-  "^IXIC": { label: "那斯達克", group: "index" },
-  "NQ=F": { label: "那指期", group: "index" },
-  "^VIX": { label: "VIX", group: "index", neutral: true }, // 波動率漲跌無多空色,僅數值
-  TSM: { label: "台積ADR", group: "adr" },
-  UMC: { label: "聯電ADR", group: "adr" },
-  MU: { label: "美光", group: "proxy" },
-  NVDA: { label: "輝達", group: "proxy" },
-  AAPL: { label: "蘋果", group: "proxy" },
-  AVGO: { label: "博通", group: "proxy" },
-  AMD: { label: "超微", group: "proxy" },
-};
-
 const GROUP_ORDER: Array<"index" | "adr" | "proxy"> = ["index", "adr", "proxy"];
 const GROUP_LABEL = { index: "指數", adr: "ADR", proxy: "產業龍頭" } as const;
-
-// 產業 → 海外對應源。verified = 領先性圖譜實證過(只有實證的才觸發下檔警示)。
-// 金融/航運/車用電動車/被動元件/面板/生技:掃描驗證為無效 → 不映射。
-const INDUSTRY_SOURCE: Record<
-  string,
-  { src: string; verified: boolean; downNote: string }
-> = {
-  記憶體: { src: "MU", verified: true, downNote: "歷史隔日均約 -0.9%" },
-  IC設計: { src: "TSM", verified: true, downNote: "台積電鏈隔日偏弱" },
-  半導體封測: { src: "TSM", verified: true, downNote: "台積電鏈隔日偏弱" },
-  AI伺服器: { src: "NVDA", verified: false, downNote: "" },
-};
 
 function num(v: number | string | null | undefined): number | null {
   if (v == null) return null;
@@ -94,7 +65,7 @@ export function OverseasWidget({
     if (!r || chg == null || !info.verified) continue;
     const label = SOURCE_META[src]?.label ?? src;
     const held = info.holdingSymbols.join("/");
-    if (chg <= -2) {
+    if (chg <= GATE_THRESHOLD) {
       alerts.push({
         kind: "down",
         text: `${label} 隔夜 ${fmtPct(chg)} — 持股 ${held} 開盤偏弱(${info.downNote}),勿急著低接`,

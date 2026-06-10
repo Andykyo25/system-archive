@@ -1,8 +1,34 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { fmtMoney, fmtPct, pctColor } from "@/app/_components/Format";
+import { INDUSTRY_SOURCE, GATE_THRESHOLD, SOURCE_META } from "@/app/_components/overseas-map";
+import { addPatienceAlert, cancelPatienceAlert } from "./actions";
 
 export const dynamic = "force-dynamic";
+
+// v_entry_quality(價位質量層):entry_zone 四態 + 耐心價
+interface EntryQualityRow {
+  symbol: string;
+  dev_ma20_pct: number | string | null;
+  off_high_pct: number | string | null;
+  boll_pctb: number | string | null;
+  vol_ratio_5_20: number | string | null;
+  patience_ma20: number | string | null;
+  patience_fib38: number | string | null;
+  entry_zone: "chase" | "neutral" | "pullback" | "broken" | "unknown";
+}
+
+// entry_zone → 顯示(走 B 資訊呈現:價位區資訊,非買賣訊號;籌碼/訊號燈仍要並看)
+const ZONE_META: Record<
+  EntryQualityRow["entry_zone"],
+  { label: string; cls: string; title: string }
+> = {
+  pullback: { label: "回檔✓", cls: "text-green-400", title: "回檔至支撐:偏離 MA20 ±5% 內且距 60d 高 ≥8%(價位區資訊,仍需並看籌碼/訊號)" },
+  neutral: { label: "中性", cls: "text-zinc-500", title: "非追高亦非回檔支撐區" },
+  chase: { label: "追高", cls: "text-red-400", title: "追高區:偏離 MA20>+10% 或 RSI>75 或布林 %B>85" },
+  broken: { label: "破壞", cls: "text-sky-400", title: "趨勢破壞:跌破 MA60 且距 60d 高 >25%,別接刀" },
+  unknown: { label: "—", cls: "text-zinc-600", title: "資料不足" },
+};
 
 interface RankWithCostRow {
   symbol: string;
@@ -199,14 +225,33 @@ export default async function RankPage({
   const prevCloseMap = new Map<string, number>();
   const realtimeMap = new Map<string, number>();
 
-  const [nameRes, prevRes, fwdRes] = await Promise.all([
+  const overseasSince = new Date(Date.now() - 7 * 86400000)
+    .toISOString()
+    .slice(0, 10);
+  const [nameRes, eqRes, overseasRes, alertRes, prevRes, fwdRes] = await Promise.all([
     symbols.length > 0
       ? Promise.all([
-          sb.from("industry_stocks").select("symbol, name").in("symbol", symbols),
+          sb.from("industry_stocks").select("symbol, name, industry").in("symbol", symbols),
           sb.from("stock_universe").select("symbol, name").in("symbol", symbols),
           sb.from("etf_metadata").select("symbol, name").in("symbol", symbols),
         ])
       : Promise.resolve(null),
+    // 價位質量層(v_entry_quality):entry_zone 四態 + 耐心價
+    symbols.length > 0
+      ? sb.from("v_entry_quality").select("*").in("symbol", symbols)
+      : Promise.resolve({ data: null }),
+    // 海外 gate:近 7 天各源,前端各取最新一筆
+    sb
+      .from("overseas_indicators")
+      .select("symbol, quoted_date, change_pct")
+      .gte("quoted_date", overseasSince)
+      .order("quoted_date", { ascending: false }),
+    // 已掛的耐心價提醒(顯示 ⏰ 已掛狀態)
+    sb
+      .from("alert_rules")
+      .select("symbol, threshold")
+      .eq("condition", "price_below")
+      .eq("enabled", true),
     symbols.length > 0
       ? sb
           .from("price_daily")
@@ -225,6 +270,7 @@ export default async function RankPage({
       : Promise.resolve({ data: null }),
   ]);
 
+  const industryMap = new Map<string, string>();
   if (nameRes) {
     const [is, su, em] = nameRes;
     for (const r of (em.data as { symbol: string; name: string | null }[] | null) ?? []) {
@@ -233,9 +279,44 @@ export default async function RankPage({
     for (const r of (su.data as { symbol: string; name: string | null }[] | null) ?? []) {
       if (!nameMap[r.symbol] && r.name) nameMap[r.symbol] = r.name;
     }
-    for (const r of (is.data as { symbol: string; name: string | null }[] | null) ?? []) {
+    for (const r of (is.data as
+      | { symbol: string; name: string | null; industry: string | null }[]
+      | null) ?? []) {
       if (!nameMap[r.symbol] && r.name) nameMap[r.symbol] = r.name;
+      if (r.industry) industryMap.set(r.symbol, r.industry);
     }
+  }
+
+  // 價位質量 map(symbol → v_entry_quality row)
+  const eqMap = new Map<string, EntryQualityRow>();
+  for (const r of (eqRes.data as EntryQualityRow[] | null) ?? []) {
+    eqMap.set(r.symbol, r);
+  }
+
+  // 海外 gate:各源最新一筆 → 產業對應源隔夜 ≤ GATE_THRESHOLD 且 verified → 當日勿進
+  const srcChgMap = new Map<string, number>();
+  for (const r of (overseasRes.data as
+    | { symbol: string; quoted_date: string; change_pct: number | string | null }[]
+    | null) ?? []) {
+    if (!srcChgMap.has(r.symbol)) {
+      const c = toNum(r.change_pct);
+      if (c != null) srcChgMap.set(r.symbol, c);
+    }
+  }
+  const gateMap = new Map<string, { src: string; chg: number }>();
+  for (const s of symbols) {
+    const ind = industryMap.get(s);
+    const m = ind ? INDUSTRY_SOURCE[ind] : undefined;
+    if (!m?.verified) continue;
+    const chg = srcChgMap.get(m.src);
+    if (chg != null && chg <= GATE_THRESHOLD) gateMap.set(s, { src: m.src, chg });
+  }
+
+  // 已掛耐心價(symbol → threshold)
+  const alertMap = new Map<string, number>();
+  for (const r of (alertRes.data as { symbol: string; threshold: number | string | null }[] | null) ?? []) {
+    const t = toNum(r.threshold);
+    if (t != null) alertMap.set(r.symbol, t);
   }
 
   // 每檔取最新一筆(已 order by trade_date desc,首見即昨收)
@@ -362,6 +443,9 @@ export default async function RankPage({
             nameMap={nameMap}
             signalMap={signalMap}
             todayChgMap={todayChgMap}
+            eqMap={eqMap}
+            gateMap={gateMap}
+            alertMap={alertMap}
           />
         </>
       )}
@@ -527,11 +611,17 @@ function RankTable({
   nameMap,
   signalMap,
   todayChgMap,
+  eqMap,
+  gateMap,
+  alertMap,
 }: {
   rows: RankWithCostRow[];
   nameMap: NameMap;
   signalMap: Map<string, SignalRow>;
   todayChgMap: Map<string, number | null>;
+  eqMap: Map<string, EntryQualityRow>;
+  gateMap: Map<string, { src: string; chg: number }>;
+  alertMap: Map<string, number>;
 }) {
   return (
     <section>
@@ -578,6 +668,7 @@ function RankTable({
                 <span>
                   今日 <TodayChangeCell chg={chg} />
                 </span>
+                <ZoneCell eq={eqMap.get(r.symbol)} gate={gateMap.get(r.symbol)} />
                 <span className={pctColor(r.ret_5d_pct)}>
                   5日 {fmtPct(r.ret_5d_pct)}
                 </span>
@@ -622,6 +713,12 @@ function RankTable({
               <th className="px-3 py-2 text-right">現價</th>
               <th className="px-3 py-2 text-right" title="今日漲幅 = 現價 / 昨收 − 1。≥ +9.5% 標 🔴 漲停">
                 今日%
+              </th>
+              <th className="px-3 py-2 text-center" title="價位質量(v_entry_quality):回檔✓ 回檔至支撐 / 中性 / 追高 / 破壞。⛔ = 對應海外源隔夜大跌,今日勿進(已驗證下檔領先)">
+                價位
+              </th>
+              <th className="px-3 py-2 text-right" title="耐心價 = MA20(主錨)。好股等好價的參考掛價,非預測">
+                耐心價
               </th>
               <th className="px-3 py-2 text-right">1 張成本</th>
               <th className="px-3 py-2 text-right" title="近 5 交易日(≈一週)回看報酬">
@@ -700,6 +797,16 @@ function RankTable({
                   <td className="px-3 py-2 text-right tabular-nums">
                     <TodayChangeCell chg={todayChgMap.get(r.symbol) ?? null} />
                   </td>
+                  <td className="px-3 py-2 text-center">
+                    <ZoneCell eq={eqMap.get(r.symbol)} gate={gateMap.get(r.symbol)} />
+                  </td>
+                  <td className="px-3 py-2 text-right tabular-nums text-zinc-400">
+                    <PatienceCell
+                      symbol={r.symbol}
+                      patience={toNum(eqMap.get(r.symbol)?.patience_ma20 ?? null)}
+                      alerted={alertMap.get(r.symbol) ?? null}
+                    />
+                  </td>
                   <td className="px-3 py-2 text-right tabular-nums text-zinc-300">
                     {fmtCost(r.cost_per_lot_ntd)}
                   </td>
@@ -734,6 +841,83 @@ function RankTable({
         </table>
       </div>
     </section>
+  );
+}
+
+// 耐心價 cell:未掛 → 點數字一鍵掛到價提醒;已掛 → ⏰ 顯示掛價,點 ✕ 取消。
+// 盤中 cron check-price-alerts 每 10 分比價,觸價 TG 推播(one-shot)。
+function PatienceCell({
+  symbol,
+  patience,
+  alerted,
+}: {
+  symbol: string;
+  patience: number | null;
+  alerted: number | null;
+}) {
+  if (alerted != null) {
+    return (
+      <span className="inline-flex items-center gap-1">
+        <span className="text-amber-400" title={`已掛到價提醒 ${alerted}:現價 ≤ ${alerted} 時 TG 推播(one-shot)`}>
+          ⏰ {fmtMoney(alerted, 2)}
+        </span>
+        <form action={cancelPatienceAlert} className="inline">
+          <input type="hidden" name="symbol" value={symbol} />
+          <button type="submit" className="text-zinc-600 hover:text-zinc-300" title="取消提醒">
+            ✕
+          </button>
+        </form>
+      </span>
+    );
+  }
+  if (patience == null) return <span className="text-zinc-700">—</span>;
+  return (
+    <form action={addPatienceAlert} className="inline">
+      <input type="hidden" name="symbol" value={symbol} />
+      <input type="hidden" name="price" value={patience} />
+      <button
+        type="submit"
+        className="text-zinc-400 underline decoration-dotted underline-offset-2 hover:text-amber-300"
+        title={`掛耐心價提醒:現價 ≤ ${patience}(MA20)時 TG 推播。好股等好價`}
+      >
+        {fmtMoney(patience, 2)}
+      </button>
+    </form>
+  );
+}
+
+// 價位質量 cell:zone badge + 偏離 MA20 小字;海外 gate 觸發時 ⛔ 前置
+function ZoneCell({
+  eq,
+  gate,
+}: {
+  eq: EntryQualityRow | undefined;
+  gate: { src: string; chg: number } | undefined;
+}) {
+  if (!eq) return <span className="text-zinc-700">—</span>;
+  const meta = ZONE_META[eq.entry_zone] ?? ZONE_META.unknown;
+  const dev = eq.dev_ma20_pct == null ? null : Number(eq.dev_ma20_pct);
+  const gateLabel = gate ? SOURCE_META[gate.src]?.label ?? gate.src : null;
+  return (
+    <span className="inline-flex flex-col items-center">
+      <span className={`text-xs font-medium ${meta.cls}`} title={meta.title}>
+        {gate && (
+          <span
+            className="mr-0.5"
+            title={`${gateLabel} 隔夜 ${gate.chg.toFixed(2)}% ≤ ${GATE_THRESHOLD}%:已驗證下檔領先,今日勿進場`}
+          >
+            ⛔
+          </span>
+        )}
+        {meta.label}
+      </span>
+      {dev != null && (
+        <span className="text-[10px] leading-tight text-zinc-600 tabular-nums">
+          MA20{dev >= 0 ? "+" : ""}
+          {dev.toFixed(1)}%
+        </span>
+      )}
+    </span>
   );
 }
 

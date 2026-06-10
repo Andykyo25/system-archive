@@ -250,6 +250,57 @@ const getCachedOverseas = unstable_cache(
   { revalidate: 300 },
 );
 
+// Regime 燈(U 型濾網產品化,2026-05-20 發現):策略 alpha vs 0050 季報酬呈 U 型 —
+// bench<0 / ≥20% 兩端 alpha +8.84/+3.76(歷史全勝),10-20% 中段 −8.70(全敗)= 地雷區。
+// 資料:0050 近 61 筆收盤(adj)≈ 一季。⚠ 樣本僅 2023-2025 12 季,需 paper-track 驗真。
+const getCachedRegime = unstable_cache(
+  async (): Promise<number | null> => {
+    const sb = createClient();
+    const { data } = await sb
+      .from("price_daily")
+      .select("close, adj_factor")
+      .eq("symbol", "0050")
+      .gt("close", 0)
+      .order("trade_date", { ascending: false })
+      .limit(61);
+    const rows =
+      (data as { close: number | string; adj_factor: number | string | null }[] | null) ?? [];
+    if (rows.length < 61) return null;
+    const adj = (r: (typeof rows)[number]) =>
+      Number(r.close) * Number(r.adj_factor ?? 1);
+    const last = adj(rows[0]);
+    const base = adj(rows[60]);
+    return base > 0 ? (last / base - 1) * 100 : null;
+  },
+  ["dashboard:regime"],
+  { revalidate: 3600 },
+);
+
+function RegimeWidget({ ret }: { ret: number | null }) {
+  if (ret == null) return null;
+  const zone =
+    ret < 0
+      ? { label: "歷史有利區(跌勢)", cls: "text-green-400", note: "策略季 alpha 歷史 +8.84(全勝)" }
+      : ret < 10
+        ? { label: "中性區", cls: "text-zinc-300", note: "無顯著歷史傾向" }
+        : ret < 20
+          ? { label: "⚠ 策略地雷區", cls: "text-orange-400", note: "歷史季 alpha −8.70(全敗):主動減碼/改 0050" }
+          : { label: "歷史有利區(強漲)", cls: "text-green-400", note: "策略季 alpha 歷史 +3.76(全勝)" };
+  return (
+    <div className="flex flex-wrap items-baseline gap-x-3 rounded-lg border border-zinc-800 bg-zinc-900/50 px-4 py-2 text-sm">
+      <span className="text-zinc-400">Regime</span>
+      <span className="tabular-nums">
+        0050 近季 {ret >= 0 ? "+" : ""}
+        {ret.toFixed(1)}%
+      </span>
+      <span className={`font-medium ${zone.cls}`}>{zone.label}</span>
+      <span className="text-xs text-zinc-500">
+        {zone.note} · U 型濾網僅 12 季樣本,paper-track 驗真中
+      </span>
+    </div>
+  );
+}
+
 export default async function Dashboard() {
   const sb = createClient();
   // 即時查詢:報價 / 損益 / 持股,每次 render 要最新,不快取
@@ -287,11 +338,12 @@ export default async function Dashboard() {
 
   // 慢變查詢走快取(進場訊號 / 排名 / 名稱對照),高頻 render 命中快取不打 DB,
   // 大幅降低連線並發(根因緩解 dashboard 高頻 PostgREST 連線池 timeout)
-  const [signalRows, rankRowsRaw, names, overseasRows] = await Promise.all([
+  const [signalRows, rankRowsRaw, names, overseasRows, regimeRet] = await Promise.all([
     getCachedEntrySignals(),
     getCachedTopRanks(),
     getCachedNames(),
     getCachedOverseas(),
+    getCachedRegime(),
   ]);
   const { nameMap, industryMap } = names;
 
@@ -360,6 +412,7 @@ export default async function Dashboard() {
   return (
     <div className="space-y-6">
       <SummaryCards summary={summary as PortfolioSummary | null} />
+      <RegimeWidget ret={regimeRet} />
       <OverseasWidget rows={overseasRows} holdings={overseasHoldings} />
       <PerformanceWidget
         summary={perfSummary as PerfSummary | null}

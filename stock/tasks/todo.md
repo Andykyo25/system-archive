@@ -1860,3 +1860,22 @@ Andy 定調「不縮成儀表板,要走在市場前面」(抓真實事件 + 升�
 - [x] 3. /rank 手機卡牌式:md 以下整卡可點直列(rank#/股號名稱⭐/總分/現價/今日%/5d/20d/RSI/4 維 count),表格 hidden md:block
 - [x] 4. equity_curve SVG path stride 取樣 ~240 點(backtest/[id] + compare 兩處 pathFor,x 用原索引保對齊+保尾點,HTML 瘦身視覺無差)
 - 驗證:build 過;dev warm /holdings 771ms /rank 987ms(mv 前光 DB 即 ~1.6s);/rank 卡牌 markup 確認
+
+---
+
+## 2026-06-10 晚 — 「好股等好價」三層工程(Andy 拍板開工)
+
+> 痛點:rank=橫斷面選股(what),缺進場時點/價位(when/at)。動能因子天生把已漲一段的推前面 → rank 靠前≈追高區。分層解決,不動排名結構(L36)。
+
+- [x] A. v_entry_quality view:rank top N 每檔價位質量 — 4 態 entry_zone(chase 追高/neutral/pullback 回檔至支撐/broken 趨勢破壞)+ 耐心價(MA20/fib38.2)+ 偏離 MA20/布林 %B/量比。純 SQL 標準參數零調參(走 B)
+- [x] B. /rank UI:價位質量欄(燈+偏離%)+ 耐心價欄 + 海外 gate(對應源隔夜 ≤-2% → ⛔ 今日勿進);手機卡同步
+- [x] C. Dashboard regime 燈:0050 近 60 交易日報酬分區(U 型濾網產品化:<0 有利/0-10 中性/10-20 地雷/>20 有利,附 paper-track 驗真 caveat)
+- [x] D. 耐心價到價提醒:alert_rules 啟用 + EF check-price-alerts(盤中 cron 比價)+ 觸價 TG 推播 + /rank 一鍵掛耐心價
+- [ ] E. entry_model 回測驗證:run-backtest 加 entry_model 參數(immediate vs pullback_ma20 vs limit_fib38),L39 錨點,2023-2025 三年量化「等好價」真實損益
+
+**Review(2026-06-10 晚,A-D 完成,E 留下一 session)**:
+- A:migration 20260610000003 apply。全 universe 432ms。**量化證實 Andy 直覺:Top10 有 5 檔 chase(2492 dev+19.7%/9917 RSI77)、僅 2 檔 pullback(2356/2377)**。2408 = pullback(資訊性:不知籌碼在出,zone≠買訊,UI tooltip 已註明)
+- B:/rank 加「價位」(zone 燈+MA20 偏離小字+⛔海外 gate)與「耐心價」欄;手機卡同步 zone。overseas mapping 抽共用 overseas-map.ts
+- C:dashboard RegimeWidget(0050 近 61 筆 adj 報酬分 4 區,unstable_cache 3600s,附 12 季樣本 caveat)
+- D:EF check-price-alerts v1(deploy+L49 核對 PASS)+ cron */10 1-5 UTC + actions.ts(addPatienceAlert 防重/cancel)+ PatienceCell(點掛 ⏰/✕ 取消)。**E2E PASS:checked1/triggered1/tg:true/event 寫入/one-shot 停用**,測試資料已清
+- E(entry_model 回測驗證)未做:改 run-backtest 核心需 L39 錨點 byte-exact + 6 run 對照,留獨立 session 專心做
