@@ -45,6 +45,15 @@ interface RunReq {
   stop_atr_mult?: number;
   //   B. stop_chandelier_mult>0:逐 bar stopLine=max(high,entry..t)−k×ATR14_t(順勢移動鎖利)
   stop_chandelier_mult?: number;
+  // 進場模型(E 工程,2026-06-10,「好股等好價」timing 驗證):
+  //   'immediate'(預設 = 現行為,nextopen 開盤市價)
+  //   'pullback_ma20':限價 = rankDate 的 MA20(EF 內 bars 自算,同 adj 口徑)。
+  //     D+1 起 entry_wait_days 個交易日內:open<=limit 用 open 成交(跳空低開),
+  //     否則 low<=limit 用 limit 成交(觸價);等嘸/MA20 種子不足 → 該檔本期 skip
+  //     (計 entry_not_filled / entry_limit_na,誠實不 fallback)。出場時點不變。
+  //   未給/immediate → 整段不執行(退版錨點 byte-exact,L39)
+  entry_model?: "immediate" | "pullback_ma20";
+  entry_wait_days?: number; // pullback 等待窗(交易日),預設 10,1-40
 }
 
 interface ScoreRow {
@@ -311,6 +320,16 @@ Deno.serve(async (req: Request) => {
       error: "stop modes mutually exclusive: set only one of stop_loss_pct / stop_atr_mult / stop_chandelier_mult",
     }, { status: 400 });
   }
+  // E 工程:進場模型(immediate = 現行為;pullback_ma20 僅 nextopen 下有意義)
+  const entryModel =
+    body.entry_model === "pullback_ma20" ? "pullback_ma20" : "immediate";
+  const entryWaitDays = body.entry_wait_days == null ? 10 : body.entry_wait_days;
+  if (entryWaitDays < 1 || entryWaitDays > 40) {
+    return Response.json({ error: "entry_wait_days out of range (1-40)" }, { status: 400 });
+  }
+  if (entryModel === "pullback_ma20" && execModel === "close") {
+    return Response.json({ error: "entry_model=pullback_ma20 requires exec_model=nextopen" }, { status: 400 });
+  }
 
   // 動態 ETF 差別成本(cost_pct 未給時)— 從 app_settings 拿,對齊 holdings 層
   let dynCommRT = 0; // round-trip 手續費 fraction
@@ -346,6 +365,8 @@ Deno.serve(async (req: Request) => {
     stop_loss_pct: stopLossPct, // M9.4b:0 = 無停損
     stop_atr_mult: stopAtrMult, // L43 A:0 = 不啟用
     stop_chandelier_mult: stopChandelierMult, // L43 B:0 = 不啟用
+    entry_model: entryModel, // E:immediate = 現行為
+    entry_wait_days: entryModel === "pullback_ma20" ? entryWaitDays : null,
   };
 
   const { data: runRow, error: runErr } = await sb
@@ -425,6 +446,8 @@ Deno.serve(async (req: Request) => {
   let skippedLimitUp = 0;
   let stopLossTriggered = 0; // 本 run 因停損提前出場的筆數(三模式共用)
   let atrSeedUnavailable = 0; // L43 透明:ATR 模式但進場 ATR14 資料不足、該持股本期未施停損的筆數
+  let entryNotFilled = 0; // E:pullback 等待窗內未觸價 → 本期 skip(機會成本透明計數)
+  let entryLimitNa = 0; // E:MA20 種子不足 20 根 → skip(不偽造限價)
 
   for (const pt of points) {
     const rankDate = tradeDates[pt.rankIdx];
@@ -451,11 +474,24 @@ Deno.serve(async (req: Request) => {
     // 涵蓋 entry 前一根(prev_close 算鎖死)~ exit 之後 8 交易日(出場跌停往後找)
     const symbols = rankRows.map((r) => r.symbol);
     const allSyms = Array.from(new Set([...symbols, benchmarkSymbol]));
-    // -30(原 -10):多備 ~14 交易日給 ATR14 種子(L43)。只擴 fetch 窗,
-    // 既有 entry/exit/固定%停損皆 date-indexed/date-guarded → byte 不變(L39)。
-    const fetchStart = addDays(tradeDates[Math.max(0, pt.rankIdx - 1)], -30);
+    // -45(原 -30,L43 時 -10→-30):多備 ~20 交易日給 pullback_ma20 的 MA20 種子(E)。
+    // 只擴 fetch 窗,既有 entry/exit/停損皆 date-indexed/date-guarded → byte 不變(L39)。
+    const fetchStart = addDays(tradeDates[Math.max(0, pt.rankIdx - 1)], -45);
     const fetchEnd = addDays(tradeDates[Math.min(last, pt.exitIdx + 8)], 2);
     const bars = await getBarsRange(sb, allSyms, fetchStart, fetchEnd);
+
+    // E:rankDate 站位 MA20(含 rankDate 往前 20 根 close 平均;bars 已 adj 同口徑)
+    function ma20At(arr: Bar[] | undefined, date: string): number | null {
+      const hit = barAtOrBefore(arr, date);
+      if (!hit || hit.idx < 19) return null; // 種子不足 20 根
+      let sum = 0;
+      for (let i = hit.idx - 19; i <= hit.idx; i++) {
+        const c = arr![i].close;
+        if (c == null || c <= 0) return null;
+        sum += c;
+      }
+      return sum / 20;
+    }
 
     // 取進場價(含鎖死處理)
     function entryPrice(sym: string): { price: number; date: string } | null {
@@ -463,6 +499,32 @@ Deno.serve(async (req: Request) => {
       if (execModel === "close") {
         const hit = barAtOrBefore(arr, rankDate);
         return hit ? { price: hit.bar.close, date: hit.bar.trade_date } : null;
+      }
+      if (entryModel === "pullback_ma20") {
+        // 限價單模擬:D+1 起 entry_wait_days 個交易日內等回 MA20。
+        // open<=limit → open 成交(跳空低開,限價單以開盤價成交);
+        // 否則 low<=limit → limit 成交(盤中觸價)。等嘸/種子不足 → skip(誠實)。
+        // 鎖漲停日 low=open>limit 自然不成交;接刀風險不另擋(正是要量化的)。
+        const limit = ma20At(arr, rankDate);
+        if (limit == null) {
+          entryLimitNa++;
+          return null;
+        }
+        const start = barAtOrAfter(arr, entryExecDate);
+        if (!start) return null;
+        const lastIdx = Math.min(start.idx + entryWaitDays - 1, arr!.length - 1);
+        for (let i = start.idx; i <= lastIdx; i++) {
+          const b = arr![i];
+          if (b.trade_date >= exitExecDate) break; // 至少持有到出場日前
+          if (b.open != null && b.open <= limit) {
+            return { price: b.open, date: b.trade_date };
+          }
+          if (b.low != null && b.low <= limit) {
+            return { price: limit, date: b.trade_date };
+          }
+        }
+        entryNotFilled++;
+        return null;
       }
       const hit = barAtOrAfter(arr, entryExecDate);
       if (!hit) return null;
@@ -655,6 +717,10 @@ Deno.serve(async (req: Request) => {
     skipped_limit_up_or_nodata: skippedLimitUp,
     stop_loss_triggered_count: stopLossTriggered,
     atr_seed_unavailable: atrSeedUnavailable,
+    // E:pullback 機會成本透明計數(皆已含在 skipped_limit_up_or_nodata 總數內)
+    entry_model: entryModel,
+    entry_not_filled: entryNotFilled,
+    entry_limit_na: entryLimitNa,
     exec_model: execModel,
     cost_model: costOverride == null ? "dynamic_etf_diff" : `flat_${costOverride}`,
     equity_curve: equityCurve.map((v) => Number(v.toFixed(4))),

@@ -1871,7 +1871,7 @@ Andy 定調「不縮成儀表板,要走在市場前面」(抓真實事件 + 升�
 - [x] B. /rank UI:價位質量欄(燈+偏離%)+ 耐心價欄 + 海外 gate(對應源隔夜 ≤-2% → ⛔ 今日勿進);手機卡同步
 - [x] C. Dashboard regime 燈:0050 近 60 交易日報酬分區(U 型濾網產品化:<0 有利/0-10 中性/10-20 地雷/>20 有利,附 paper-track 驗真 caveat)
 - [x] D. 耐心價到價提醒:alert_rules 啟用 + EF check-price-alerts(盤中 cron 比價)+ 觸價 TG 推播 + /rank 一鍵掛耐心價
-- [ ] E. entry_model 回測驗證:run-backtest 加 entry_model 參數(immediate vs pullback_ma20 vs limit_fib38),L39 錨點,2023-2025 三年量化「等好價」真實損益
+- [x] E. entry_model 回測驗證:run-backtest 加 entry_model 參數(immediate vs pullback_ma20 vs limit_fib38),L39 錨點,2023-2025 三年量化「等好價」真實損益
 
 **Review(2026-06-10 晚,A-D 完成,E 留下一 session)**:
 - A:migration 20260610000003 apply。全 universe 432ms。**量化證實 Andy 直覺:Top10 有 5 檔 chase(2492 dev+19.7%/9917 RSI77)、僅 2 檔 pullback(2356/2377)**。2408 = pullback(資訊性:不知籌碼在出,zone≠買訊,UI tooltip 已註明)
@@ -1879,3 +1879,10 @@ Andy 定調「不縮成儀表板,要走在市場前面」(抓真實事件 + 升�
 - C:dashboard RegimeWidget(0050 近 61 筆 adj 報酬分 4 區,unstable_cache 3600s,附 12 季樣本 caveat)
 - D:EF check-price-alerts v1(deploy+L49 核對 PASS)+ cron */10 1-5 UTC + actions.ts(addPatienceAlert 防重/cancel)+ PatienceCell(點掛 ⏰/✕ 取消)。**E2E PASS:checked1/triggered1/tg:true/event 寫入/one-shot 停用**,測試資料已清
 - E(entry_model 回測驗證)未做:改 run-backtest 核心需 L39 錨點 byte-exact + 6 run 對照,留獨立 session 專心做
+
+**E Review(2026-06-11,run-backtest v7)**:
+- v7 加 entry_model(immediate 預設/pullback_ma20)+ entry_wait_days(1-40 預設 10):限價=rankDate MA20(EF bars 自算同 adj 口徑),open<=limit 用 open、low<=limit 用 limit,等嘸 skip(entry_not_filled/entry_limit_na 透明計數)。fetch 窗 -30→-45(date-guarded;副作用:未來 ATR 停損實驗 seed 不足例會變少,誠實記錄)
+- **L39 錨點 PASS**:2024/2025 t5 preEF vs postEF 全指標 byte 一致(0.67/-50.65、26.22/-9.02)
+- **🔴 結論:等回 MA20 三年全敗** — alpha:2023 +7.14→-11.79(-19pp)/2024 -50.65→-48.58(同爛)/2025 -9.02→-57.44(**-48pp,60 槽 36 個等嘸**)。機制 = M9.4a 定論再現:動能 top5 最強的不回檔,等到的多是轉弱接刀(2025 win 45.8%)。**「等好價」對動能 top5 是系統性傷害,買點折價 << 錯過行情的機會成本**
+- 實務:v_entry_quality pullback 燈 = 資訊非指令;耐心價掛單適合自選/非動能標的,top5 勿當默認。Caveat:單一形式(MA20/wait10)、C1 保守 lag 基準、倖存者偏差照舊
+- 注:C1 保守 lag 下 2024 t5 immediate = -50.65(首次量測,2024 在保守財報時點下整年壞,符合 C1 真實 alpha 區間 [-9,+8] 的悲觀端敘事)
