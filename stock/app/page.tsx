@@ -12,10 +12,6 @@ import {
   type PerfSummary,
 } from "./_components/PerformanceWidget";
 import {
-  AdviceWidget,
-  type AdvicePickRow,
-} from "./_components/AdviceWidget";
-import {
   OverseasWidget,
   type OverseasRow,
 } from "./_components/OverseasWidget";
@@ -146,14 +142,6 @@ function buildScoreTooltip(analysis: { headline: string; notes: string[] }): str
   return [analysis.headline, "", ...analysis.notes].join("\n");
 }
 
-interface RankPick {
-  symbol: string;
-  weighted_score: number | string | null;
-  fund_count_pos: number;
-  fund_count_total: number;
-  expected_rank: number;
-}
-
 // === 慢變資料快取 ===
 // dashboard 是 force-dynamic,每次 render 並發 ~11 個 DB 查詢;高頻刷新時把
 // PostgREST 連線池打爆(statement / pool timeout)。把「與即時報價/持股無關」的
@@ -176,23 +164,6 @@ const getCachedEntrySignals = unstable_cache(
     return (data as EntrySignalSummary[] | null) ?? [];
   },
   ["dashboard:entry-signals"],
-  { revalidate: 60 },
-);
-
-const getCachedTopRanks = unstable_cache(
-  async (): Promise<RankPick[]> => {
-    const sb = createClient();
-    const { data } = await sb
-      .from("v_stock_rank")
-      .select(
-        "symbol, weighted_score, fund_count_pos, fund_count_total, expected_rank",
-      )
-      .gte("fund_count_pos", 5)
-      .order("expected_rank", { ascending: true })
-      .limit(30);
-    return (data as RankPick[] | null) ?? [];
-  },
-  ["dashboard:top-ranks"],
   { revalidate: 60 },
 );
 
@@ -338,9 +309,8 @@ export default async function Dashboard() {
 
   // 慢變查詢走快取(進場訊號 / 排名 / 名稱對照),高頻 render 命中快取不打 DB,
   // 大幅降低連線並發(根因緩解 dashboard 高頻 PostgREST 連線池 timeout)
-  const [signalRows, rankRowsRaw, names, overseasRows, regimeRet] = await Promise.all([
+  const [signalRows, names, overseasRows, regimeRet] = await Promise.all([
     getCachedEntrySignals(),
-    getCachedTopRanks(),
     getCachedNames(),
     getCachedOverseas(),
     getCachedRegime(),
@@ -390,19 +360,6 @@ export default async function Dashboard() {
       first_buy_date: firstBuyMap.get(r.symbol) ?? null,
     }));
 
-  // 持有中的 symbol → 排除掉(可關注標的不該推「已經持有的」)
-  const heldSymbols = new Set(holdingRows.map((h) => h.symbol));
-  const advicePicks: AdvicePickRow[] = rankRowsRaw
-    .filter((r) => !heldSymbols.has(r.symbol))
-    .map((r) => ({
-      symbol: r.symbol,
-      name: nameMap[r.symbol] ?? null,
-      weighted_score: r.weighted_score,
-      fund_count_pos: r.fund_count_pos,
-      fund_count_total: r.fund_count_total,
-      industry: industryMap[r.symbol] ?? null,
-    }));
-
   // 海外快照的持股對應源高亮:持股 symbol → industry(getCachedNames 的 industryMap)
   const overseasHoldings = holdingRows.map((h) => ({
     symbol: h.symbol,
@@ -418,7 +375,6 @@ export default async function Dashboard() {
         summary={perfSummary as PerfSummary | null}
         realized={perfRealized}
       />
-      <AdviceWidget picks={advicePicks} />
       <EntrySignalWidget rows={signalRows} nameMap={nameMap} />
       <HoldingsAnalysis rows={holdingRows} rankMap={heldRankMap} />
     </div>

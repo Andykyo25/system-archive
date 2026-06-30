@@ -19,7 +19,6 @@ export async function updateSetting(formData: FormData): Promise<void> {
   revalidatePath("/settings");
   revalidatePath("/");
   revalidatePath("/holdings");
-  revalidatePath("/etf");
   revalidatePath("/rank");
 }
 
@@ -60,7 +59,6 @@ export async function upsertEtf(formData: FormData): Promise<void> {
   );
   if (error) throw new Error(error.message);
   revalidatePath("/settings");
-  revalidatePath("/etf");
 }
 
 export async function deleteEtf(formData: FormData): Promise<void> {
@@ -70,5 +68,4 @@ export async function deleteEtf(formData: FormData): Promise<void> {
   const { error } = await sb.from("etf_metadata").delete().eq("symbol", symbol);
   if (error) throw new Error(error.message);
   revalidatePath("/settings");
-  revalidatePath("/etf");
 }

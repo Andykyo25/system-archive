@@ -7,7 +7,6 @@ const tabs = [
   { href: "/", label: "Dashboard" },
   { href: "/holdings", label: "持股" },
   { href: "/performance", label: "績效" },
-  { href: "/etf", label: "ETF" },
   { href: "/rank", label: "排名" },
   { href: "/backtest", label: "Backtest" },
   { href: "/settings", label: "設定" },

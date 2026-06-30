@@ -1886,3 +1886,36 @@ Andy 定調「不縮成儀表板,要走在市場前面」(抓真實事件 + 升�
 - **🔴 結論:等回 MA20 三年全敗** — alpha:2023 +7.14→-11.79(-19pp)/2024 -50.65→-48.58(同爛)/2025 -9.02→-57.44(**-48pp,60 槽 36 個等嘸**)。機制 = M9.4a 定論再現:動能 top5 最強的不回檔,等到的多是轉弱接刀(2025 win 45.8%)。**「等好價」對動能 top5 是系統性傷害,買點折價 << 錯過行情的機會成本**
 - 實務:v_entry_quality pullback 燈 = 資訊非指令;耐心價掛單適合自選/非動能標的,top5 勿當默認。Caveat:單一形式(MA20/wait10)、C1 保守 lag 基準、倖存者偏差照舊
 - 注:C1 保守 lag 下 2024 t5 immediate = -50.65(首次量測,2024 在保守財報時點下整年壞,符合 C1 真實 alpha 區間 [-9,+8] 的悲觀端敘事)
+
+---
+
+## 2026-06-30 — Vibe-Trading 借鏡 + UI 清理(Andy 6 點指示,待拍板)
+
+> 來源:研究 HKUDS/Vibe-Trading(LLM-agentic 多市場研究站)。整套不搬(語言/stack/範圍全不同),只借 3 個與本專案 SQL-view 架構相容的概念。
+> 紀律:UI 清理低風險先做;因子/權重屬結構改動,各自過 [[L36]] OOS 雙軌閘 + [[L41]] Gate0 前提驗證 + [[L44]] 歷史覆蓋檢查。
+
+### Part A — UI 清理(低風險,需求明確)
+- [x] A1(#3)ETF tab 整個移除:刪 `app/etf/page.tsx`;`TabNav.tsx` / `Sidebar.tsx` 各移 ETF 項;`settings/actions.ts` 3 處 `revalidatePath("/etf")` 改清(no-op 但清掉)。**不動** `v_etf_picks` view、`etf_metadata` 表、universe 內 ETF(排名股池仍含)— 純 UI 移除
+- [x] A2(#2)「給 Andy 的建議」widget(`AdviceWidget.tsx`,只用於 `app/page.tsx`):靜態「出場紀律」「避免追高」永不變、動態「可關注標的」與 /rank 重複 → **待拍板:整刪 vs 保留動態塊**
+- [x] A3(#4a)/rank「耐心價」欄移除:th + PatienceCell td/component + import + EntryQualityRow.patience_* + alertRes/alertMap 全鏈;orphan `rank/actions.ts`(addPatienceAlert/cancelPatienceAlert)整檔刪。**不動** `v_entry_quality`(entry_zone 仍用)、`alert_rules`/`check-price-alerts` EF(資料層)。⚠ 副作用:既有耐心價 alert 仍會觸發但 UI 無法新增/取消 → 待拍板是否一併停 alert pipeline
+- [x] A4(#4b/#5)靜態 caveat 備註移除:前向追蹤「⚠ 才一批…」(L1024-27)+ 回看報酬「⚠ 這是回看報酬…」(L992-97)。**連帶發現**:header「Top 5 集中度 2025 OOS alpha +24.19 vs +13.80」+ FocusToggle title 為 [[L48]] 已推翻的前視偏誤假象(真實:2024 −50.65 / 2025 −9.02)→ 現為錯誤資訊,需更正或移除。**待拍板:回看報酬整塊移 vs 只移備註;+24.19 更正 vs 移除集中度宣稱**
+
+### Part B — Vibe-Trading 三借鏡(結構性,各過 OOS 閘)
+- [x] B1(#1.3 Shadow Account 行為分析)**最安全先做,非因子改動免 OOS 閘**:新 view `v_trade_behavior`(讀 holdings_transactions + v_holdings_realized)算 持有天數(贏家 vs 輸家)/ 勝率 / 處置效應 / 賣出後 N 日走勢 / 進場時 expected_rank 分布;/holdings 加 section。驗:view 數字對 + build 過
+- [ ] B2(#1.1 Alpha101/GTJA191 純價格因子挖礦):Gate0 先驗候選因子型態([[L41]])→ 只取 price_daily 可算(3yr 歷史,避 [[L44]] 籌碼無料)、與現 19 因子不重疊者 → append-only 加 v_price_factors([[L37]])→ 同步 score_universe_at([[L32]])→ OOS 雙軌對照當前 honest baseline,贏才 commit、輸即 revert([[L36]])
+- [ ] B3(#1.2 IC/IR 權重):對每因子算近 3yr 滾動 IC(因子 vs 未來 20d 報酬 Spearman),只做正負號 sanity + 粗分檔(防 overfit,~150 universe [[L38]]);weights 凍進 backtest_runs.params([[L33]]);過 OOS 閘
+
+### Part C — #6 回測驗證
+- [ ] 先拉當前 honest baseline(score_universe_at walk-forward,top5/top10 2023-2025);每個 B 結構改動 commit 前過 in-sample + OOS 雙軌、benchmark 一致性([[L36]]/[[L48]]);alpha 引用附倖存者偏差 caveat([[L38]])
+
+**拍板(2026-06-30,Andy 全選建議)**:A2 整刪建議 widget / A4 回看報酬整塊移+更正 header / B 分階段(本輪 UI 清理 + B1;B2/B3 各自獨立 session)。
+
+**Review(2026-06-30,A1-A4 + B1 完成)**:
+- A1 ETF tab:刪 app/etf;TabNav/Sidebar 移項;settings/actions.ts 清 3 處 /etf revalidate。v_etf_picks view 變孤兒但不 drop(既有 dead code 不動,CLAUDE.md #3);etf_metadata 仍餵排名 universe(未動)
+- A2 建議 widget 整刪:AdviceWidget.tsx 刪檔 + page.tsx 連帶清 getCachedTopRanks/RankPick/rankRowsRaw/heldSymbols/advicePicks(orphan 全清)
+- A3 耐心價:rank/page.tsx 全鏈移(th/td/PatienceCell/import/interface/alert_rules query/alertMap)+ rank/actions.ts 刪檔。⚠ 既有耐心價 alert 仍會觸發(alert_rules + check-price-alerts EF 未動),UI 已無法新增/取消 — 若要停整條 pipeline 另議
+- A4 回看報酬:PortfolioSummaryCard 移 區1(LookbackStat 一併刪)+ 移兩個靜態 caveat;header「+24.19 集中度勝」([[L48]] 已推翻為負:2024 −50.65/2025 −9.02)改為「績效以 /backtest 為準」+ FocusToggle title + default_top_n 註解同步更正
+- B1 行為分析:v_trade_behavior(migration 20260630000001 apply 成功)+ /holdings「交易行為分析」section。實證 8 筆全平倉皆獲利(勝率 100%),量化「賣太早」:2408(5/06)+23%出→續抱20日 +44.9%、2344(5/11)+0.9%出→+35.1%、3006(5/15)早出躲 −13.9%。6285/009816 出清後不在追蹤池→賣後 N/A([[L45]] 不偽造)
+- #6 回測驗證:**本輪 N/A** — A1-A4(UI 移除)+ B1(唯讀行為 view)皆未動因子/權重/score_universe_at/entry 規則,模型 byte-identical,無 OOS 閘對象([[L36]] 閘是給結構改動)。回測閘隨 B2/B3 進行
+- 驗證限制:本機 sandbox 無 node/npm(where/PATH/registry/winget 全查證=已窮舉 [[L42]]),build 與視覺只能 Railway 部署後驗([[L50]])。本機已做:DB 驗 view 上線正確 + 機械式 grep 零殘留引用([[L46]])+ 逐檔 TS 通讀(Promise.all 長度對齊、orphan 全清)
+- 待 Andy:`npm run build` + Railway 部署看視覺;B2(Alpha101/GTJA191 純價格因子)/ B3(IC 權重)另開 session 過 [[L36]] OOS 閘

@@ -52,6 +52,20 @@ interface RealizedRow {
   is_day_trade?: boolean;
 }
 
+interface TradeBehaviorRow {
+  txn_id: string;
+  symbol: string;
+  sell_date: string;
+  qty_sold: number;
+  realized_pnl: number | string;
+  realized_pct: number | string | null;
+  is_win: boolean;
+  holding_days: number | null;
+  fwd_days_available: number;
+  fwd_20d_pct: number | string | null;
+  fwd_max20_pct: number | string | null;
+}
+
 interface Transaction {
   id: string;
   symbol: string;
@@ -132,6 +146,7 @@ export default async function HoldingsPage() {
     { data: transactions },
     { data: advice },
     { data: signals },
+    { data: behavior },
     fees,
   ] = await Promise.all([
     sb.from("v_holdings_summary").select("*").single(),
@@ -167,6 +182,10 @@ export default async function HoldingsPage() {
       .select(
         "symbol, signal_level, today_chg_pct, bench_chg_pct, tail_days_5, down_days_5, signals",
       ),
+    sb
+      .from("v_trade_behavior")
+      .select("*")
+      .order("sell_date", { ascending: false }),
     loadFeeSettings(),
   ]);
 
@@ -189,6 +208,7 @@ export default async function HoldingsPage() {
   for (const s of (signals as SignalRow[] | null) ?? []) {
     signalsMap[s.symbol] = s;
   }
+  const behaviorRows = (behavior as TradeBehaviorRow[] | null) ?? [];
 
   return (
     <div className="space-y-8">
@@ -199,6 +219,8 @@ export default async function HoldingsPage() {
       <CurrentHoldingsSection rows={rows} fees={fees} />
 
       <HoldingsAdvice rows={adviceRows} signalsMap={signalsMap} />
+
+      <TradeBehaviorSection rows={behaviorRows} />
 
       <RealizedSection rows={realizedRows} />
 
@@ -437,6 +459,179 @@ function CurrentHoldingsSection({
       <p className="mt-2 text-xs text-zinc-500">
         現價來自 v_latest_price_realtime(yahoo &lt; 30min &gt; 今日收盤 &gt;
         最近收盤)。hover 現價可看資料日期 / 來源。
+      </p>
+    </section>
+  );
+}
+
+function num(v: number | string | null | undefined): number | null {
+  if (v == null) return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+// 賣出時機判定(以「續抱 20 交易日」結果為準):正 = 賣太早、負 = 出場時機佳。
+function VerdictTag({
+  fwd,
+  daysAvail,
+}: {
+  fwd: number | null;
+  daysAvail: number;
+}) {
+  if (fwd == null) {
+    return (
+      <span
+        className="text-zinc-600"
+        title={
+          daysAvail === 0
+            ? "已出清且不在追蹤池,賣後無收盤資料"
+            : "賣後尚不足 20 交易日,待累積"
+        }
+      >
+        —
+      </span>
+    );
+  }
+  if (fwd > 3) {
+    return (
+      <span
+        className="rounded bg-amber-900/40 px-2 py-0.5 text-xs text-amber-200"
+        title={`續抱 20 交易日會多賺 ${fwd.toFixed(1)}%`}
+      >
+        賣太早
+      </span>
+    );
+  }
+  if (fwd < -3) {
+    return (
+      <span
+        className="rounded bg-emerald-900/40 px-2 py-0.5 text-xs text-emerald-200"
+        title={`早出避開 ${Math.abs(fwd).toFixed(1)}% 回檔`}
+      >
+        時機佳
+      </span>
+    );
+  }
+  return (
+    <span className="rounded bg-zinc-800 px-2 py-0.5 text-xs text-zinc-400">
+      中性
+    </span>
+  );
+}
+
+// B1 交易行為分析:量化「賣太早 / 出場時機」(借鏡 Vibe-Trading Shadow Account)。
+function TradeBehaviorSection({ rows }: { rows: TradeBehaviorRow[] }) {
+  if (rows.length === 0) return null;
+  const total = rows.length;
+  const wins = rows.filter((r) => r.is_win).length;
+  const holdDays = rows
+    .map((r) => r.holding_days)
+    .filter((d): d is number => d != null);
+  const avgHold = holdDays.length
+    ? holdDays.reduce((a, b) => a + b, 0) / holdDays.length
+    : null;
+  // 有賣後資料(續抱 20 交易日可評)的交易
+  const withFwd = rows.filter((r) => num(r.fwd_20d_pct) != null);
+  const soldEarly = withFwd.filter((r) => (num(r.fwd_20d_pct) ?? 0) > 3).length;
+  const goodExit = withFwd.filter((r) => (num(r.fwd_20d_pct) ?? 0) < -3).length;
+  const avgFwd20 = withFwd.length
+    ? withFwd.reduce((a, r) => a + (num(r.fwd_20d_pct) ?? 0), 0) / withFwd.length
+    : null;
+
+  return (
+    <section>
+      <div className="mb-3 flex items-baseline justify-between">
+        <h2 className="text-lg font-semibold">交易行為分析</h2>
+        <span className="text-xs text-zinc-500">
+          賣出後若續抱的結果 — 量化「賣太早 / 出場時機」
+        </span>
+      </div>
+      <div className="mb-3 grid grid-cols-2 gap-3 md:grid-cols-4">
+        <Card
+          label="勝率"
+          value={`${wins}/${total}`}
+          sub={total ? `${((wins / total) * 100).toFixed(0)}%` : undefined}
+        />
+        <Card
+          label="平均持有"
+          value={avgHold != null ? `${avgHold.toFixed(0)} 天` : "—"}
+        />
+        <Card
+          label="續抱20日平均"
+          value={avgFwd20 != null ? fmtPct(avgFwd20) : "—"}
+          color={pctColor(avgFwd20)}
+          sub={`${withFwd.length} 筆可評`}
+        />
+        <Card
+          label="賣太早 / 時機佳"
+          value={`${soldEarly} / ${goodExit}`}
+          sub="續抱 ±3% 判定"
+        />
+      </div>
+      <div className="overflow-x-auto rounded-lg border border-zinc-800 bg-zinc-900">
+        <table className="w-full text-sm">
+          <thead className="border-b border-zinc-800 bg-zinc-950 text-left text-xs text-zinc-400">
+            <tr>
+              <th className="px-3 py-2">賣出日</th>
+              <th className="px-3 py-2">股號</th>
+              <th className="px-3 py-2 text-right" title="你實際出場的報酬率">
+                你的出場%
+              </th>
+              <th className="px-3 py-2 text-right">持有</th>
+              <th
+                className="px-3 py-2 text-right"
+                title="賣出後第 20 交易日 vs 賣出價 = 若當時續抱的結果"
+              >
+                續抱20日
+              </th>
+              <th
+                className="px-3 py-2 text-right"
+                title="賣後 20 交易日內最高 vs 賣出價 = 完美時機可多賺多少"
+              >
+                期間最高
+              </th>
+              <th className="px-3 py-2 text-center">判定</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => {
+              const fwd20 = num(r.fwd_20d_pct);
+              const fwdMax = num(r.fwd_max20_pct);
+              return (
+                <tr key={r.txn_id} className="border-t border-zinc-800">
+                  <td className="px-3 py-2 text-zinc-400">{r.sell_date}</td>
+                  <td className="px-3 py-2 font-mono">{r.symbol}</td>
+                  <td
+                    className={`px-3 py-2 text-right tabular-nums ${pctColor(r.realized_pct)}`}
+                  >
+                    {fmtPct(r.realized_pct)}
+                  </td>
+                  <td className="px-3 py-2 text-right tabular-nums text-zinc-400">
+                    {r.holding_days != null ? `${r.holding_days} 天` : "—"}
+                  </td>
+                  <td
+                    className={`px-3 py-2 text-right tabular-nums ${pctColor(fwd20)}`}
+                  >
+                    {fwd20 != null ? fmtPct(fwd20) : "N/A"}
+                  </td>
+                  <td
+                    className={`px-3 py-2 text-right tabular-nums ${pctColor(fwdMax)}`}
+                  >
+                    {fwdMax != null ? fmtPct(fwdMax) : "N/A"}
+                  </td>
+                  <td className="px-3 py-2 text-center">
+                    <VerdictTag fwd={fwd20} daysAvail={r.fwd_days_available} />
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      <p className="mt-2 text-xs text-zinc-500">
+        「續抱20日」= 賣出後第 20 交易日 vs 賣出價(若當時續抱的結果);「期間最高」=
+        賣後 20 交易日內最高(完美時機上限)。正 = 賣太早(續抱更賺)、負 =
+        出場時機佳(避開回檔)。N/A = 已出清且不在追蹤池,賣後無收盤資料。樣本小,僅供自我檢視。
       </p>
     </section>
   );

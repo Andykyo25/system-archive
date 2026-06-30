@@ -2,7 +2,6 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { fmtMoney, fmtPct, pctColor } from "@/app/_components/Format";
 import { INDUSTRY_SOURCE, GATE_THRESHOLD, SOURCE_META } from "@/app/_components/overseas-map";
-import { addPatienceAlert, cancelPatienceAlert } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -13,8 +12,6 @@ interface EntryQualityRow {
   off_high_pct: number | string | null;
   boll_pctb: number | string | null;
   vol_ratio_5_20: number | string | null;
-  patience_ma20: number | string | null;
-  patience_fib38: number | string | null;
   entry_zone: "chase" | "neutral" | "pullback" | "broken" | "unknown";
 }
 
@@ -115,7 +112,6 @@ export default async function RankPage({
     { data: signals },
     { data: settingRow },
     { data: topNRow },
-    { data: benchRow },
     { data: paperPicksData },
   ] = await Promise.all([
     // M9.3:改讀 v_rank_with_cost(多了 cost_per_lot_ntd 給 budget filter)
@@ -137,12 +133,6 @@ export default async function RankPage({
       .select("value")
       .eq("key", "default_top_n")
       .maybeSingle(),
-    // 組合摘要卡:0050 基準回看報酬(近 5 日 / 20 日)
-    sb
-      .from("v_price_factors")
-      .select("ret_5d_pct, ret_20d_pct")
-      .eq("symbol", "0050")
-      .maybeSingle(),
     // 前向追蹤:系統凍結的真前向批(2026-05-16 cohort,top10 + 0050 benchmark)
     sb
       .from("paper_picks")
@@ -150,10 +140,9 @@ export default async function RankPage({
       .eq("cohort_date", "2026-05-16"),
   ]);
 
-  // M9.4a:default_top_n → /rank 預設精選檔數。
-  // 依據:top5 集中度 2025 OOS alpha +24.19 vs top10 +13.80(誠實化 v2,兩年一致
-  //   勝 top10、sharpe 更高、maxDD 不更差,非 overfit)。⚠ 受倖存者偏差 caveat
-  //   (154 檔全 2026-05-12 selected)→ 樂觀估計,非可交易保證。
+  // M9.4a:default_top_n → /rank 預設精選檔數(純顯示偏好,非績效宣稱)。
+  // 註:早期「top5 集中度勝」的 OOS alpha(+24.19)經 C1 PIT 前視偏誤修正後已不成立
+  //   (修後 top5 2024 −50.65 / 2025 −9.02,見 L48 / todo);實際回測以 /backtest 為準。
   // 防呆:updateSetting 不做範圍檢查,故此處 clamp 整數 5~50,否則 fallback 30。
   const rawTopN = Number(
     (topNRow as { value: number | string | null } | null)?.value ?? 30,
@@ -228,7 +217,7 @@ export default async function RankPage({
   const overseasSince = new Date(Date.now() - 7 * 86400000)
     .toISOString()
     .slice(0, 10);
-  const [nameRes, eqRes, overseasRes, alertRes, prevRes, fwdRes] = await Promise.all([
+  const [nameRes, eqRes, overseasRes, prevRes, fwdRes] = await Promise.all([
     symbols.length > 0
       ? Promise.all([
           sb.from("industry_stocks").select("symbol, name, industry").in("symbol", symbols),
@@ -246,12 +235,6 @@ export default async function RankPage({
       .select("symbol, quoted_date, change_pct")
       .gte("quoted_date", overseasSince)
       .order("quoted_date", { ascending: false }),
-    // 已掛的耐心價提醒(顯示 ⏰ 已掛狀態)
-    sb
-      .from("alert_rules")
-      .select("symbol, threshold")
-      .eq("condition", "price_below")
-      .eq("enabled", true),
     symbols.length > 0
       ? sb
           .from("price_daily")
@@ -312,13 +295,6 @@ export default async function RankPage({
     if (chg != null && chg <= GATE_THRESHOLD) gateMap.set(s, { src: m.src, chg });
   }
 
-  // 已掛耐心價(symbol → threshold)
-  const alertMap = new Map<string, number>();
-  for (const r of (alertRes.data as { symbol: string; threshold: number | string | null }[] | null) ?? []) {
-    const t = toNum(r.threshold);
-    if (t != null) alertMap.set(r.symbol, t);
-  }
-
   // 每檔取最新一筆(已 order by trade_date desc,首見即昨收)
   for (const row of (prevRes.data as { symbol: string; close: number | string | null }[] | null) ??
     []) {
@@ -345,13 +321,6 @@ export default async function RankPage({
       cp != null && pc != null && pc > 0 ? (cp / pc - 1) * 100 : null,
     );
   }
-
-  // 組合摘要(當前範圍 rankRows 回看平均 vs 0050)
-  const ret5Avg = avgOrNull(rankRows.map((r) => toNum(r.ret_5d_pct)));
-  const ret20Avg = avgOrNull(rankRows.map((r) => toNum(r.ret_20d_pct)));
-  const bench = benchRow as { ret_5d_pct: number | string | null; ret_20d_pct: number | string | null } | null;
-  const bench5 = toNum(bench?.ret_5d_pct);
-  const bench20 = toNum(bench?.ret_20d_pct);
 
   // 前向追蹤(凍結名單浮動%)= (即時價 / entry_px - 1) * 100
   const fwdRet = (p: PaperPickRow): number | null => {
@@ -411,9 +380,11 @@ export default async function RankPage({
             Settings
           </Link>{" "}
           調)。資料缺維度時權重 reallocate 給其他維度。預設顯示 Top {defaultTopN}
-          (可在 Settings 改 default_top_n,下方可臨時切)。Top 5 集中度:2025 OOS
-          alpha +24.19 vs Top 10 +13.80(誠實化 v2,兩年一致勝)。⚠ 受倖存者偏差
-          caveat — 樂觀估計,非可交易保證。
+          (可在 Settings 改 default_top_n,下方可臨時切)。績效數字一律以{" "}
+          <Link href="/backtest" className="text-blue-400 hover:underline">
+            /backtest
+          </Link>{" "}
+          為準(早期「Top 5 集中度勝」宣稱經 PIT 前視偏誤修正後已不成立,撤除)。
         </p>
       </header>
 
@@ -427,12 +398,6 @@ export default async function RankPage({
       ) : (
         <>
           <PortfolioSummaryCard
-            focus={focus}
-            count={rankRows.length}
-            ret5Avg={ret5Avg}
-            ret20Avg={ret20Avg}
-            bench5={bench5}
-            bench20={bench20}
             hasFwd={hasFwd}
             fwdTop5={fwdTop5}
             fwdTop10={fwdTop10}
@@ -445,7 +410,6 @@ export default async function RankPage({
             todayChgMap={todayChgMap}
             eqMap={eqMap}
             gateMap={gateMap}
-            alertMap={alertMap}
           />
         </>
       )}
@@ -477,7 +441,7 @@ function FocusToggle({
         <Link
           href={buildRankHref({ ignoreBudget, focus: 5 })}
           className={`${tabBase} ${focus === 5 ? tabActiveFocus : tabIdle}`}
-          title="集中度策略:2025 OOS alpha +24.19 vs Top10 +13.80(誠實化 v2;受倖存者偏差 caveat,樂觀估計非保證)"
+          title="集中:只看排名前 5(較集中、波動較大;績效以 /backtest 為準)"
         >
           🎯 Top 5
         </Link>
@@ -613,7 +577,6 @@ function RankTable({
   todayChgMap,
   eqMap,
   gateMap,
-  alertMap,
 }: {
   rows: RankWithCostRow[];
   nameMap: NameMap;
@@ -621,7 +584,6 @@ function RankTable({
   todayChgMap: Map<string, number | null>;
   eqMap: Map<string, EntryQualityRow>;
   gateMap: Map<string, { src: string; chg: number }>;
-  alertMap: Map<string, number>;
 }) {
   return (
     <section>
@@ -717,9 +679,6 @@ function RankTable({
               <th className="px-3 py-2 text-center" title="價位質量(v_entry_quality):回檔✓ 回檔至支撐 / 中性 / 追高 / 破壞。⛔ = 對應海外源隔夜大跌,今日勿進(已驗證下檔領先)">
                 價位
               </th>
-              <th className="px-3 py-2 text-right" title="耐心價 = MA20(主錨)。好股等好價的參考掛價,非預測">
-                耐心價
-              </th>
               <th className="px-3 py-2 text-right">1 張成本</th>
               <th className="px-3 py-2 text-right" title="近 5 交易日(≈一週)回看報酬">
                 近 5 日%
@@ -800,13 +759,6 @@ function RankTable({
                   <td className="px-3 py-2 text-center">
                     <ZoneCell eq={eqMap.get(r.symbol)} gate={gateMap.get(r.symbol)} />
                   </td>
-                  <td className="px-3 py-2 text-right tabular-nums text-zinc-400">
-                    <PatienceCell
-                      symbol={r.symbol}
-                      patience={toNum(eqMap.get(r.symbol)?.patience_ma20 ?? null)}
-                      alerted={alertMap.get(r.symbol) ?? null}
-                    />
-                  </td>
                   <td className="px-3 py-2 text-right tabular-nums text-zinc-300">
                     {fmtCost(r.cost_per_lot_ntd)}
                   </td>
@@ -841,48 +793,6 @@ function RankTable({
         </table>
       </div>
     </section>
-  );
-}
-
-// 耐心價 cell:未掛 → 點數字一鍵掛到價提醒;已掛 → ⏰ 顯示掛價,點 ✕ 取消。
-// 盤中 cron check-price-alerts 每 10 分比價,觸價 TG 推播(one-shot)。
-function PatienceCell({
-  symbol,
-  patience,
-  alerted,
-}: {
-  symbol: string;
-  patience: number | null;
-  alerted: number | null;
-}) {
-  if (alerted != null) {
-    return (
-      <span className="inline-flex items-center gap-1">
-        <span className="text-amber-400" title={`已掛到價提醒 ${alerted}:現價 ≤ ${alerted} 時 TG 推播(one-shot)`}>
-          ⏰ {fmtMoney(alerted, 2)}
-        </span>
-        <form action={cancelPatienceAlert} className="inline">
-          <input type="hidden" name="symbol" value={symbol} />
-          <button type="submit" className="text-zinc-600 hover:text-zinc-300" title="取消提醒">
-            ✕
-          </button>
-        </form>
-      </span>
-    );
-  }
-  if (patience == null) return <span className="text-zinc-700">—</span>;
-  return (
-    <form action={addPatienceAlert} className="inline">
-      <input type="hidden" name="symbol" value={symbol} />
-      <input type="hidden" name="price" value={patience} />
-      <button
-        type="submit"
-        className="text-zinc-400 underline decoration-dotted underline-offset-2 hover:text-amber-300"
-        title={`掛耐心價提醒:現價 ≤ ${patience}(MA20)時 TG 推播。好股等好價`}
-      >
-        {fmtMoney(patience, 2)}
-      </button>
-    </form>
   );
 }
 
@@ -940,26 +850,14 @@ function TodayChangeCell({ chg }: { chg: number | null }) {
   return <span className={pctColor(chg)}>{fmtPct(chg)}</span>;
 }
 
-// 組合摘要卡:當前範圍(Top{focus})回看報酬 vs 0050(直觀感受,含誠實 caveat)
-//   + 前向追蹤(凍結名單真驗證)。
+// 前向追蹤卡(凍結名單真驗證,零前視)。回看報酬區已移除(L48:回看含動能因子
+//   系統性偏樂觀,非事先看得準;真實績效以 /backtest 為準)。
 function PortfolioSummaryCard({
-  focus,
-  count,
-  ret5Avg,
-  ret20Avg,
-  bench5,
-  bench20,
   hasFwd,
   fwdTop5,
   fwdTop10,
   fwdBench,
 }: {
-  focus: number;
-  count: number;
-  ret5Avg: number | null;
-  ret20Avg: number | null;
-  bench5: number | null;
-  bench20: number | null;
   hasFwd: boolean;
   fwdTop5: number | null;
   fwdTop10: number | null;
@@ -967,99 +865,29 @@ function PortfolioSummaryCard({
 }) {
   return (
     <section className="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
-      {/* 區 1:組合回看報酬 vs 0050 */}
-      <div>
-        <h2 className="text-sm font-semibold text-zinc-200">
-          照 Top {focus} 每檔都買 · 回看報酬 vs 0050
-          <span className="ml-2 text-xs font-normal text-zinc-500">
-            ({count} 檔平均)
+      <h2 className="text-sm font-semibold text-zinc-200">
+        前向追蹤(凍結名單再往前看,零前視)
+        <span className="ml-2 text-xs font-normal text-zinc-500">5-16 批</span>
+      </h2>
+      {hasFwd ? (
+        <div className="mt-2 flex flex-wrap items-center gap-x-6 gap-y-1 text-sm tabular-nums">
+          <span>
+            <span className="text-zinc-400">Top5 </span>
+            <span className={`font-semibold ${pctColor(fwdTop5)}`}>{fmtPct(fwdTop5)}</span>
           </span>
-        </h2>
-        <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
-          <LookbackStat
-            label="近 5 日平均"
-            value={ret5Avg}
-            bench={bench5}
-            benchLabel="0050"
-          />
-          <LookbackStat
-            label="近 20 日平均"
-            value={ret20Avg}
-            bench={bench20}
-            benchLabel="0050"
-          />
+          <span>
+            <span className="text-zinc-400">Top10 </span>
+            <span className={`font-semibold ${pctColor(fwdTop10)}`}>{fmtPct(fwdTop10)}</span>
+          </span>
+          <span>
+            <span className="text-zinc-400">0050 </span>
+            <span className={`font-semibold ${pctColor(fwdBench)}`}>{fmtPct(fwdBench)}</span>
+          </span>
         </div>
-        <p className="mt-3 rounded border border-amber-900/40 bg-amber-950/20 px-3 py-2 text-xs leading-relaxed text-amber-200/90">
-          ⚠ 這是回看報酬(同一段時間):排名含動能因子,排名靠前部分 = 最近已經漲,
-          所以這數字會系統性偏樂觀、
-          <span className="font-semibold">不等於排名事先看得準</span>。
-          真正的事先驗證見下方前向追蹤。
-        </p>
-      </div>
-
-      {/* 區 2:前向追蹤(凍結名單真驗證) */}
-      <div className="mt-4 border-t border-zinc-800 pt-4">
-        <h2 className="text-sm font-semibold text-zinc-200">
-          前向追蹤(凍結名單再往前看,零前視)
-          <span className="ml-2 text-xs font-normal text-zinc-500">5-16 批</span>
-        </h2>
-        {hasFwd ? (
-          <div className="mt-2 flex flex-wrap items-center gap-x-6 gap-y-1 text-sm tabular-nums">
-            <span>
-              <span className="text-zinc-400">Top5 </span>
-              <span className={`font-semibold ${pctColor(fwdTop5)}`}>{fmtPct(fwdTop5)}</span>
-            </span>
-            <span>
-              <span className="text-zinc-400">Top10 </span>
-              <span className={`font-semibold ${pctColor(fwdTop10)}`}>{fmtPct(fwdTop10)}</span>
-            </span>
-            <span>
-              <span className="text-zinc-400">0050 </span>
-              <span className={`font-semibold ${pctColor(fwdBench)}`}>{fmtPct(fwdBench)}</span>
-            </span>
-          </div>
-        ) : (
-          <p className="mt-2 text-sm text-zinc-500">尚無前向追蹤批次資料</p>
-        )}
-        <p className="mt-3 rounded border border-zinc-700/50 bg-zinc-950/60 px-3 py-2 text-xs leading-relaxed text-zinc-400">
-          ⚠ 才一批、還沒結算(20 交易日)、樣本太少 → 僅供觀察,還不能下定論。
-          這才是排名「事先準不準」的誠實答案來源,需累積數批。
-        </p>
-      </div>
+      ) : (
+        <p className="mt-2 text-sm text-zinc-500">尚無前向追蹤批次資料</p>
+      )}
     </section>
-  );
-}
-
-// 回看報酬數字 + 與 benchmark 的超額。台股配色:贏(正超額)= 紅、輸 = 綠(pctColor)。
-function LookbackStat({
-  label,
-  value,
-  bench,
-  benchLabel,
-}: {
-  label: string;
-  value: number | null;
-  bench: number | null;
-  benchLabel: string;
-}) {
-  const excess = value != null && bench != null ? value - bench : null;
-  return (
-    <div className="rounded border border-zinc-800 bg-zinc-950/50 px-3 py-2">
-      <div className="text-xs text-zinc-500">{label}</div>
-      <div className="mt-0.5 flex flex-wrap items-baseline gap-x-2 gap-y-0.5 tabular-nums">
-        <span className={`text-lg font-semibold ${pctColor(value)}`}>{fmtPct(value)}</span>
-        <span className="text-xs text-zinc-500">
-          vs {benchLabel}{" "}
-          <span className={pctColor(bench)}>{fmtPct(bench)}</span>
-        </span>
-        {excess != null && (
-          <span className={`text-xs font-medium ${pctColor(excess)}`}>
-            ({excess >= 0 ? "超贏 " : "輸 "}
-            {fmtPct(excess)})
-          </span>
-        )}
-      </div>
-    </div>
   );
 }
 
