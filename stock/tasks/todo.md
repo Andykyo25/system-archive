@@ -1919,3 +1919,62 @@ Andy 定調「不縮成儀表板,要走在市場前面」(抓真實事件 + 升�
 - #6 回測驗證:**本輪 N/A** — A1-A4(UI 移除)+ B1(唯讀行為 view)皆未動因子/權重/score_universe_at/entry 規則,模型 byte-identical,無 OOS 閘對象([[L36]] 閘是給結構改動)。回測閘隨 B2/B3 進行
 - 驗證限制:本機 sandbox 無 node/npm(where/PATH/registry/winget 全查證=已窮舉 [[L42]]),build 與視覺只能 Railway 部署後驗([[L50]])。本機已做:DB 驗 view 上線正確 + 機械式 grep 零殘留引用([[L46]])+ 逐檔 TS 通讀(Promise.all 長度對齊、orphan 全清)
 - 待 Andy:`npm run build` + Railway 部署看視覺;B2(Alpha101/GTJA191 純價格因子)/ B3(IC 權重)另開 session 過 [[L36]] OOS 閘
+
+**B2 Gate-0(2026-06-30,純價格因子 IC 探針 — 結論:不建,premise 不成立 [[L41]])**:
+- 探針:158 檔(排除 ETF)2023-2025、每 21 交易日 rebalance、PIT 因子 vs 未來 20 交易日報酬 Pearson IC(3351 obs)
+- 逐年 IC:mom20(現有動能)0.070/0.071/0.052 **三年最穩**;maxret20 0.097/0.025/0.192、vol60 0.064/0.013/0.182 **regime 依賴(全靠 2025,2024 近 0)**;Amihud −0.015 無訊號;rev5 實測為續強(+0.14)非反轉
+- 正交性(corr vs mom20):maxret20 0.32、vol60 0.145、amihud −0.05、rev5 −0.30(rev5=−r5)
+- 關鍵:台股低波/樂透因子**反向**(高波動短期續強,非美股低波異常),且 regime 依賴 + 與動能重疊 → 加進去放大已失敗的動能追高([[L36]] mom_strong_persist 覆轍)。簡單價格因子在此 momentum-saturated 小 universe **無穩健正交 alpha**
+- 決策:Gate-0 即止,**不進 build/OOS**(省一輪,[[L41]])。Andy 拍板 → 轉 B3
+
+**B3 IC 權重量測(2026-06-30,Andy 拍板「轉 B3」)**:
+- 方法:score_universe_at(PIT)取 12 個季度點各維度 score_pct vs 未來 20 交易日報酬 IC(n=1854)
+- 逐年維度 IC:fund 0.003/−0.055/−0.041(**全期 −0.020**,卻權重最高 40%);mom 0.106/−0.030/0.274(**+0.125**,唯一正、僅 30%);rev −0.074/−0.006/−0.170(**−0.082** 反預測、佔 10%);chip 全 null([[L44]])
+- **現行權重與 IC 嚴重錯配**:fund 過重(負 IC)、mom 過輕(唯一正)、rev 該砍
+- 輕量 OOS 模擬(top5/10 fwd20 vs equal-weight universe):偏動能(.3f/.7m)top5 全期 +1.73 vs 現行 +1.12;但**全靠 2025、2024 全負**(regime 依賴);現行 top10 +2.13 最穩
+- ⚠ 關鍵 caveat:(a) proxy 對比 universe **非 0050**,真實 EF 對 0050 top5 是負 alpha → proxy 贏 universe ≠ 贏 0050;(b) 機械偏動能**抵觸「好股(質)優先」哲學**,且把系統推向已證實輸 0050 的動能追高 → IC 直接最佳化是陷阱([[L36]]/[[L48]])
+- Andy 拍板 (a):溫和再配重(fund .40/mom .35/rev .05/chip .20)送真實 EF OOS 閘
+
+**B3 OOS 閘結果(2026-06-30,run-backtest EF v7,3 年連續 2023-2025,immediate/nextopen,對 0050)**:
+- 機制:暫改 app_settings 權重 → 跑 4 個 EF backtest(base/cand × t5/t10)→ 還原權重(已驗證回 40/30/10/20)。backtest_runs 留痕(B3-base/cand-3yr-*,[[L36]] 試驗留痕)
+- 結果(alpha vs 0050):
+  - **Top5**:base −81.0 → cand **−50.66(+30.3pp)** ✅ ret 74%→105%、sharpe 0.85→1.04
+  - **Top10**:base −58.22 → cand **−75.08(−16.9pp)** ❌ ret 97%→80%、sharpe 1.10→1.03
+- **判定:候選沒過 [[L36]] 閘** — 大幅改善 top5 但顯著惡化 top10(經典 top5/top10 反向),且單一 3 年路徑非穩健([[L38]])、會把線上偏向動能(抵觸質優先),最關鍵:**base/cand、t5/t10 全部仍深度輸 0050(+155%)** → 差距是結構性(大型權值股狂飆),非權重可調
+- **B3 結論:不採,權重維持 40/30/10/20**。核心知識產出:re-weight 是 top5/top10 取捨的邊際槓桿,救不了「贏 0050」;模型本質是質優先螢幕,20d-IC 最佳化非對的目標(呼應 B2)。真正的 alpha 缺口需另解(regime 條件化 / 換 benchmark 期望 / 接受是長線質篩非短線打敗大盤)
+
+---
+
+## 2026-07-03 — 虧損行為分析 → 買入警示(A)+ Universe 改革(B)
+
+**背景**:Andy 問「近期兩筆為何賠錢」。實證解剖(PIT 排名 + 買點價位脈絡):
+- 2408 7/01 −8.15%:6/23 於 472.5 停利 → 6/25 用 **478.5 更高價買回**(賣飛回追),當日 dev MA20 +19.6% / 20日已漲 +52.9% / rank 已 #18→#33 退步
+- 3236 7/02 −6.89%:7/01 買在 60日新高日盤中 75.5(收盤 73),dev +16.9% / 20日 +32.7%,**且 3236 只在 watchlist = 追蹤池外盲區單**
+- 停損本身執行好(−7~8% 即砍;2408 賣後 20日內最高仍低於賣價 7.4% = 砍對)。**問題在進場,不在出場**
+- ⚠ 誠實修正:v2 全數據顯示「追高買(dev>+10%)」波段戰績實為 **5勝2敗**(5-6月行情最順段追高也贏),非初判的全敗;真正 0 勝訊號 = **回追**(1 筆即 2408)與**盲區單**(3236)。行情轉弱後追高連 2 敗 → 警示仍必要,但顯示真實統計
+
+### A(已拍板)— 買入警示 + B1 v2 ✅
+- [x] migration `20260703000001_v_trade_behavior_v2`(apply + 驗證 PASS):holding_days 修 position-aware(2408 7/01 由誤導的 58 天 → 6 天);append 6 欄:entry_date/entry_price/dev_ma20_at_buy/ret20d_at_buy/is_chase_buy(dev>+10)/is_reentry_buy(前10日曆天有 SELL 且開倉價更高)
+- [x] `checkBuyContext` server action(actions.ts):5 查詢並行 — v_entry_quality zone/v_price_factors/realtime 價/近10日 SELL/行為統計
+- [x] `BuyForm.tsx` client component 換掉舊 server form:股號 blur → 追高(amber)/回追(red)/盲區(zinc)/回檔✓(green)/破壞(sky)警示,不擋單只強制看見;page.tsx 舊 inputCls/btnCls orphan 清除
+- [x] TradeBehaviorSection:新「買點 MA20±」欄(追高紅字 + 🔁 回追)+ 勝率卡 sub 顯示追高/回追戰績
+- 驗證:view 對 2408(6天/chase/reentry)、3236(1天/chase)輸出正確;grep orphan 零殘留;build 待 Railway(L50)
+
+### B(設計待拍板)— Universe 改革:固定 ~160 檔 → 全市場雷達 + 動態晉升
+**偵察數據**:fetch_universe=160;FinMind token1 **600/600 每天用滿**(chip×3+valuation=4×~150)、token2 用 ~150-160/600(餘 ~440);DB 188MB(price_daily 51MB/13.1萬列);TWSE/TPEX 收盤 OpenAPI 免費抓回全市場(現在 EF filter 掉)
+**架構(三層)**:
+1. **全市場價格雷達(零 quota)**:fetch-daily-prices 改寫入全部普通股+ETF(上市+上櫃,~2000 檔;3236 就是上櫃,必含)。儲存控制:未進過 focus pool 的股只留滾動 90 交易日(cleanup cron),進過 pool 的永久保留(L38 PIT)
+2. **熱股自動晉升**:每日收盤後 cron 掃全市場 →(成交值 topN ∪ 20日漲幅 topN ∪ 60日新高+量2x)→ 新表 `universe_dynamic(symbol, added_at, reason, last_hot_at)`,cap ~50;60 天不熱且非持股自動退場(留 audit);晉升時自動 backfill 3 年歷史+fundamentals(token2,50 檔 chip+val ≈ 200/day 裝得下)
+3. **rank/PIT 整合**:fetcher/因子 view universe 加 universe_dynamic;v_factor_scores 缺維 reallocate 既有(L23)→ 新股價格維先亮、chip/fund 到料自動升級;**score_universe_at 必須加 `added_at <= as_of_date`**(否則今日熱股灌進歷史回測 = L48 事後選擇),同時開始累積 L38 要的 PIT universe 快照
+**風險**:EF 改動需 L49 機械 deploy + 核對;全市場寫入量 ~2000 row/day upsert;90 天窗清理 cron 要排除曾入 pool 股(誤刪 = L38 回測毀)
+- [x] B-1 fetch-daily-prices 全市場寫入 + 90 天滾動清理 cron
+- [x] B-2 universe_dynamic 表 + 每日雷達 cron + 自動 backfill 晉升
+- [x] B-3 因子/fetcher universe 整合 + score_universe_at PIT 條件 + 迴歸驗證(L32 兩處同步)
+
+**B Review(2026-07-03,Andy 拍板 90日滾動窗 + cap 50,全部完成)**:
+- Migration ×3(20260703000002~4)+ EF v8 deploy(L49 拉回核對執行字串 PASS)
+- **B-1**:fetch-daily-prices v8 — filter 改「focus 池 ∪ 全部 4 碼」(權證仍排除);provisional 刪除改「先查再交集」(1800 symbols 塞 .in() 會爆 URL);upsert 分批 500。E2E:TWSE 1,094 + TPEX 871 檔寫入(v7 只 ~136)。cleanup cron 每日 20:10 UTC,保留名單 = v_fetch_universe ∪ universe_dynamic(全 row)∪ holdings_transactions ∪ day_trades(平倉股賣後分析需要)
+- **B-2**:scan_hot_stocks()(成交值Top30 ∪ 20日漲幅Top30[≥21筆] ∪ 60日新高帶量[≥40筆];cap 50、60天不熱退場、row 永不刪)+ cron 平日 14:20 UTC 含自動 backfill(token2)。首掃晉升 12 檔真熱股(3037欣興/8046南電/5483中美晶/8033雷虎/6285[出清後又熱,自動接回]…);backfill 完成 price 8,035 + valuation 8,766 + rev 420 + fund 132 列
+- **B-3**:pg_get_viewdef/functiondef + replace + execute 機械改寫(不手抄 200 行,替換目標前置驗證唯一);v_price_factors + active dynamic → mv → 全下游自動;score_universe_at + **PIT gate(added_at ≤ as_of ∧ 未退場)**。**L39 迴歸:2025/2024 兩時點輸出 md5 與改前 byte 一致**(歷史回測零污染)= L48 事後選擇偏誤被 gate 擋住,並開始累積 L38 的 PIT universe 快照
+- E2E 終點:mv refresh 後 12 檔全進 v_stock_rank(8261 fund 6/7 → **#12**、8046 #31),chip 0/0 reallocate 如設計
+- 已知 gap(後續):① 動態股無中文名(nameMap 不含,顯示 —;可接 TaiwanStockInfo 補)② 動態股無 Yahoo 盤中即時價(現價 = 日收盤)③ 雷達用 raw close,除權息日附近榜單可能誤判 ④ 雷達漲幅/新高榜需累積 21/40 交易日全市場資料後才全功率(當前僅成交值榜)⑤ 動態股 valuation/月營收為晉升時 snapshot 非日更(PE 微 stale,誠實記錄)

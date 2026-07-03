@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { unwrap } from "@/lib/db";
-import { addBuyTransaction } from "./actions";
+import { BuyForm } from "./BuyForm";
 import { DayTradeDialog } from "./DayTradeDialog";
 import { fmtMoney, fmtPct, pctColor } from "../_components/Format";
 import { PriceCell } from "../_components/PriceCell";
@@ -13,11 +13,6 @@ import {
 } from "./HoldingsAdvice";
 
 export const dynamic = "force-dynamic";
-
-const inputCls =
-  "rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-500 focus:border-blue-500 focus:outline-none";
-const btnCls =
-  "rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700";
 
 interface CurrentHolding {
   symbol: string;
@@ -64,6 +59,13 @@ interface TradeBehaviorRow {
   fwd_days_available: number;
   fwd_20d_pct: number | string | null;
   fwd_max20_pct: number | string | null;
+  // v2 買入質量
+  entry_date: string | null;
+  entry_price: number | string | null;
+  dev_ma20_at_buy: number | string | null;
+  ret20d_at_buy: number | string | null;
+  is_chase_buy: boolean | null;
+  is_reentry_buy: boolean;
 }
 
 interface Transaction {
@@ -318,48 +320,10 @@ function AddBuySection({ fees }: { fees: FeeSettings }) {
           taxEtf={fees.dayTaxEtf}
         />
       </div>
-      <form
-        action={addBuyTransaction}
-        className="grid grid-cols-1 gap-3 md:grid-cols-6"
-      >
-        <input
-          name="symbol"
-          placeholder="股號 (e.g. 2330)"
-          required
-          className={inputCls}
-        />
-        <input
-          name="qty"
-          type="number"
-          min="1"
-          placeholder="股數"
-          required
-          className={inputCls}
-        />
-        <input
-          name="price"
-          type="number"
-          step="0.01"
-          placeholder="買入價"
-          required
-          className={inputCls}
-        />
-        <input
-          name="txn_date"
-          type="date"
-          defaultValue={new Date().toISOString().slice(0, 10)}
-          required
-          className={inputCls}
-        />
-        <input
-          name="note"
-          placeholder="備註 (選填)"
-          className={inputCls}
-        />
-        <button className={btnCls}>新增</button>
-      </form>
+      <BuyForm />
       <p className="mt-2 text-xs text-zinc-500">
         手續費會自動依設定算入 fee 欄(雙邊都收)。BUY 不收證交稅。
+        股號輸入後會自動顯示進場脈絡(追高 / 回追 / 盲區警示)。
       </p>
     </section>
   );
@@ -537,20 +501,25 @@ function TradeBehaviorSection({ rows }: { rows: TradeBehaviorRow[] }) {
   const avgFwd20 = withFwd.length
     ? withFwd.reduce((a, r) => a + (num(r.fwd_20d_pct) ?? 0), 0) / withFwd.length
     : null;
+  // v2 買入質量統計(追高 = 買進日 dev MA20 > +10%;回追 = 近10日賣過又更高價買回)
+  const chaseW = rows.filter((r) => r.is_chase_buy === true && r.is_win).length;
+  const chaseL = rows.filter((r) => r.is_chase_buy === true && !r.is_win).length;
+  const reW = rows.filter((r) => r.is_reentry_buy && r.is_win).length;
+  const reL = rows.filter((r) => r.is_reentry_buy && !r.is_win).length;
 
   return (
     <section>
       <div className="mb-3 flex items-baseline justify-between">
         <h2 className="text-lg font-semibold">交易行為分析</h2>
         <span className="text-xs text-zinc-500">
-          賣出後若續抱的結果 — 量化「賣太早 / 出場時機」
+          買點質量 + 賣出後若續抱的結果(不含當沖)
         </span>
       </div>
       <div className="mb-3 grid grid-cols-2 gap-3 md:grid-cols-4">
         <Card
           label="勝率"
           value={`${wins}/${total}`}
-          sub={total ? `${((wins / total) * 100).toFixed(0)}%` : undefined}
+          sub={`追高買 ${chaseW}勝${chaseL}敗 · 回追 ${reW}勝${reL}敗`}
         />
         <Card
           label="平均持有"
@@ -578,6 +547,12 @@ function TradeBehaviorSection({ rows }: { rows: TradeBehaviorRow[] }) {
                 你的出場%
               </th>
               <th className="px-3 py-2 text-right">持有</th>
+              <th
+                className="px-3 py-2 text-right"
+                title="開倉日收盤 vs MA20 偏離。>+10% = 追高區(紅字);🔁 = 近10日賣過又更高價買回"
+              >
+                買點 MA20±
+              </th>
               <th
                 className="px-3 py-2 text-right"
                 title="賣出後第 20 交易日 vs 賣出價 = 若當時續抱的結果"
@@ -609,6 +584,11 @@ function TradeBehaviorSection({ rows }: { rows: TradeBehaviorRow[] }) {
                   <td className="px-3 py-2 text-right tabular-nums text-zinc-400">
                     {r.holding_days != null ? `${r.holding_days} 天` : "—"}
                   </td>
+                  <BuyQualityCell
+                    dev={num(r.dev_ma20_at_buy)}
+                    isChase={r.is_chase_buy}
+                    isReentry={r.is_reentry_buy}
+                  />
                   <td
                     className={`px-3 py-2 text-right tabular-nums ${pctColor(fwd20)}`}
                   >
@@ -629,11 +609,36 @@ function TradeBehaviorSection({ rows }: { rows: TradeBehaviorRow[] }) {
         </table>
       </div>
       <p className="mt-2 text-xs text-zinc-500">
-        「續抱20日」= 賣出後第 20 交易日 vs 賣出價(若當時續抱的結果);「期間最高」=
-        賣後 20 交易日內最高(完美時機上限)。正 = 賣太早(續抱更賺)、負 =
-        出場時機佳(避開回檔)。N/A = 已出清且不在追蹤池,賣後無收盤資料。樣本小,僅供自我檢視。
+        「買點 MA20±」= 開倉日收盤 vs MA20 偏離(&gt;+10% 紅字 = 追高區;🔁 =
+        近 10 日賣過又更高價買回);「續抱20日」= 賣出後第 20 交易日 vs
+        賣出價;「期間最高」= 賣後 20 交易日內最高(完美時機上限)。正 =
+        賣太早、負 = 出場時機佳。N/A = 資料不足。持有天數以開倉日(淨部位歸零後首買)起算。樣本小,僅供自我檢視。
       </p>
     </section>
+  );
+}
+
+// 買點質量 cell:dev MA20 偏離(追高紅字)+ 回追 🔁 badge
+function BuyQualityCell({
+  dev,
+  isChase,
+  isReentry,
+}: {
+  dev: number | null;
+  isChase: boolean | null;
+  isReentry: boolean;
+}) {
+  return (
+    <td className="px-3 py-2 text-right tabular-nums">
+      <span className={isChase ? "font-medium text-red-400" : "text-zinc-400"}>
+        {dev != null ? `${dev >= 0 ? "+" : ""}${dev.toFixed(1)}%` : "—"}
+      </span>
+      {isReentry && (
+        <span className="ml-1" title="賣飛回追:近 10 日賣過同檔,又用更高價買回">
+          🔁
+        </span>
+      )}
+    </td>
   );
 }
 

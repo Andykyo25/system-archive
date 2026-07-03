@@ -132,6 +132,92 @@ export async function addSellTransaction(formData: FormData): Promise<void> {
   revalidatePath("/");
 }
 
+// 買入前脈絡檢查(A 工程 2026-07-03):追高/回追/盲區警示,不擋單只強制看見。
+// 動機:7/01-7/02 兩筆虧損 = 追高區回追(2408)+ 追蹤池外盲區單(3236),
+// 資訊當時都存在(v_entry_quality 亮追高)但不在下單路徑上。
+export interface BuyContext {
+  symbol: string;
+  covered: boolean; // false = 不在 v_entry_quality(追蹤池外,系統盲區)
+  zone: "chase" | "neutral" | "pullback" | "broken" | "unknown" | null;
+  devMa20: number | null;
+  ret20d: number | null;
+  offHigh: number | null;
+  currentPrice: number | null;
+  // 近 10 日曆天內同檔 SELL(供回追判斷:現價 > 賣價 = 賣飛回追)
+  recentSell: { date: string; price: number } | null;
+  // 歷史戰績(波段平倉,v_trade_behavior)
+  chaseWins: number;
+  chaseLosses: number;
+  reentryWins: number;
+  reentryLosses: number;
+}
+
+function n(v: number | string | null | undefined): number | null {
+  if (v == null) return null;
+  const x = Number(v);
+  return Number.isFinite(x) ? x : null;
+}
+
+export async function checkBuyContext(symbol: string): Promise<BuyContext | null> {
+  const s = symbol.trim();
+  if (!/^[0-9A-Za-z]{4,6}$/.test(s)) return null;
+  const sb = createClient();
+  const since = new Date(Date.now() - 10 * 86400000).toISOString().slice(0, 10);
+  const [eq, pf, rt, sells, behavior] = await Promise.all([
+    sb
+      .from("v_entry_quality")
+      .select("entry_zone, dev_ma20_pct, off_high_pct")
+      .eq("symbol", s)
+      .maybeSingle(),
+    sb.from("v_price_factors").select("ret_20d_pct").eq("symbol", s).maybeSingle(),
+    sb
+      .from("v_latest_price_realtime")
+      .select("current_price")
+      .eq("symbol", s)
+      .maybeSingle(),
+    sb
+      .from("holdings_transactions")
+      .select("txn_date, price")
+      .eq("symbol", s)
+      .eq("txn_type", "SELL")
+      .gte("txn_date", since)
+      .order("txn_date", { ascending: false })
+      .limit(1),
+    sb.from("v_trade_behavior").select("is_win, is_chase_buy, is_reentry_buy"),
+  ]);
+
+  let chaseWins = 0,
+    chaseLosses = 0,
+    reentryWins = 0,
+    reentryLosses = 0;
+  for (const r of (behavior.data as
+    | { is_win: boolean; is_chase_buy: boolean | null; is_reentry_buy: boolean }[]
+    | null) ?? []) {
+    if (r.is_chase_buy === true) r.is_win ? chaseWins++ : chaseLosses++;
+    if (r.is_reentry_buy) r.is_win ? reentryWins++ : reentryLosses++;
+  }
+
+  const eqRow = eq.data as
+    | { entry_zone: BuyContext["zone"]; dev_ma20_pct: number | string | null; off_high_pct: number | string | null }
+    | null;
+  const sellRow = (sells.data as { txn_date: string; price: number | string }[] | null)?.[0];
+
+  return {
+    symbol: s,
+    covered: eqRow != null,
+    zone: eqRow?.entry_zone ?? null,
+    devMa20: n(eqRow?.dev_ma20_pct),
+    ret20d: n((pf.data as { ret_20d_pct: number | string | null } | null)?.ret_20d_pct),
+    offHigh: n(eqRow?.off_high_pct),
+    currentPrice: n((rt.data as { current_price: number | string | null } | null)?.current_price),
+    recentSell: sellRow ? { date: sellRow.txn_date, price: Number(sellRow.price) } : null,
+    chaseWins,
+    chaseLosses,
+    reentryWins,
+    reentryLosses,
+  };
+}
+
 // 砍掉一筆 transaction(誤輸入時用,單筆刪)
 // 注意:會影響後續 SELL 的 avg_cost 計算,謹慎使用
 export async function deleteTransaction(formData: FormData): Promise<void> {

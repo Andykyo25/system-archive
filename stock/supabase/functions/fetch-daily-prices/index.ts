@@ -82,34 +82,53 @@ async function fetchSource(
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const json = await res.json();
     const allRows = parser(json);
-    const rows = allRows.filter((r) => targetSymbols.has(r.symbol));
+    // B 工程 v8(2026-07-03):全市場寫入 — focus 池照舊 + 全部 4 碼普通股/ETF
+    // (雷達層,零 quota;權證等 5-6 碼仍排除)。90 日滾動清理見 cleanup_market_prices。
+    const rows = allRows.filter(
+      (r) => targetSymbols.has(r.symbol) || /^\d{4}$/.test(r.symbol),
+    );
+    const focusCount = rows.filter((r) => targetSymbols.has(r.symbol)).length;
 
     let written = 0;
     let upgraded = 0;
     if (rows.length > 0) {
       // 主力可以覆蓋 provisional(reconcile),但不能覆蓋主力(lock)。
-      // 做法:先刪掉這批 (symbol, trade_date) 中 is_provisional=true 的 row,
-      //       再 upsert ignoreDuplicates → 殘留的主力 row 不動,被刪的 provisional 位置會寫入新主力。
-      // 假設:同一個 source 一次回傳的 rows 共用一個 trade_date(TWSE/TPEX 的 STOCK_DAY_ALL 是這樣)
+      // 做法:先查出該日 is_provisional=true 的 symbols(fallback 只寫 focus 池,量少),
+      //       與本批交集後刪除 → 再 upsert ignoreDuplicates。殘留主力 row 不動。
+      // v8 註:改「先查再交集」因全市場 ~1800 symbols 塞進 .in() 會爆 URL 長度。
       const dates = new Set(rows.map((r) => r.trade_date));
-      const symbols = rows.map((r) => r.symbol);
+      const symbolSet = new Set(rows.map((r) => r.symbol));
       for (const date of dates) {
-        const { data: del } = await supabase
+        const { data: provRows } = await supabase
           .from("price_daily")
-          .delete()
-          .in("symbol", symbols)
+          .select("symbol")
           .eq("trade_date", date)
-          .eq("is_provisional", true)
-          .select("symbol");
-        upgraded += del?.length ?? 0;
+          .eq("is_provisional", true);
+        const toDelete = ((provRows ?? []) as { symbol: string }[])
+          .map((r) => r.symbol)
+          .filter((s) => symbolSet.has(s));
+        if (toDelete.length > 0) {
+          const { data: del } = await supabase
+            .from("price_daily")
+            .delete()
+            .in("symbol", toDelete)
+            .eq("trade_date", date)
+            .eq("is_provisional", true)
+            .select("symbol");
+          upgraded += del?.length ?? 0;
+        }
       }
 
-      const { data, error } = await supabase
-        .from("price_daily")
-        .upsert(rows, { onConflict: "symbol,trade_date", ignoreDuplicates: true })
-        .select("symbol");
-      if (error) throw error;
-      written = data?.length ?? 0;
+      // 分批 upsert(全市場 ~1800 rows,500/批避免單請求過大)
+      for (let i = 0; i < rows.length; i += 500) {
+        const chunk = rows.slice(i, i + 500);
+        const { data, error } = await supabase
+          .from("price_daily")
+          .upsert(chunk, { onConflict: "symbol,trade_date", ignoreDuplicates: true })
+          .select("symbol");
+        if (error) throw error;
+        written += data?.length ?? 0;
+      }
     }
     const skipped = rows.length - written;
 
@@ -120,7 +139,7 @@ async function fetchSource(
       rows_skipped: skipped,
     }).eq("id", logId);
 
-    return { source, fetched: allRows.length, matched: rows.length, written, upgraded, skipped };
+    return { source, fetched: allRows.length, matched: rows.length, matched_focus: focusCount, written, upgraded, skipped };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     await supabase.from("fetch_log").update({
