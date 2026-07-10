@@ -11,6 +11,8 @@ import {
   type HoldingAdviceRow,
   type SignalRow,
 } from "./HoldingsAdvice";
+import { AlertDialog, type ActiveAlert } from "./AlertDialog";
+import { cancelPriceAlert } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -149,6 +151,7 @@ export default async function HoldingsPage() {
     { data: advice },
     { data: signals },
     { data: behavior },
+    { data: alertRules },
     fees,
   ] = await Promise.all([
     sb.from("v_holdings_summary").select("*").single(),
@@ -188,6 +191,11 @@ export default async function HoldingsPage() {
       .from("v_trade_behavior")
       .select("*")
       .order("sell_date", { ascending: false }),
+    sb
+      .from("alert_rules")
+      .select("id, symbol, condition, threshold, note, created_at")
+      .eq("enabled", true)
+      .order("created_at", { ascending: false }),
     loadFeeSettings(),
   ]);
 
@@ -212,13 +220,36 @@ export default async function HoldingsPage() {
   }
   const behaviorRows = (behavior as TradeBehaviorRow[] | null) ?? [];
 
+  // 到價提醒:active rules + 持股快捷價(停損/加碼,來自 v_holdings_advice)
+  const alertRows = (alertRules as (ActiveAlert & { created_at: string })[] | null) ?? [];
+  const alertsBySymbol: Record<string, ActiveAlert[]> = {};
+  for (const a of alertRows) {
+    (alertsBySymbol[a.symbol] ??= []).push(a);
+  }
+  const advicePrices: Record<string, { stop: number | null; add: number | null }> = {};
+  for (const a of adviceRows) {
+    const stop = Number(a.stop_loss_price);
+    const add = Number(a.add_position_price);
+    advicePrices[a.symbol] = {
+      stop: Number.isFinite(stop) ? stop : null,
+      add: Number.isFinite(add) ? add : null,
+    };
+  }
+
   return (
     <div className="space-y-8">
       <SummarySection summary={sum} portfolio={portfolioSum} />
 
       <AddBuySection fees={fees} />
 
-      <CurrentHoldingsSection rows={rows} fees={fees} />
+      <CurrentHoldingsSection
+        rows={rows}
+        fees={fees}
+        advicePrices={advicePrices}
+        alertsBySymbol={alertsBySymbol}
+      />
+
+      <ActiveAlertsSection rows={alertRows} />
 
       <HoldingsAdvice rows={adviceRows} signalsMap={signalsMap} />
 
@@ -332,9 +363,13 @@ function AddBuySection({ fees }: { fees: FeeSettings }) {
 function CurrentHoldingsSection({
   rows,
   fees,
+  advicePrices,
+  alertsBySymbol,
 }: {
   rows: CurrentHolding[];
   fees: FeeSettings;
+  advicePrices: Record<string, { stop: number | null; add: number | null }>;
+  alertsBySymbol: Record<string, ActiveAlert[]>;
 }) {
   return (
     <section>
@@ -404,14 +439,23 @@ function CurrentHoldingsSection({
                       {fmtPct(h.unrealized_pct)}
                     </td>
                     <td className="px-3 py-2 text-right">
-                      <SellDialog
-                        symbol={h.symbol}
-                        netQty={Number(h.qty)}
-                        avgCost={Number(h.avg_cost)}
-                        currentPrice={currentPrice}
-                        feeRate={fees.feeRate}
-                        taxRate={taxRate}
-                      />
+                      <div className="flex justify-end gap-1.5">
+                        <AlertDialog
+                          symbol={h.symbol}
+                          currentPrice={currentPrice}
+                          stopLoss={advicePrices[h.symbol]?.stop ?? null}
+                          addPosition={advicePrices[h.symbol]?.add ?? null}
+                          alerts={alertsBySymbol[h.symbol] ?? []}
+                        />
+                        <SellDialog
+                          symbol={h.symbol}
+                          netQty={Number(h.qty)}
+                          avgCost={Number(h.avg_cost)}
+                          currentPrice={currentPrice}
+                          feeRate={fees.feeRate}
+                          taxRate={taxRate}
+                        />
+                      </div>
                     </td>
                   </tr>
                 );
@@ -424,6 +468,51 @@ function CurrentHoldingsSection({
         現價來自 v_latest_price_realtime(yahoo &lt; 30min &gt; 今日收盤 &gt;
         最近收盤)。hover 現價可看資料日期 / 來源。
       </p>
+    </section>
+  );
+}
+
+// 到價提醒總覽:含非持股遺留規則(如舊 /rank 掛的耐心價),UI 可取消 — 收 A3 半拆債
+function ActiveAlertsSection({
+  rows,
+}: {
+  rows: (ActiveAlert & { created_at: string })[];
+}) {
+  if (rows.length === 0) return null;
+  return (
+    <section>
+      <h2 className="mb-3 text-lg font-semibold">
+        到價提醒 ({rows.length})
+        <span className="ml-2 text-xs font-normal text-zinc-500">
+          盤中每 10 分檢查,觸價 TG 推播後自動停用
+        </span>
+      </h2>
+      <div className="rounded-lg border border-zinc-800 bg-zinc-900">
+        {rows.map((a) => (
+          <div
+            key={a.id}
+            className="flex flex-wrap items-center justify-between gap-2 border-t border-zinc-800 px-4 py-2 text-sm first:border-t-0"
+          >
+            <div className="flex flex-wrap items-baseline gap-x-3">
+              <span className="font-mono text-blue-400">{a.symbol}</span>
+              <span className="tabular-nums text-zinc-200">
+                {a.condition === "price_below" ? "跌到 ≤" : "漲到 ≥"}{" "}
+                {Number(a.threshold).toLocaleString()}
+              </span>
+              {a.note && <span className="text-xs text-zinc-500">{a.note}</span>}
+              <span className="text-xs text-zinc-600">
+                {a.created_at.slice(0, 10)} 掛
+              </span>
+            </div>
+            <form action={cancelPriceAlert}>
+              <input type="hidden" name="id" value={a.id} />
+              <button className="rounded-md border border-zinc-700 px-2.5 py-1 text-xs text-zinc-400 hover:bg-zinc-800 hover:text-red-300">
+                取消
+              </button>
+            </form>
+          </div>
+        ))}
+      </div>
     </section>
   );
 }

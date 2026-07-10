@@ -291,3 +291,44 @@ export async function addDayTradeTransaction(formData: FormData): Promise<void> 
   revalidatePath("/");
   revalidatePath("/performance");
 }
+
+// 到價提醒(2026-07-10 通用化,收回 A3 拆掉的 UI)
+// pipeline 沿用:alert_rules → check-price-alerts EF(盤中每 10 分比價)→ TG 推播 + one-shot 停用
+export async function addPriceAlert(formData: FormData): Promise<void> {
+  const symbol = String(formData.get("symbol") ?? "").trim();
+  const condition = String(formData.get("condition") ?? "");
+  const threshold = Number(formData.get("threshold"));
+  const note = String(formData.get("note") ?? "").trim() || null;
+
+  if (!/^[0-9A-Za-z]{4,6}$/.test(symbol)) throw new Error("股號格式錯誤");
+  if (condition !== "price_below" && condition !== "price_above")
+    throw new Error("條件必須是 price_below / price_above");
+  if (!Number.isFinite(threshold) || threshold <= 0)
+    throw new Error("目標價必須是正數");
+
+  const sb = createClient();
+  // 防重:同 symbol + condition 未觸發規則先停用再插新(重掛 = 更新價)
+  await sb
+    .from("alert_rules")
+    .update({ enabled: false })
+    .eq("symbol", symbol)
+    .eq("condition", condition)
+    .eq("enabled", true);
+  const { error } = await sb
+    .from("alert_rules")
+    .insert({ symbol, condition, threshold, note });
+  if (error) throw new Error(`addPriceAlert: ${error.message}`);
+  revalidatePath("/holdings");
+}
+
+export async function cancelPriceAlert(formData: FormData): Promise<void> {
+  const id = Number(formData.get("id"));
+  if (!Number.isFinite(id) || id <= 0) throw new Error("提醒 id 錯誤");
+  const sb = createClient();
+  const { error } = await sb
+    .from("alert_rules")
+    .update({ enabled: false })
+    .eq("id", id);
+  if (error) throw new Error(`cancelPriceAlert: ${error.message}`);
+  revalidatePath("/holdings");
+}

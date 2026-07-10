@@ -15,6 +15,11 @@ import {
   OverseasWidget,
   type OverseasRow,
 } from "./_components/OverseasWidget";
+import {
+  MorningPanel,
+  type MorningHolding,
+  type MorningSignalPick,
+} from "./_components/MorningPanel";
 
 export const dynamic = "force-dynamic";
 
@@ -80,6 +85,17 @@ interface EntrySignalSummary {
   mom_count_total: number;
   chip_count_pos: number;
   chip_count_total: number;
+}
+
+// 今晨決策面板用:v_holdings_signals 輕欄位(即時價/警示燈/停損加碼價/RSI)
+interface HoldingSignalLite {
+  symbol: string;
+  signal_level: "healthy" | "caution" | "warning" | "alert" | null;
+  current_price: number | string | null;
+  today_chg_pct: number | string | null;
+  pct_change: number | string | null;
+  stop_loss_price: number | string | null;
+  rsi14: number | string | null;
 }
 
 // 持股的 19 因子綜合判斷(餵「真實持股」表,讓基本面 score 旁也顯示綜合排名 + 進場燈)
@@ -247,31 +263,6 @@ const getCachedRegime = unstable_cache(
   { revalidate: 3600 },
 );
 
-function RegimeWidget({ ret }: { ret: number | null }) {
-  if (ret == null) return null;
-  const zone =
-    ret < 0
-      ? { label: "歷史有利區(跌勢)", cls: "text-green-400", note: "策略季 alpha 歷史 +8.84(全勝)" }
-      : ret < 10
-        ? { label: "中性區", cls: "text-zinc-300", note: "無顯著歷史傾向" }
-        : ret < 20
-          ? { label: "⚠ 策略地雷區", cls: "text-orange-400", note: "歷史季 alpha −8.70(全敗):主動減碼/改 0050" }
-          : { label: "歷史有利區(強漲)", cls: "text-green-400", note: "策略季 alpha 歷史 +3.76(全勝)" };
-  return (
-    <div className="flex flex-wrap items-baseline gap-x-3 rounded-lg border border-zinc-800 bg-zinc-900/50 px-4 py-2 text-sm">
-      <span className="text-zinc-400">Regime</span>
-      <span className="tabular-nums">
-        0050 近季 {ret >= 0 ? "+" : ""}
-        {ret.toFixed(1)}%
-      </span>
-      <span className={`font-medium ${zone.cls}`}>{zone.label}</span>
-      <span className="text-xs text-zinc-500">
-        {zone.note} · U 型濾網僅 12 季樣本,paper-track 驗真中
-      </span>
-    </div>
-  );
-}
-
 export default async function Dashboard() {
   const sb = createClient();
   // 即時查詢:報價 / 損益 / 持股,每次 render 要最新,不快取
@@ -281,6 +272,7 @@ export default async function Dashboard() {
     { data: perfSummary },
     { data: realizedRows },
     { data: buyTxns },
+    { data: holdingSignals },
   ] = await Promise.all([
     sb.from("v_portfolio_summary").select("*").single(),
     sb
@@ -301,6 +293,11 @@ export default async function Dashboard() {
       .select("symbol, txn_date")
       .eq("txn_type", "BUY")
       .order("txn_date", { ascending: true }),
+    sb
+      .from("v_holdings_signals")
+      .select(
+        "symbol, signal_level, current_price, today_chg_pct, pct_change, stop_loss_price, rsi14",
+      ),
   ]);
 
   // 核心 query 失敗 → throw 到 app/error.tsx,不靜默變空表(A3/L42),fail-fast
@@ -322,18 +319,27 @@ export default async function Dashboard() {
   // 但 19 因子綜合排名可能很前面 + 進場燈亮。並列兩者避免被單一 score 誤導。
   const holdingRows = (holdings as HoldingFull[] | null) ?? [];
   const heldRankMap: Record<string, HeldRank> = {};
+  const zoneMap: Record<string, string> = {};
   if (holdingRows.length > 0) {
-    const { data: heldRanks } = await sb
-      .from("v_entry_signal")
-      .select(
-        "symbol, expected_rank, weighted_score, is_entry_signal, signal_strength, fund_count_pos, fund_count_total, mom_count_pos, mom_count_total, chip_count_pos, chip_count_total",
-      )
-      .in(
-        "symbol",
-        holdingRows.map((h) => h.symbol),
-      );
+    const heldSymbols = holdingRows.map((h) => h.symbol);
+    const [{ data: heldRanks }, { data: heldZones }] = await Promise.all([
+      sb
+        .from("v_entry_signal")
+        .select(
+          "symbol, expected_rank, weighted_score, is_entry_signal, signal_strength, fund_count_pos, fund_count_total, mom_count_pos, mom_count_total, chip_count_pos, chip_count_total",
+        )
+        .in("symbol", heldSymbols),
+      sb
+        .from("v_entry_quality")
+        .select("symbol, entry_zone")
+        .in("symbol", heldSymbols),
+    ]);
     for (const r of (heldRanks as HeldRank[] | null) ?? []) {
       heldRankMap[r.symbol] = r;
+    }
+    for (const z of (heldZones as { symbol: string; entry_zone: string | null }[] | null) ??
+      []) {
+      if (z.entry_zone) zoneMap[z.symbol] = z.entry_zone;
     }
   }
 
@@ -366,10 +372,41 @@ export default async function Dashboard() {
     industry: industryMap[h.symbol] ?? h.primary_industry ?? null,
   }));
 
+  // 今晨決策面板:持股 chip 資料 = v_holdings_signals(即時)+ 名稱/產業 + entry_zone
+  const signalLiteMap: Record<string, HoldingSignalLite> = {};
+  for (const s of (holdingSignals as HoldingSignalLite[] | null) ?? []) {
+    signalLiteMap[s.symbol] = s;
+  }
+  const morningHoldings: MorningHolding[] = holdingRows.map((h) => {
+    const s = signalLiteMap[h.symbol];
+    return {
+      symbol: h.symbol,
+      name: nameMap[h.symbol] ?? null,
+      industry: industryMap[h.symbol] ?? h.primary_industry ?? null,
+      current_price: s?.current_price ?? h.current_price,
+      today_chg_pct: s?.today_chg_pct ?? null,
+      pct_change: s?.pct_change ?? h.unrealized_pct,
+      signal_level: s?.signal_level ?? null,
+      stop_loss_price: s?.stop_loss_price ?? null,
+      rsi14: s?.rsi14 ?? null,
+      entry_zone: zoneMap[h.symbol] ?? null,
+    };
+  });
+  const signalTop: MorningSignalPick[] = signalRows.slice(0, 3).map((s) => ({
+    symbol: s.symbol,
+    name: nameMap[s.symbol] ?? null,
+  }));
+
   return (
     <div className="space-y-6">
+      <MorningPanel
+        regimeRet={regimeRet}
+        overseasRows={overseasRows}
+        holdings={morningHoldings}
+        signalCount={signalRows.length}
+        signalTop={signalTop}
+      />
       <SummaryCards summary={summary as PortfolioSummary | null} />
-      <RegimeWidget ret={regimeRet} />
       <OverseasWidget rows={overseasRows} holdings={overseasHoldings} />
       <PerformanceWidget
         summary={perfSummary as PerfSummary | null}

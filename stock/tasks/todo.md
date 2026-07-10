@@ -1978,3 +1978,25 @@ Andy 定調「不縮成儀表板,要走在市場前面」(抓真實事件 + 升�
 - **B-3**:pg_get_viewdef/functiondef + replace + execute 機械改寫(不手抄 200 行,替換目標前置驗證唯一);v_price_factors + active dynamic → mv → 全下游自動;score_universe_at + **PIT gate(added_at ≤ as_of ∧ 未退場)**。**L39 迴歸:2025/2024 兩時點輸出 md5 與改前 byte 一致**(歷史回測零污染)= L48 事後選擇偏誤被 gate 擋住,並開始累積 L38 的 PIT universe 快照
 - E2E 終點:mv refresh 後 12 檔全進 v_stock_rank(8261 fund 6/7 → **#12**、8046 #31),chip 0/0 reallocate 如設計
 - 已知 gap(後續):① 動態股無中文名(nameMap 不含,顯示 —;可接 TaiwanStockInfo 補)② 動態股無 Yahoo 盤中即時價(現價 = 日收盤)③ 雷達用 raw close,除權息日附近榜單可能誤判 ④ 雷達漲幅/新高榜需累積 21/40 交易日全市場資料後才全功率(當前僅成交值榜)⑤ 動態股 valuation/月營收為晉升時 snapshot 非日更(PE 微 stale,誠實記錄)
+
+---
+
+## 2026-07-10 — UI 優化第一塊:今晨決策面板 + 到價提醒收尾(Andy 拍板照規畫執行)
+
+> 規畫全景(Andy 已拍板順序):① UI 決策面板 + 到價提醒收尾 → ② ATR sizing + 集中度警示 → ③ ATR/time-stop 出場回測([[L36]] OOS 閘)→ ④ regime 條件化警示 + 事件日曆。本 session 只做 ①,完成回報再接 ②。
+
+- [x] 1. MorningPanel 今晨決策面板(dashboard 頂部結論層)→ verify: TS 通讀 + DB 驗 query 欄位 + Railway build
+  - 整合:regime 燈(吸收現有 RegimeWidget)+ 持股對應海外源 gate 結論(overseas-map 共用)+ 每檔持股 chip(現價/今日%/持有%/警示燈/距停損/RSI/entry_zone)+ 進場訊號摘要(檔數 + 前 3 檔)
+  - dashboard 新增 query:v_holdings_signals(即時、輕欄位)+ v_entry_quality .in(持股)拿 zone
+  - RegimeWidget 獨立行移除(資訊整併進面板);OverseasWidget / EntrySignalWidget 保留 = 細節層
+- [x] 2. 到價提醒通用化(收 A3 半拆債:pipeline 活著但 UI 無法管理)→ verify: DB 實測 insert/cancel + grep orphan
+  - holdings/actions.ts + addPriceAlert(below/above,同 symbol+condition 防重)/ cancelPriceAlert(by id)
+  - AlertDialog.tsx(⏰ 每持股列:快捷掛停損價/加碼價 + 自訂價自動判方向 + 該檔 active alerts 顯示)
+  - ActiveAlertsSection(/holdings:全部 enabled alerts 含非持股遺留,可取消)
+- [x] 3. 驗證 + commit + push(Railway 部署後 Andy 驗視覺,[[L50]];本機無 node/npm,同 6/30 環境)
+
+**Review(2026-07-10,①完成)**:
+- MorningPanel([app/_components/MorningPanel.tsx](../app/_components/MorningPanel.tsx)):三行結論層 — 環境(regime 分區沿用 U 型濾網文案 + 持股產業→已驗證海外源 gate,≤−2% 顯 ⛔ 今日勿進)/ 持股 chips(現價、今日%、持有%、signal_level 燈、距停損%[<5% 紅 <10% 橘、已破=⛔]、RSI、entry_zone badge)/ 機會行(進場訊號檔數+前3檔+ /rank link)。dashboard 順序:MorningPanel → SummaryCards → Overseas → Performance → EntrySignal → HoldingsAnalysis;RegimeWidget component 移除(零殘留,grep 過)
+- 到價提醒:actions +addPriceAlert/cancelPriceAlert(防重沿用舊 pattern:同 symbol+condition 先停用再插);AlertDialog(SellDialog pattern,快捷停損/加碼價自 v_holdings_advice、自訂價 vs 現價自動判方向可手切、該檔 active 列表可取消);ActiveAlertsSection 收全部 enabled(含非持股遺留)— A3 半拆債結案。⏰ 按鈕與賣出鈕同 cell,有 active 顯數字 badge
+- 驗證:v_holdings_signals 7 欄 / v_entry_quality 2 欄 information_schema 全存在;alert_rules 現況 enabled=0(1 筆舊測試已停用,無遺留噪音);TS 通讀(型別/imports/字面 class)+ grep orphan 零殘留;本機無 node/npm(同 6/30),build 交 Railway
+- 待 Andy:Railway 部署後看視覺;下一塊 = ② ATR sizing + 集中度警示(拍板規畫順序)
