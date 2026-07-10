@@ -28,6 +28,15 @@ export function pctColor(n: string | number | null | undefined): string {
   return v > 0 ? "text-red-400" : "text-green-400";
 }
 
+// 集中度配色(部位市值 / 資本 %):>100 超額紅、>60 橘、>30 黃(BuyForm sizing + /holdings 占比共用)
+export function concentrationClass(pct: number | null): string {
+  if (pct == null || !Number.isFinite(pct)) return "text-zinc-400";
+  if (pct > 100) return "text-red-400 font-semibold";
+  if (pct > 60) return "text-orange-400";
+  if (pct > 30) return "text-amber-400";
+  return "text-zinc-400";
+}
+
 // 把資料來源 + 時間戳壓縮成一行可讀字
 // intraday(twse_mis / yahoo / etc.):「N min ago · twse_mis」
 // 今日收盤(twse_today):「今日收盤」

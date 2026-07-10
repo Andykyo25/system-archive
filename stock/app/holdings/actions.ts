@@ -150,6 +150,26 @@ export interface BuyContext {
   chaseLosses: number;
   reentryWins: number;
   reentryLosses: number;
+  sizing: BuySizing | null; // 資料不足(<15 bars / 無本金設定)= null,不偽造
+}
+
+// ATR 部位管理(拍板規畫② 2026-07-10):建議張數 = 風險預算 ÷ (k×ATR14×1000)。
+// ATR14 = 近 14 日 True Range 簡單平均(raw 價;近期無除權息時與還原價等價)。
+// capital = 初始本金 + 已實現(含當沖)+ 未實現 — 單一本金假設,同權益曲線 caveat。
+// 只做呈現不擋單;不動因子/排名/回測(免 OOS 閘,L36 範圍外)。
+export interface BuySizing {
+  atr14: number; // NT$
+  atrPct: number; // ATR14 / 現價 %(現價缺時用最近收盤)
+  kMultiple: number; // app_settings.atr_stop_multiple
+  stopDistance: number; // k × ATR14(NT$)
+  riskPct: number; // app_settings.risk_pct_per_trade
+  capital: number; // NT$
+  riskBudget: number; // capital × riskPct
+  lotRisk: number; // stopDistance × 1000 = 買 1 張的停損風險
+  suggestedLots: number; // floor(riskBudget / lotRisk)
+  lotValue: number | null; // 1 張市值(現價 × 1000)
+  existingValue: number; // 該檔現有持股市值
+  portfolioValue: number; // 全部持股市值
 }
 
 function n(v: number | string | null | undefined): number | null {
@@ -163,7 +183,7 @@ export async function checkBuyContext(symbol: string): Promise<BuyContext | null
   if (!/^[0-9A-Za-z]{4,6}$/.test(s)) return null;
   const sb = createClient();
   const since = new Date(Date.now() - 10 * 86400000).toISOString().slice(0, 10);
-  const [eq, pf, rt, sells, behavior] = await Promise.all([
+  const [eq, pf, rt, sells, behavior, bars, sizingSettings, summary, pnl] = await Promise.all([
     sb
       .from("v_entry_quality")
       .select("entry_zone, dev_ma20_pct, off_high_pct")
@@ -184,6 +204,22 @@ export async function checkBuyContext(symbol: string): Promise<BuyContext | null
       .order("txn_date", { ascending: false })
       .limit(1),
     sb.from("v_trade_behavior").select("is_win, is_chase_buy, is_reentry_buy"),
+    sb
+      .from("price_daily")
+      .select("high, low, close")
+      .eq("symbol", s)
+      .gt("close", 0)
+      .order("trade_date", { ascending: false })
+      .limit(15),
+    sb
+      .from("app_settings")
+      .select("key, value")
+      .in("key", ["initial_capital", "risk_pct_per_trade", "atr_stop_multiple"]),
+    sb
+      .from("v_holdings_summary")
+      .select("total_realized_pnl, total_unrealized_pnl")
+      .single(),
+    sb.from("v_holdings_pnl").select("symbol, market_value"),
   ]);
 
   let chaseWins = 0,
@@ -201,6 +237,76 @@ export async function checkBuyContext(symbol: string): Promise<BuyContext | null
     | { entry_zone: BuyContext["zone"]; dev_ma20_pct: number | string | null; off_high_pct: number | string | null }
     | null;
   const sellRow = (sells.data as { txn_date: string; price: number | string }[] | null)?.[0];
+  const currentPrice = n(
+    (rt.data as { current_price: number | string | null } | null)?.current_price,
+  );
+
+  // === ATR sizing(規畫②)===
+  let sizing: BuySizing | null = null;
+  {
+    const barRows = (bars.data as
+      | { high: number | string | null; low: number | string | null; close: number | string | null }[]
+      | null) ?? [];
+    const settingMap = new Map<string, number>();
+    for (const r of (sizingSettings.data as { key: string; value: number | string }[] | null) ?? []) {
+      const v = Number(r.value);
+      if (Number.isFinite(v)) settingMap.set(r.key, v);
+    }
+    const initialWan = settingMap.get("initial_capital");
+    const sum = summary.data as
+      | { total_realized_pnl: number | string | null; total_unrealized_pnl: number | string | null }
+      | null;
+    // TR = max(H−L, |H−前收|, |L−前收|),bars 為日期 desc,bars[i+1].close = 前收
+    const trs: number[] = [];
+    if (barRows.length >= 15) {
+      for (let i = 0; i < 14; i++) {
+        const h = n(barRows[i].high);
+        const l = n(barRows[i].low);
+        const pc = n(barRows[i + 1].close);
+        if (h == null || l == null || pc == null || h <= 0 || l <= 0 || pc <= 0) {
+          trs.length = 0;
+          break;
+        }
+        trs.push(Math.max(h - l, Math.abs(h - pc), Math.abs(l - pc)));
+      }
+    }
+    const lastClose = n(barRows[0]?.close);
+    const priceForPct = currentPrice ?? lastClose;
+    if (trs.length === 14 && initialWan != null && priceForPct != null && priceForPct > 0) {
+      const atr14 = trs.reduce((a, b) => a + b, 0) / 14;
+      const kMultiple = settingMap.get("atr_stop_multiple") ?? 2;
+      const riskPct = settingMap.get("risk_pct_per_trade") ?? 0.01;
+      const capital =
+        initialWan * 10000 +
+        (n(sum?.total_realized_pnl) ?? 0) +
+        (n(sum?.total_unrealized_pnl) ?? 0);
+      const stopDistance = kMultiple * atr14;
+      const lotRisk = stopDistance * 1000;
+      let existingValue = 0;
+      let portfolioValue = 0;
+      for (const r of (pnl.data as { symbol: string; market_value: number | string | null }[] | null) ?? []) {
+        const mv = n(r.market_value) ?? 0;
+        portfolioValue += mv;
+        if (r.symbol === s) existingValue = mv;
+      }
+      if (capital > 0 && atr14 > 0) {
+        sizing = {
+          atr14,
+          atrPct: (atr14 / priceForPct) * 100,
+          kMultiple,
+          stopDistance,
+          riskPct,
+          capital,
+          riskBudget: capital * riskPct,
+          lotRisk,
+          suggestedLots: Math.floor((capital * riskPct) / lotRisk),
+          lotValue: currentPrice != null ? currentPrice * 1000 : lastClose != null ? lastClose * 1000 : null,
+          existingValue,
+          portfolioValue,
+        };
+      }
+    }
+  }
 
   return {
     symbol: s,
@@ -209,12 +315,13 @@ export async function checkBuyContext(symbol: string): Promise<BuyContext | null
     devMa20: n(eqRow?.dev_ma20_pct),
     ret20d: n((pf.data as { ret_20d_pct: number | string | null } | null)?.ret_20d_pct),
     offHigh: n(eqRow?.off_high_pct),
-    currentPrice: n((rt.data as { current_price: number | string | null } | null)?.current_price),
+    currentPrice,
     recentSell: sellRow ? { date: sellRow.txn_date, price: Number(sellRow.price) } : null,
     chaseWins,
     chaseLosses,
     reentryWins,
     reentryLosses,
+    sizing,
   };
 }
 

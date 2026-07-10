@@ -2,7 +2,12 @@ import { createClient } from "@/lib/supabase/server";
 import { unwrap } from "@/lib/db";
 import { BuyForm } from "./BuyForm";
 import { DayTradeDialog } from "./DayTradeDialog";
-import { fmtMoney, fmtPct, pctColor } from "../_components/Format";
+import {
+  concentrationClass,
+  fmtMoney,
+  fmtPct,
+  pctColor,
+} from "../_components/Format";
 import { PriceCell } from "../_components/PriceCell";
 import { SellDialog } from "./SellDialog";
 import { DeleteTxnButton } from "./DeleteTxnButton";
@@ -152,6 +157,7 @@ export default async function HoldingsPage() {
     { data: signals },
     { data: behavior },
     { data: alertRules },
+    { data: capitalRow },
     fees,
   ] = await Promise.all([
     sb.from("v_holdings_summary").select("*").single(),
@@ -196,6 +202,11 @@ export default async function HoldingsPage() {
       .select("id, symbol, condition, threshold, note, created_at")
       .eq("enabled", true)
       .order("created_at", { ascending: false }),
+    sb
+      .from("app_settings")
+      .select("value")
+      .eq("key", "initial_capital")
+      .maybeSingle(),
     loadFeeSettings(),
   ]);
 
@@ -236,6 +247,16 @@ export default async function HoldingsPage() {
     };
   }
 
+  // 集中度分母:資本 = 初始本金 + 已實現(含當沖)+ 未實現(單一本金假設,同權益曲線 caveat)
+  const initialWan = Number(
+    (capitalRow as { value: number | string } | null)?.value,
+  );
+  const capital = Number.isFinite(initialWan)
+    ? initialWan * 10000 +
+      Number(sum?.total_realized_pnl ?? 0) +
+      Number(portfolioSum?.total_pnl ?? sum?.total_unrealized_pnl ?? 0)
+    : null;
+
   return (
     <div className="space-y-8">
       <SummarySection summary={sum} portfolio={portfolioSum} />
@@ -247,6 +268,7 @@ export default async function HoldingsPage() {
         fees={fees}
         advicePrices={advicePrices}
         alertsBySymbol={alertsBySymbol}
+        capital={capital}
       />
 
       <ActiveAlertsSection rows={alertRows} />
@@ -365,11 +387,13 @@ function CurrentHoldingsSection({
   fees,
   advicePrices,
   alertsBySymbol,
+  capital,
 }: {
   rows: CurrentHolding[];
   fees: FeeSettings;
   advicePrices: Record<string, { stop: number | null; add: number | null }>;
   alertsBySymbol: Record<string, ActiveAlert[]>;
+  capital: number | null;
 }) {
   return (
     <section>
@@ -388,6 +412,12 @@ function CurrentHoldingsSection({
                 <th className="px-3 py-2 text-right">均價</th>
                 <th className="px-3 py-2 text-right">現價</th>
                 <th className="px-3 py-2 text-right">市值</th>
+                <th
+                  className="px-3 py-2 text-right"
+                  title="市值 ÷ 資本(初始本金+已實現+未實現)。>30% 黃 / >60% 橘 / >100% 紅"
+                >
+                  占比
+                </th>
                 <th className="px-3 py-2 text-right">未實現損益</th>
                 <th className="px-3 py-2 text-right">%</th>
                 <th className="px-3 py-2 text-right"></th>
@@ -428,6 +458,20 @@ function CurrentHoldingsSection({
                     <td className="px-3 py-2 text-right tabular-nums">
                       {fmtMoney(h.market_value, 0)}
                     </td>
+                    <td className="px-3 py-2 text-right tabular-nums">
+                      {(() => {
+                        const mv = Number(h.market_value);
+                        const pct =
+                          capital != null && capital > 0 && Number.isFinite(mv)
+                            ? (mv / capital) * 100
+                            : null;
+                        return (
+                          <span className={concentrationClass(pct)}>
+                            {pct != null ? `${pct.toFixed(0)}%` : "—"}
+                          </span>
+                        );
+                      })()}
+                    </td>
                     <td
                       className={`px-3 py-2 text-right tabular-nums ${pctColor(h.unrealized_pnl)}`}
                     >
@@ -467,6 +511,8 @@ function CurrentHoldingsSection({
       <p className="mt-2 text-xs text-zinc-500">
         現價來自 v_latest_price_realtime(yahoo &lt; 30min &gt; 今日收盤 &gt;
         最近收盤)。hover 現價可看資料日期 / 來源。
+        「占比」= 市值 ÷ 資本(初始本金 + 已實現 + 未實現;單一本金假設)—
+        單檔 &gt;30% 開始注意集中度,&gt;100% 表示已超過帳上資本。
       </p>
     </section>
   );

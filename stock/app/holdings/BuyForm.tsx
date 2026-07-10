@@ -1,7 +1,13 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { addBuyTransaction, checkBuyContext, type BuyContext } from "./actions";
+import {
+  addBuyTransaction,
+  checkBuyContext,
+  type BuyContext,
+  type BuySizing,
+} from "./actions";
+import { concentrationClass, fmtMoney } from "../_components/Format";
 
 // 買入表單 + 進場脈絡警示(A 工程 2026-07-03)
 // 股號輸入 blur → checkBuyContext → 追高/回追/盲區警示。不擋單,只強制看見。
@@ -129,8 +135,68 @@ function ContextPanel({ ctx }: { ctx: BuyContext }) {
     );
   }
 
+  if (ctx.sizing) {
+    boxes.push(<SizingBox key="sz" z={ctx.sizing} />);
+  }
+
   if (boxes.length === 0) return null;
   return <div className="mt-2 space-y-2">{boxes}</div>;
+}
+
+// ATR 部位管理(規畫② 2026-07-10):建議張數 + 集中度,只呈現不擋單。
+function SizingBox({ z }: { z: BuySizing }) {
+  const lotRiskPct = (z.lotRisk / z.capital) * 100;
+  const lotValuePct = z.lotValue != null ? (z.lotValue / z.capital) * 100 : null;
+  const existingPct = (z.existingValue / z.capital) * 100;
+  const afterPct =
+    lotValuePct != null ? ((z.existingValue + (z.lotValue ?? 0)) / z.capital) * 100 : null;
+  const overBudget = z.suggestedLots === 0;
+  return (
+    <div className="rounded border border-zinc-700/60 bg-zinc-900/60 px-3 py-2 text-xs leading-relaxed text-zinc-300">
+      <p>
+        📐 <b>部位管理</b>:ATR14 {z.atr14.toFixed(1)}({z.atrPct.toFixed(1)}%)
+        · 停損距 {z.kMultiple}×ATR = {z.stopDistance.toFixed(1)} · 風險預算{" "}
+        {fmtMoney(z.riskBudget, 0)}(資本 {fmtMoney(z.capital, 0)} ×{" "}
+        {(z.riskPct * 100).toFixed(1)}%)
+      </p>
+      <p className={overBudget ? "text-red-300" : ""}>
+        {overBudget ? (
+          <>
+            ⚠ <b>此波動下 1 張已超出風險預算</b> — 1 張停損風險{" "}
+            {fmtMoney(z.lotRisk, 0)} ≈ 資本{" "}
+            <b>{lotRiskPct.toFixed(1)}%</b>(預算的{" "}
+            {(z.lotRisk / z.riskBudget).toFixed(1)} 倍)。要進場 = 有意識接受超額風險。
+          </>
+        ) : (
+          <>
+            建議 ≤ <b>{z.suggestedLots} 張</b>(1 張停損風險 {fmtMoney(z.lotRisk, 0)} ≈
+            資本 {lotRiskPct.toFixed(1)}%)
+          </>
+        )}
+      </p>
+      {lotValuePct != null && (
+        <p>
+          集中度:1 張市值 {fmtMoney(z.lotValue, 0)} ={" "}
+          <span className={concentrationClass(lotValuePct)}>
+            資本 {lotValuePct.toFixed(0)}%
+          </span>
+          {z.existingValue > 0 && (
+            <>
+              ;已持有 {fmtMoney(z.existingValue, 0)}(
+              <span className={concentrationClass(existingPct)}>
+                {existingPct.toFixed(0)}%
+              </span>
+              ),買 1 張後{" "}
+              <span className={concentrationClass(afterPct)}>
+                {afterPct != null ? afterPct.toFixed(0) : "—"}%
+              </span>
+            </>
+          )}
+          <span className="text-zinc-500">(&gt;30% 黃 / &gt;60% 橘 / &gt;100% 紅)</span>
+        </p>
+      )}
+    </div>
+  );
 }
 
 const TONE_CLS: Record<string, string> = {

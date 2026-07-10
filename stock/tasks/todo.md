@@ -1995,6 +1995,17 @@ Andy 定調「不縮成儀表板,要走在市場前面」(抓真實事件 + 升�
   - ActiveAlertsSection(/holdings:全部 enabled alerts 含非持股遺留,可取消)
 - [x] 3. 驗證 + commit + push(Railway 部署後 Andy 驗視覺,[[L50]];本機無 node/npm,同 6/30 環境)
 
+## 2026-07-10 — 規畫②:ATR 部位管理 + 集中度警示(Andy「接第二塊」)
+
+- [x] migration `20260710000001_position_sizing_settings`:app_settings 種 `risk_pct_per_trade`(0.01)+ `atr_stop_multiple`(2)— settings 頁 otherSettings 通用列自動可編輯,零新 UI
+- [x] checkBuyContext 擴充 `sizing: BuySizing | null`:+4 平行查詢(price_daily 15 bars / settings / v_holdings_summary / v_holdings_pnl);ATR14 = 14 筆 TR 簡單平均(raw 價,<15 bars 或缺本金 = null 不偽造 [[L45]] 精神);capital = 初始本金+已實現(含當沖)+未實現(單一本金假設同權益曲線)
+- [x] BuyForm SizingBox:ATR/停損距/風險預算/建議張數;建議 0 張時紅字「1 張風險 = 預算 N 倍,進場 = 有意識接受超額風險」;集中度(1 張市值% / 已持有% / 買後%,>30 黃 >60 橘 >100 紅)
+- [x] /holdings 持有中表 +「占比」欄(市值÷資本,同色階;concentrationClass 進 Format.ts 共用)
+- [x] 驗證:SQL 精確重演 action 數學(2408:ATR14 36.36=8.35%、capital 451,264、1 張風險 72,714=資本 16.1%、建議 0 張)與 JS 邏輯一致;settings 2 rows 上線;TS 通讀;build 交 Railway([[L50]])
+
+**Review(2026-07-10,②完成)**:sizing 是呈現層(不擋單、不動因子/排名/回測,免 [[L36]] OOS 閘)。2408 實例會顯示:1 張停損風險 16.1% >> 1% 預算、占比 96.5% 橘字 — 把「100% 資金壓單一 8% 日波動循環股」這件事在每次下單時強制可見。之後 ③ ATR/time-stop 出場回測(過 OOS 閘)、④ regime 條件化警示 + 事件日曆待 Andy 節奏。
+附帶發現(未動,surgical):/settings 排名展示預設描述仍寫「+24.19 OOS alpha」= [[L48]] 已推翻數字(A4 只修了 /rank),待下輪 UI 清理一併更正。
+
 **Review(2026-07-10,①完成)**:
 - MorningPanel([app/_components/MorningPanel.tsx](../app/_components/MorningPanel.tsx)):三行結論層 — 環境(regime 分區沿用 U 型濾網文案 + 持股產業→已驗證海外源 gate,≤−2% 顯 ⛔ 今日勿進)/ 持股 chips(現價、今日%、持有%、signal_level 燈、距停損%[<5% 紅 <10% 橘、已破=⛔]、RSI、entry_zone badge)/ 機會行(進場訊號檔數+前3檔+ /rank link)。dashboard 順序:MorningPanel → SummaryCards → Overseas → Performance → EntrySignal → HoldingsAnalysis;RegimeWidget component 移除(零殘留,grep 過)
 - 到價提醒:actions +addPriceAlert/cancelPriceAlert(防重沿用舊 pattern:同 symbol+condition 先停用再插);AlertDialog(SellDialog pattern,快捷停損/加碼價自 v_holdings_advice、自訂價 vs 現價自動判方向可手切、該檔 active 列表可取消);ActiveAlertsSection 收全部 enabled(含非持股遺留)— A3 半拆債結案。⏰ 按鈕與賣出鈕同 cell,有 active 顯數字 badge
