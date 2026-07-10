@@ -91,9 +91,9 @@ export default async function SettingsPage() {
       <section>
         <h2 className="mb-1 text-lg font-semibold">排名展示預設</h2>
         <p className="mb-4 text-xs text-zinc-500">
-          影響 /rank 頁預設精選檔數(整數 5~50)。Top 5 集中度:2025 OOS alpha
-          +24.19 vs Top 10 +13.80(誠實化 v2,兩年一致勝)。⚠ 受倖存者偏差
-          caveat — 樂觀估計,非可交易保證。/rank 仍可用 ?focus= 臨時切。
+          影響 /rank 頁預設精選檔數(整數 5~50)。純顯示偏好、非績效宣稱 —
+          績效一律以 /backtest 為準(早期「Top 5 集中度勝」宣稱經 PIT
+          前視偏誤修正後已不成立,撤除)。/rank 仍可用 ?focus= 臨時切。
         </p>
         {defaultTopNSetting ? (
           <DefaultTopNRow setting={defaultTopNSetting} />
@@ -216,9 +216,10 @@ function CapitalRow({ setting }: { setting: AppSetting }) {
 }
 
 function DefaultTopNRow({ setting }: { setting: AppSetting }) {
-  // M9.4a:整數 5~50。Top 5 集中度 2025 OOS alpha +24.19(誠實化 v2;
-  //   受倖存者偏差 caveat)。預設 30 全覽。updateSetting 不做範圍檢查,
-  //   靠此 input min/max + /rank 讀取端 clamp 防呆。
+  // M9.4a:整數 5~50,純顯示偏好、非績效宣稱(早期「top5 集中度勝」宣稱
+  //   經 PIT 前視偏誤修正後已不成立,見 L48;績效以 /backtest 為準)。
+  //   預設 30 全覽。updateSetting 不做範圍檢查,靠此 input min/max +
+  //   /rank 讀取端 clamp 防呆。
   const v = Number(setting.value);
   const isValid = Number.isInteger(v) && v >= 5 && v <= 50;
   return (

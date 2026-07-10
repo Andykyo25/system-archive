@@ -2005,6 +2005,7 @@ Andy 定調「不縮成儀表板,要走在市場前面」(抓真實事件 + 升�
 
 **Review(2026-07-10,②完成)**:sizing 是呈現層(不擋單、不動因子/排名/回測,免 [[L36]] OOS 閘)。2408 實例會顯示:1 張停損風險 16.1% >> 1% 預算、占比 96.5% 橘字 — 把「100% 資金壓單一 8% 日波動循環股」這件事在每次下單時強制可見。之後 ③ ATR/time-stop 出場回測(過 OOS 閘)、④ regime 條件化警示 + 事件日曆待 Andy 節奏。
 附帶發現(未動,surgical):/settings 排名展示預設描述仍寫「+24.19 OOS alpha」= [[L48]] 已推翻數字(A4 只修了 /rank),待下輪 UI 清理一併更正。
+→ **已更正(2026-07-10)**:/settings 排名展示預設 section 描述 + DefaultTopNRow 註解,比照 A4 措辭改中性(「純顯示偏好、非績效宣稱,績效一律以 /backtest 為準(…已不成立,撤除)」)。grep 全 repo:+24.19 僅剩 tasks 歷史紀錄 / lessons L48 / 已套用 migration 註解 / rank 頁更正註記(皆為「記錄推翻過程」非宣稱),現行 UI 零宣稱。殘留一處 latent:DB `app_settings.default_top_n.description` 仍含舊 +24.19 文字(migration 20260519000006 種入),但 DefaultTopNRow 用硬編碼描述、不渲染該欄 → 目前不見於 UI,要清需一支 UPDATE migration(超出本輪 surgical 範圍,待拍板)。
 
 **Review(2026-07-10,①完成)**:
 - MorningPanel([app/_components/MorningPanel.tsx](../app/_components/MorningPanel.tsx)):三行結論層 — 環境(regime 分區沿用 U 型濾網文案 + 持股產業→已驗證海外源 gate,≤−2% 顯 ⛔ 今日勿進)/ 持股 chips(現價、今日%、持有%、signal_level 燈、距停損%[<5% 紅 <10% 橘、已破=⛔]、RSI、entry_zone badge)/ 機會行(進場訊號檔數+前3檔+ /rank link)。dashboard 順序:MorningPanel → SummaryCards → Overseas → Performance → EntrySignal → HoldingsAnalysis;RegimeWidget component 移除(零殘留,grep 過)
