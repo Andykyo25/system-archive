@@ -2011,3 +2011,10 @@ Andy 定調「不縮成儀表板,要走在市場前面」(抓真實事件 + 升�
 - 到價提醒:actions +addPriceAlert/cancelPriceAlert(防重沿用舊 pattern:同 symbol+condition 先停用再插);AlertDialog(SellDialog pattern,快捷停損/加碼價自 v_holdings_advice、自訂價 vs 現價自動判方向可手切、該檔 active 列表可取消);ActiveAlertsSection 收全部 enabled(含非持股遺留)— A3 半拆債結案。⏰ 按鈕與賣出鈕同 cell,有 active 顯數字 badge
 - 驗證:v_holdings_signals 7 欄 / v_entry_quality 2 欄 information_schema 全存在;alert_rules 現況 enabled=0(1 筆舊測試已停用,無遺留噪音);TS 通讀(型別/imports/字面 class)+ grep orphan 零殘留;本機無 node/npm(同 6/30),build 交 Railway
 - 待 Andy:Railway 部署後看視覺;下一塊 = ② ATR sizing + 集中度警示(拍板規畫順序)
+
+## 2026-07-11 — default_top_n description 中性化(DB 資料面收尾)
+
+- [x] migration `20260711000001_settings_default_top_n_neutral_desc`:UPDATE app_settings.description(key='default_top_n')→ 中性文字「純顯示偏好、非績效宣稱,績效以 /backtest 為準」;不動 value(30 保留)、不改舊檔 20260519000006(immutable 歷史)
+- [x] 已 apply 到 production(Supabase MCP `apply_migration`,name=`settings_default_top_n_neutral_desc`)+ 獨立 query 驗證([[L35]]):description 與目標文字 in-DB 相等比對 = true ✓、全表 `%24.19%` 殘留 = 0 rows ✓、value = 30.000000 未動 ✓
+
+**Review(2026-07-11)**:[[L48]] +24.19 前視偏誤假象的 DB 面殘留(20260519000006 種入的 description;UI 已於 6/30 A4 /rank、7/10 /settings 更正)收尾。此欄目前無 UI 渲染(DefaultTopNRow 硬編碼描述、default_top_n 排除在通用 SettingRow 外)屬 latent 髒資料;修掉後未來任何直接渲染 setting.description 的 UI/報表不會再端出已否證的績效宣稱。migration 檔在 branch `claude/wizardly-franklin-1ba7e9`,未 commit。
