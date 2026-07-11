@@ -117,7 +117,8 @@ function deriveTodayAdvice(
     return { text: `⚠ Regime 地雷區(0050 近季 +${regimeRet.toFixed(1)}%,歷史全敗區):傾向減碼、不加碼`, cls: "text-orange-300" };
   if (synth.dir === "bear" || news.dir === "bear")
     return { text: `外部訊號偏空(${synth.dir === "bear" ? "海外同業" : "新聞關鍵字"}):今日不加碼,守停損 ${stopStr}`, cls: "text-green-300" };
-  if (h.entry_zone === "pullback" && synth.dir === "bull" && news.dir !== "bear")
+  // 走到這裡 news.dir 必非 bear(上一條已 early-return),不需重複判斷
+  if (h.entry_zone === "pullback" && synth.dir === "bull")
     return {
       text: `✓ 回檔區 + 外部正向 = 你的贏單型態:可依部位紀律評估加碼(加碼價 ${add != null ? add.toLocaleString() : "—"},張數看下單頁 sizing)`,
       cls: "text-red-300",
