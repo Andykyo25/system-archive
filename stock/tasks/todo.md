@@ -1995,6 +1995,23 @@ Andy 定調「不縮成儀表板,要走在市場前面」(抓真實事件 + 升�
   - ActiveAlertsSection(/holdings:全部 enabled alerts 含非持股遺留,可取消)
 - [x] 3. 驗證 + commit + push(Railway 部署後 Andy 驗視覺,[[L50]];本機無 node/npm,同 6/30 環境)
 
+## 2026-07-11 — 晨間情報改版(Andy 四點指示)
+
+1. [x] 取消早上 TG 推播(cron `telegram-holdings-advice-preopen` 08:55),保留盤後(13:35)
+2. [x] 晨間持股情報:韓股(三星/SK海力士/KOSPI,Yahoo v8 已 probe OK)+ 美股 + 台/國際新聞(Google News RSS en 語系,已 probe;Yahoo search news 對韓股回垃圾 → 棄用)整合分析
+3. [x] 補 L51(PS 5.1 ConvertTo-Json CJK 陷阱)
+4. [x] 刪 OverseasWidget 區塊 → 換 HoldingsIntelWidget(quotes chips + 規則式同業對齊判讀 + 新聞連結;MorningPanel gate 保留,overseas 管線不動)
+   - fetch-overseas-leading v2:DEFAULT_SYMBOLS + 005930.KS/000660.KS/^KS11
+   - 新 EF fetch-intl-news:持股產業 → 英文 topic(Micron/Samsung/SK Hynix…)→ stock_news(symbol=tag, source=google_news_intl),cron 07:50 Taipei
+   - 驗證 + commit + push([[L50]])
+
+**Review(2026-07-11,四點完成)**:
+- 1:cron.unschedule('telegram-holdings-advice-preopen') 上線(migration 20260711000004);盤後 13:35 保留。晨間資訊改由 dashboard 承接
+- 2+4:fetch-overseas-leading v2(+3 韓股 symbol;KRX 與台股盤重疊,08:30 cron 抓到開盤 ~30min 快照,UI 標「開盤中」)+ 新 EF fetch-intl-news(Google News RSS en 語系,持股產業→topic;⚠ Yahoo search news 對韓股回世足垃圾,probe 後棄用)+ HoldingsIntelWidget(每持股:同業報價 chips + 規則式判讀[漲跌家數 + 僅 verified 源觸發 ⛔ gate] + 台/國際新聞連結各 4 則開新分頁);OverseasWidget 刪除,OverseasRow 型別收編 MorningPanel;MorningPanel gate 不動
+- E2E:overseas 70 rows(含三星 +2.52/SK海力士 -0.27/KOSPI +2.52)/ intl news 36 則 3 topics(= 行為驗證 EF 內「記憶體」中文 key 正確,比 byte 比對更強)/ 新聞品質高(Micron $250B、SK Hynix 上市)
+- 3:L51 已寫(PS 5.1 三坑:CJK 不 escape / {"value":} wrapper / ASCII 寫檔靜默毀中文 → 手動 StringBuilder 全量 escape + nonAscii=0 檢查 + 行為驗證)
+- 待 Andy:Railway 部署驗視覺(dashboard 第二區塊變成晨間持股情報)
+
 ## 2026-07-10 — 規畫④:regime 條件化警示 + 事件日曆(Andy「繼續」;③ ATR 出場回測依紀律留獨立 session)
 
 **Gate-0 實證([[L41]],先驗再設計)**:7 筆追高/回追進場時 0050 近季全在 +23~48(U 型「>20 有利區」)— 5 勝 @ +23~32、2 敗 @ +43~48。結論:① U 型地雷區(10-20)條件化會零命中,不做假 gate;② BuyForm「行情轉弱後連 2 敗」措辭與事實不符(敗在大盤更過熱段),要修正;③ 做「動態呈現」不做「n=2 假門檻」。

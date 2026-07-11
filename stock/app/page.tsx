@@ -12,14 +12,17 @@ import {
   type PerfSummary,
 } from "./_components/PerformanceWidget";
 import {
-  OverseasWidget,
-  type OverseasRow,
-} from "./_components/OverseasWidget";
-import {
   MorningPanel,
   type MorningHolding,
   type MorningSignalPick,
+  type OverseasRow,
 } from "./_components/MorningPanel";
+import {
+  HoldingsIntelWidget,
+  type IntelHolding,
+  type IntelNewsRow,
+} from "./_components/HoldingsIntelWidget";
+import { GENERIC_INTEL, INDUSTRY_INTEL } from "./_components/overseas-map";
 
 export const dynamic = "force-dynamic";
 
@@ -237,6 +240,44 @@ const getCachedOverseas = unstable_cache(
   { revalidate: 300 },
 );
 
+// 晨間情報新聞(台 6h / 國際每日 07:50 cron 更新)→ 600s 快取足夠。
+// args 會進 unstable_cache key,持股/產業變動自動分開快取。
+const getCachedIntelNews = unstable_cache(
+  async (
+    heldSymbols: string[],
+    intlTags: string[],
+  ): Promise<{ tw: IntelNewsRow[]; intl: IntelNewsRow[] }> => {
+    const sb = createClient();
+    const since = new Date(Date.now() - 48 * 3600_000).toISOString();
+    const [tw, intl] = await Promise.all([
+      heldSymbols.length > 0
+        ? sb
+            .from("stock_news")
+            .select("symbol, title, url, published_at")
+            .in("symbol", heldSymbols)
+            .gte("published_at", since)
+            .order("published_at", { ascending: false })
+            .limit(24)
+        : Promise.resolve({ data: [] as IntelNewsRow[] }),
+      intlTags.length > 0
+        ? sb
+            .from("stock_news")
+            .select("symbol, title, url, published_at")
+            .in("symbol", intlTags)
+            .gte("published_at", since)
+            .order("published_at", { ascending: false })
+            .limit(24)
+        : Promise.resolve({ data: [] as IntelNewsRow[] }),
+    ]);
+    return {
+      tw: (tw.data as IntelNewsRow[] | null) ?? [],
+      intl: (intl.data as IntelNewsRow[] | null) ?? [],
+    };
+  },
+  ["dashboard:intel-news"],
+  { revalidate: 600 },
+);
+
 // Regime 燈(U 型濾網產品化,2026-05-20 發現):策略 alpha vs 0050 季報酬呈 U 型 —
 // bench<0 / ≥20% 兩端 alpha +8.84/+3.76(歷史全勝),10-20% 中段 −8.70(全敗)= 地雷區。
 // 資料:0050 近 61 筆收盤(adj)≈ 一季。⚠ 樣本僅 2023-2025 12 季,需 paper-track 驗真。
@@ -382,11 +423,21 @@ export default async function Dashboard() {
       first_buy_date: firstBuyMap.get(r.symbol) ?? null,
     }));
 
-  // 海外快照的持股對應源高亮:持股 symbol → industry(getCachedNames 的 industryMap)
-  const overseasHoldings = holdingRows.map((h) => ({
+  // 晨間持股情報:持股 → 產業 → 國際新聞 tag 集合 + 快取新聞
+  const intelHoldings: IntelHolding[] = holdingRows.map((h) => ({
     symbol: h.symbol,
+    name: nameMap[h.symbol] ?? null,
     industry: industryMap[h.symbol] ?? h.primary_industry ?? null,
   }));
+  const intlTagSet = new Set<string>();
+  for (const h of intelHoldings) {
+    const intel = (h.industry && INDUSTRY_INTEL[h.industry]) || GENERIC_INTEL;
+    for (const t of intel.news) intlTagSet.add(t);
+  }
+  const intelNews = await getCachedIntelNews(
+    intelHoldings.map((h) => h.symbol).sort(),
+    [...intlTagSet].sort(),
+  );
 
   // 今晨決策面板:持股 chip 資料 = v_holdings_signals(即時)+ 名稱/產業 + entry_zone
   const signalLiteMap: Record<string, HoldingSignalLite> = {};
@@ -424,7 +475,12 @@ export default async function Dashboard() {
         signalTop={signalTop}
       />
       <SummaryCards summary={summary as PortfolioSummary | null} />
-      <OverseasWidget rows={overseasRows} holdings={overseasHoldings} />
+      <HoldingsIntelWidget
+        holdings={intelHoldings}
+        overseasRows={overseasRows}
+        twNews={intelNews.tw}
+        intlNews={intelNews.intl}
+      />
       <PerformanceWidget
         summary={perfSummary as PerfSummary | null}
         realized={perfRealized}

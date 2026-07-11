@@ -1,13 +1,22 @@
 import Link from "next/link";
 import { EVENT_LABEL, fmtPct, pctColor } from "./Format";
 import { GATE_THRESHOLD, INDUSTRY_SOURCE, SOURCE_META } from "./overseas-map";
-import type { OverseasRow } from "./OverseasWidget";
+
+// overseas_indicators 一列(原 OverseasWidget 的型別;該 widget 2026-07-11 改版移除,
+// 型別收編於此 — MorningPanel gate 與 HoldingsIntelWidget 共用)
+export interface OverseasRow {
+  symbol: string;
+  quoted_date: string;
+  last_price: number | string | null;
+  prev_close: number | string | null;
+  change_pct: number | string | null;
+}
 
 // 今晨決策面板(dashboard 頂部結論層,2026-07-10 UI 優化第一塊)
 //
 // 設計:把「做一個決策要跨 4 頁」收斂成一屏三行 —
 //   環境(regime 燈 + 持股對應海外源 gate)/ 持股狀態 chips / 今日機會摘要
-// 下方 OverseasWidget(11 源全景)、EntrySignalWidget(完整表)= 細節層;
+// 下方 HoldingsIntelWidget(海外同業+新聞)、EntrySignalWidget(完整表)= 細節層;
 // 此處只放結論,資料全部來自既有 view,無新增計算邏輯。
 // Regime 分區 = U 型濾網產品化(原獨立 RegimeWidget 整併於此):
 //   0050 近 61 筆(≈一季)報酬 <0 / ≥20% 兩端歷史有利、10-20% 地雷區。僅 12 季樣本。

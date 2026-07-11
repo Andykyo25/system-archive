@@ -495,3 +495,19 @@ const price = toN(q.z) ?? toN(q.o);  // ❌
 2. 本機驗證上限 = `npm run build`(編譯+tsc+靜態生成)+ MCP `execute_sql` 驗資料層(view 數字對)+ 讀 server log 確認「頁面邏輯走到正確 `unwrap`」。三者齊備即可 commit/部署,視覺缺口交給部署後人眼(Andy 第一個看)。
 3. 真要本機驗視覺需 mock 或本機 supabase stack(此專案沒設,不值得為單次視覺臨時搭)。
 **為什麼**:Andy 要 token 紀律([[L40]])。「起 dev server 截圖」直覺上是「實際展示正確性」(CLAUDE.md #4),但此環境網路阻斷讓它**必然失敗** — 投入多步換 0 資訊。先認清「本機連不到 Supabase」是環境常數,把驗證預算放在 build + MCP 資料驗證(此環境有效且充分),視覺等部署。[[L42]]「宣告環境受限前先窮舉」的反面:這次是**實證**受限(非臆測),確認後就不該再耗。
+
+---
+
+## 無 node 環境下 EF 機械 deploy(2026-07-11)
+
+### L51 — PowerShell 5.1 做 L49 機械 escape 的三個坑:ConvertTo-Json 不 escape CJK、bare string 會被包 {"value":}、ASCII 寫檔靜默毀中文
+**問題**:L49 要求 deploy_edge_function 的 content 機械產生(原 pattern 用 node JSON.stringify),但本機 sandbox 無 node/npm。改用 PowerShell 5.1 `ConvertTo-Json` 時踩三坑:
+1. **CJK 不會被 escape 成 \uXXXX**(`-EscapeHandling` 是 PS 7 才有)→ 產出仍含中文
+2. **bare string 輸入會被包成 `{"value":"..."}` wrapper**(PS 5.1 對 [string] 的怪異行為)→ 不是合法的「字串 literal」
+3. `[IO.File]::WriteAllText(..., [Text.Encoding]::ASCII)` 對殘留非 ASCII 字元**靜默替換成 `?`** → 中文全毀且無報錯
+**做法**:
+1. 放棄 ConvertTo-Json,**手動 StringBuilder 全量 escape**:`\`→`\`、`"`→`\"`、CR→`\r`、LF→`\n`、TAB→`\t`、其餘 <32 或 >127 → `AppendFormat('\u{0:x4}', [int]$ch)`,首尾補 `"` — 產出就是合法 JSON string literal
+2. 寫檔後**必驗 `nonAscii=0`**(`[regex]::Matches($s, "[^\x00-\x7F]").Count`),非零 = 有東西沒 escape 到,ASCII 寫檔必毀
+3. Read 回 escaped 檔直接貼進 tool call 當 JSON 值(工具呼叫參數本身是 JSON,\uXXXX 由 parser 解回中文)
+4. deploy 後除了 get_edge_function 拉回核對,**行為驗證更強**:例 fetch-intl-news 的「記憶體」中文 key 若誤植,topics 會 fallback 成 1(GENERIC)而非 3 — 觸發一次看輸出數量即證明 key 正確
+**為什麼**:L49 的核心是「中文不經我重打」;工具鏈換到 PowerShell 5.1 後,「機械」本身也有坑 — escape 工具的行為同樣要實證([[L47]] 精神),且要有一個零信任的終端檢查(nonAscii=0 + 行為驗證)。

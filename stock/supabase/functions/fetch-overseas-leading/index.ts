@@ -20,9 +20,14 @@ const YF = "https://query1.finance.yahoo.com/v8/finance/chart/";
 // Macronix), NVDA=AI/GPU chain, AAPL=Apple chain (Foxconn / Largan),
 // AVGO=ASIC/networking, AMD=CPU/GPU, ^SOX=semis broad, TSM/UMC=direct ADR,
 // ^IXIC/NQ=F/^VIX=market/risk.
+// v2 (2026-07-11): + Korean memory comparables (Samsung 005930.KS / SK Hynix
+// 000660.KS / KOSPI ^KS11). KRX trades 09:00-15:30 KST = TW morning overlap;
+// the 08:30 Taipei cron catches ~30min of live session (intraday snapshot,
+// still real data - bar updates are cache-overwritten by later runs).
 const DEFAULT_SYMBOLS = [
   "^SOX", "TSM", "UMC", "^IXIC", "NQ=F", "^VIX",
   "MU", "NVDA", "AAPL", "AVGO", "AMD",
+  "005930.KS", "000660.KS", "^KS11",
 ];
 const UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36";
