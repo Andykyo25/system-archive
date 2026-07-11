@@ -90,7 +90,7 @@ interface EntrySignalSummary {
   chip_count_total: number;
 }
 
-// 今晨決策面板用:v_holdings_signals 輕欄位(即時價/警示燈/停損加碼價/RSI)
+// 今晨決策面板 + 持股情報用:v_holdings_signals 輕欄位(即時價/警示燈/停損加碼價/RSI)
 interface HoldingSignalLite {
   symbol: string;
   signal_level: "healthy" | "caution" | "warning" | "alert" | null;
@@ -98,6 +98,7 @@ interface HoldingSignalLite {
   today_chg_pct: number | string | null;
   pct_change: number | string | null;
   stop_loss_price: number | string | null;
+  add_position_price: number | string | null;
   rsi14: number | string | null;
 }
 
@@ -337,7 +338,7 @@ export default async function Dashboard() {
     sb
       .from("v_holdings_signals")
       .select(
-        "symbol, signal_level, current_price, today_chg_pct, pct_change, stop_loss_price, rsi14",
+        "symbol, signal_level, current_price, today_chg_pct, pct_change, stop_loss_price, add_position_price, rsi14",
       ),
   ]);
 
@@ -423,12 +424,25 @@ export default async function Dashboard() {
       first_buy_date: firstBuyMap.get(r.symbol) ?? null,
     }));
 
-  // 晨間持股情報:持股 → 產業 → 國際新聞 tag 集合 + 快取新聞
-  const intelHoldings: IntelHolding[] = holdingRows.map((h) => ({
-    symbol: h.symbol,
-    name: nameMap[h.symbol] ?? null,
-    industry: industryMap[h.symbol] ?? h.primary_industry ?? null,
-  }));
+  // v_holdings_signals 輕欄位 map(晨間面板 + 持股情報共用)
+  const signalLiteMap: Record<string, HoldingSignalLite> = {};
+  for (const s of (holdingSignals as HoldingSignalLite[] | null) ?? []) {
+    signalLiteMap[s.symbol] = s;
+  }
+
+  // 晨間持股情報:持股 → 產業 → 國際新聞 tag 集合 + 快取新聞 + 紀律價位(今日建議用)
+  const intelHoldings: IntelHolding[] = holdingRows.map((h) => {
+    const s = signalLiteMap[h.symbol];
+    return {
+      symbol: h.symbol,
+      name: nameMap[h.symbol] ?? null,
+      industry: industryMap[h.symbol] ?? h.primary_industry ?? null,
+      current_price: s?.current_price ?? h.current_price,
+      stop_loss_price: s?.stop_loss_price ?? null,
+      add_position_price: s?.add_position_price ?? null,
+      entry_zone: zoneMap[h.symbol] ?? null,
+    };
+  });
   const intlTagSet = new Set<string>();
   for (const h of intelHoldings) {
     const intel = (h.industry && INDUSTRY_INTEL[h.industry]) || GENERIC_INTEL;
@@ -440,10 +454,6 @@ export default async function Dashboard() {
   );
 
   // 今晨決策面板:持股 chip 資料 = v_holdings_signals(即時)+ 名稱/產業 + entry_zone
-  const signalLiteMap: Record<string, HoldingSignalLite> = {};
-  for (const s of (holdingSignals as HoldingSignalLite[] | null) ?? []) {
-    signalLiteMap[s.symbol] = s;
-  }
   const morningHoldings: MorningHolding[] = holdingRows.map((h) => {
     const s = signalLiteMap[h.symbol];
     return {
@@ -480,6 +490,7 @@ export default async function Dashboard() {
         overseasRows={overseasRows}
         twNews={intelNews.tw}
         intlNews={intelNews.intl}
+        regimeRet={regimeRet}
       />
       <PerformanceWidget
         summary={perfSummary as PerfSummary | null}

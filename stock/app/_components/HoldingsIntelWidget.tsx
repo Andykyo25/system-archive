@@ -7,16 +7,22 @@ import {
   SOURCE_META,
 } from "./overseas-map";
 import type { OverseasRow } from "./MorningPanel";
+import { summarizeNews, type NewsSentimentSummary } from "./news-lexicon";
 
 // 晨間持股情報(2026-07-11,取代 OverseasWidget):
-// 每檔持股 → 海外同業報價(美股隔夜收盤 + 韓股盤中快照)+ 規則式對齊判讀 + 台/國際新聞連結。
-// 判讀是純規則(同業漲跌家數 + 已驗證 MU gate),非預測;新聞連結開新分頁。
-// 資料:overseas_indicators(cron 06:30/08:30 Taipei)+ stock_news(台 6h / 國際 07:50)。
+// 每檔持股 → 海外同業報價(美股隔夜收盤 + 韓股盤中快照)+ 規則式對齊判讀
+// + 新聞關鍵字計分 + 「今日建議」規則樹 + 台/國際新聞連結。
+// 全部是純規則彙總(漲跌家數 / 標題關鍵字 / 紀律價位),非語意理解、非投資指令;
+// 新聞一進 DB(台 6h / 國際 07:50 cron)下次 render 即反映(600s 快取)。
 
 export interface IntelHolding {
   symbol: string;
   name: string | null;
   industry: string | null;
+  current_price: number | string | null;
+  stop_loss_price: number | string | null;
+  add_position_price: number | string | null;
+  entry_zone: string | null;
 }
 
 export interface IntelNewsRow {
@@ -46,16 +52,23 @@ function newsAge(publishedAt: string | null): string {
   return `${Math.round(h / 24)}d`;
 }
 
-// 規則式判讀:同業(排除 VIX / 指數以外皆計)漲跌家數 → 偏多/偏空/分歧
+// 規則式判讀:同業(排除 VIX 等中性源)漲跌家數 → 偏多/偏空/分歧 + verified gate
+interface QuoteSynth {
+  text: string;
+  cls: string;
+  dir: "bull" | "bear" | "mixed" | "flat" | "na";
+  gateHit: boolean;
+}
+
 function synthesize(
   quotes: { symbol: string; chg: number | null }[],
   industry: string | null,
-): { text: string; cls: string } {
+): QuoteSynth {
   const scored = quotes.filter(
     (q) => q.chg != null && !SOURCE_META[q.symbol]?.neutral,
   );
   if (scored.length === 0)
-    return { text: "海外同業資料不足", cls: "text-zinc-500" };
+    return { text: "海外同業資料不足", cls: "text-zinc-500", dir: "na", gateHit: false };
   const up = scored.filter((q) => (q.chg ?? 0) > 0.3).length;
   const down = scored.filter((q) => (q.chg ?? 0) < -0.3).length;
 
@@ -65,18 +78,56 @@ function synthesize(
     const g = quotes.find((q) => q.symbol === src.src);
     if (g?.chg != null && g.chg <= GATE_THRESHOLD) {
       return {
-        text: `⛔ ${SOURCE_META[src.src]?.label ?? src.src} 大跌 ${fmtPct(g.chg)}(已驗證領先源,${src.downNote})— 今日勿加碼/低接`,
+        text: `⛔ ${SOURCE_META[src.src]?.label ?? src.src} 大跌 ${fmtPct(g.chg)}(已驗證領先源,${src.downNote})`,
         cls: "text-red-300 font-medium",
+        dir: "bear",
+        gateHit: true,
       };
     }
   }
   if (up > 0 && down === 0)
-    return { text: `海外同業偏多(${up}/${scored.length} 上漲)`, cls: "text-red-300" };
+    return { text: `海外同業偏多(${up}/${scored.length} 上漲)`, cls: "text-red-300", dir: "bull", gateHit: false };
   if (down > 0 && up === 0)
-    return { text: `海外同業偏空(${down}/${scored.length} 下跌)`, cls: "text-green-300" };
+    return { text: `海外同業偏空(${down}/${scored.length} 下跌)`, cls: "text-green-300", dir: "bear", gateHit: false };
   if (up > 0 && down > 0)
-    return { text: `海外同業分歧(${up} 漲 ${down} 跌)— 別把單一同業當訊號`, cls: "text-zinc-400" };
-  return { text: "海外同業持平", cls: "text-zinc-400" };
+    return { text: `海外同業分歧(${up} 漲 ${down} 跌)`, cls: "text-zinc-400", dir: "mixed", gateHit: false };
+  return { text: "海外同業持平", cls: "text-zinc-400", dir: "flat", gateHit: false };
+}
+
+// 今日建議規則樹:防守優先(停損/gate/regime)→ 外部訊號 → 價位區。
+// 純規則彙總,非投資指令;每條都引用紀律價位讓行動可執行。
+function deriveTodayAdvice(
+  h: IntelHolding,
+  synth: QuoteSynth,
+  news: NewsSentimentSummary,
+  regimeRet: number | null,
+): { text: string; cls: string } {
+  const price = num(h.current_price);
+  const stop = num(h.stop_loss_price);
+  const add = num(h.add_position_price);
+  const stopStr = stop != null ? stop.toLocaleString() : "—";
+
+  if (price != null && stop != null && price <= stop)
+    return { text: `⛔ 已破停損(${stopStr}):依紀律出場,別凹單`, cls: "text-red-300 font-semibold" };
+  if (price != null && stop != null && ((price - stop) / price) * 100 < 5)
+    return { text: `⚠ 距停損 <5%(${stopStr}):今日首要是防守,不加碼`, cls: "text-red-300" };
+  if (synth.gateHit)
+    return { text: `⛔ 領先源大跌:今日勿加碼/勿低接,守停損 ${stopStr}`, cls: "text-red-300" };
+  if (regimeRet != null && regimeRet >= 10 && regimeRet < 20)
+    return { text: `⚠ Regime 地雷區(0050 近季 +${regimeRet.toFixed(1)}%,歷史全敗區):傾向減碼、不加碼`, cls: "text-orange-300" };
+  if (synth.dir === "bear" || news.dir === "bear")
+    return { text: `外部訊號偏空(${synth.dir === "bear" ? "海外同業" : "新聞關鍵字"}):今日不加碼,守停損 ${stopStr}`, cls: "text-green-300" };
+  if (h.entry_zone === "pullback" && synth.dir === "bull" && news.dir !== "bear")
+    return {
+      text: `✓ 回檔區 + 外部正向 = 你的贏單型態:可依部位紀律評估加碼(加碼價 ${add != null ? add.toLocaleString() : "—"},張數看下單頁 sizing)`,
+      cls: "text-red-300",
+    };
+  if (h.entry_zone === "chase")
+    return { text: `現價在追高區:想加碼掛回 MA20 附近限價,勿市價追;守停損 ${stopStr}`, cls: "text-amber-300" };
+  return {
+    text: `訊號中性/分歧:持有不動,紀律價位 停損 ${stopStr}${add != null ? ` / 加碼 ${add.toLocaleString()}` : ""}`,
+    cls: "text-zinc-300",
+  };
 }
 
 export function HoldingsIntelWidget({
@@ -84,11 +135,13 @@ export function HoldingsIntelWidget({
   overseasRows,
   twNews,
   intlNews,
+  regimeRet,
 }: {
   holdings: IntelHolding[];
   overseasRows: OverseasRow[];
   twNews: IntelNewsRow[];
   intlNews: IntelNewsRow[];
+  regimeRet: number | null;
 }) {
   if (holdings.length === 0) return null;
   const today = taipeiToday();
@@ -118,10 +171,26 @@ export function HoldingsIntelWidget({
             };
           });
           const synth = synthesize(quotes, h.industry);
-          const tw = twNews.filter((n) => n.symbol === h.symbol).slice(0, 4);
-          const intl = intlNews
-            .filter((n) => intel.news.includes(n.symbol))
-            .slice(0, 4);
+          const twAll = twNews.filter((n) => n.symbol === h.symbol);
+          const intlAll = intlNews.filter((n) => intel.news.includes(n.symbol));
+          const tw = twAll.slice(0, 4);
+          const intl = intlAll.slice(0, 4);
+          // 新聞關鍵字計分:用該持股 48h 內全部標題(台+國際),顯示只取前 4
+          const news = summarizeNews([...twAll, ...intlAll].map((n) => n.title));
+          const advice = deriveTodayAdvice(h, synth, news, regimeRet);
+          const newsChip =
+            news.total === 0
+              ? null
+              : {
+                  text: `新聞 利多${news.bullTitles}/利空${news.bearTitles}(近48h ${news.total} 則)`,
+                  cls:
+                    news.dir === "bull"
+                      ? "text-red-300"
+                      : news.dir === "bear"
+                        ? "text-green-300"
+                        : "text-zinc-400",
+                  tip: `關鍵字命中 ${news.scored}/${news.total} 則;命中詞:${news.sampleHits.join("、") || "—"}(標題級關鍵字統計,非語意理解)`,
+                };
           return (
             <div
               key={h.symbol}
@@ -151,7 +220,20 @@ export function HoldingsIntelWidget({
                   </span>
                 ))}
               </div>
-              <p className={`mt-1 text-xs ${synth.cls}`}>{synth.text}</p>
+              <p className="mt-1 flex flex-wrap items-baseline gap-x-3 text-xs">
+                <span className={synth.cls}>{synth.text}</span>
+                {newsChip && (
+                  <span className={`cursor-help ${newsChip.cls}`} title={newsChip.tip}>
+                    {newsChip.text}
+                  </span>
+                )}
+              </p>
+              <p className={`mt-1 rounded bg-zinc-950/60 px-2 py-1 text-xs ${advice.cls}`}>
+                <span className="mr-1 text-[10px] uppercase tracking-wide text-zinc-500">
+                  今日建議
+                </span>
+                {advice.text}
+              </p>
               {(tw.length > 0 || intl.length > 0) && (
                 <div className="mt-2 grid gap-x-6 gap-y-1 text-xs md:grid-cols-2">
                   <div className="space-y-1">
@@ -204,8 +286,10 @@ export function HoldingsIntelWidget({
         })}
       </div>
       <p className="mt-2 text-xs text-zinc-500">
-        判讀為純規則(同業漲跌家數;僅「記憶體→美光」等已驗證領先源觸發 ⛔ gate,韓股為資訊性對照未經 lead-lag 驗證)。
-        台灣新聞每 6 小時、國際新聞每日 07:50 更新(Google News)。
+        判讀與「今日建議」為純規則彙總(同業漲跌家數 + 標題關鍵字計分 + 紀律價位;新聞
+        chip hover 可看命中詞),**非語意理解、非投資指令**。僅「記憶體→美光」等已驗證領先源觸發
+        ⛔ gate,韓股為資訊性對照未經 lead-lag 驗證。台灣新聞每 6 小時、國際新聞每日 07:50
+        更新,進來後下次刷新即反映。
       </p>
     </section>
   );
