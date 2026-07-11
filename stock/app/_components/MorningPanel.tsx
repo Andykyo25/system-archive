@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { fmtPct, pctColor } from "./Format";
+import { EVENT_LABEL, fmtPct, pctColor } from "./Format";
 import { GATE_THRESHOLD, INDUSTRY_SOURCE, SOURCE_META } from "./overseas-map";
 import type { OverseasRow } from "./OverseasWidget";
 
@@ -23,6 +23,7 @@ export interface MorningHolding {
   stop_loss_price: number | string | null;
   rsi14: number | string | null;
   entry_zone: string | null;
+  events: { type: string; date: string }[]; // 7 日內事件(法說會/除權息/股東會)
 }
 
 export interface MorningSignalPick {
@@ -209,6 +210,18 @@ export function MorningPanel({
                     title="價位質量(資訊性,非買賣指令)"
                   >
                     {zoneMeta.label}
+                  </span>
+                )}
+                {h.events.length > 0 && (
+                  <span
+                    className="rounded bg-amber-900/40 px-1.5 py-0.5 text-[11px] text-amber-300"
+                    title={h.events
+                      .map((e) => `${EVENT_LABEL[e.type] ?? e.type} ${e.date}`)
+                      .join("\n")}
+                  >
+                    📅 {EVENT_LABEL[h.events[0].type] ?? h.events[0].type}{" "}
+                    {h.events[0].date.slice(5)}
+                    {h.events.length > 1 ? ` +${h.events.length - 1}` : ""}
                   </span>
                 )}
               </div>

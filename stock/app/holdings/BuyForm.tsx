@@ -7,7 +7,7 @@ import {
   type BuyContext,
   type BuySizing,
 } from "./actions";
-import { concentrationClass, fmtMoney } from "../_components/Format";
+import { concentrationClass, EVENT_LABEL, fmtMoney } from "../_components/Format";
 
 // 買入表單 + 進場脈絡警示(A 工程 2026-07-03)
 // 股號輸入 blur → checkBuyContext → 追高/回追/盲區警示。不擋單,只強制看見。
@@ -81,6 +81,19 @@ export function BuyForm() {
   );
 }
 
+// Regime 分區(同 dashboard U 型濾網口徑;僅 12 季樣本,paper-track 驗真中)
+function regimeZoneLabel(ret: number): { label: string; minefield: boolean } {
+  if (ret < 0) return { label: "歷史有利區(跌勢)", minefield: false };
+  if (ret < 10) return { label: "中性區", minefield: false };
+  if (ret < 20) return { label: "策略地雷區", minefield: true };
+  return { label: "歷史有利區(強漲)", minefield: false };
+}
+
+function fmtBand(b: [number, number] | null): string {
+  if (!b) return "—";
+  return b[0] === b[1] ? `+${b[0].toFixed(1)}%` : `+${b[0].toFixed(1)}~${b[1].toFixed(1)}%`;
+}
+
 function ContextPanel({ ctx }: { ctx: BuyContext }) {
   // 回追:近 10 日賣過同檔,且現價高於賣價(= 用更高的價格買回)
   const isReentry =
@@ -89,6 +102,7 @@ function ContextPanel({ ctx }: { ctx: BuyContext }) {
     ctx.currentPrice > ctx.recentSell.price;
 
   const boxes: React.ReactNode[] = [];
+  const rz = ctx.regimeRet != null ? regimeZoneLabel(ctx.regimeRet) : null;
 
   if (!ctx.covered) {
     boxes.push(
@@ -99,13 +113,29 @@ function ContextPanel({ ctx }: { ctx: BuyContext }) {
     );
   } else if (ctx.zone === "chase") {
     boxes.push(
-      <WarnBox key="chase" tone="amber">
+      // regime 條件化(2026-07-11 Gate-0 實證):追高在 U 型地雷區升級紅色(12 季樣本);
+      // 勝敗 regime 區間動態自 v_trade_behavior v3 聚合,不寫死會 stale 的敘事。
+      <WarnBox key="chase" tone={rz?.minefield ? "red" : "amber"}>
         ⚠ <b>追高區</b>:偏離 MA20{" "}
         <b>{ctx.devMa20 != null ? `+${ctx.devMa20.toFixed(1)}%` : "—"}</b>
         (門檻 +10%)
         {ctx.ret20d != null && <>,20 日已漲 {ctx.ret20d.toFixed(1)}%</>}。
         歷史波段追高買:{ctx.chaseWins} 勝 {ctx.chaseLosses} 敗
-        (贏單集中在行情最順段,行情轉弱後連 2 敗)。想要就掛回 MA20 附近限價,別市價追。
+        {(ctx.chaseWinRegimeBand || ctx.chaseLossRegimeBand) && (
+          <>
+            (勝發生在 0050 近季 {fmtBand(ctx.chaseWinRegimeBand)}、敗在{" "}
+            {fmtBand(ctx.chaseLossRegimeBand)};樣本小,自動統計)
+          </>
+        )}
+        。
+        {ctx.regimeRet != null && rz && (
+          <>
+            此刻 0050 近季 <b>{ctx.regimeRet >= 0 ? "+" : ""}{ctx.regimeRet.toFixed(1)}%</b>
+            ({rz.label})
+            {rz.minefield && <b> — 地雷區 + 追高是最差組合,強烈建議等回檔</b>}。
+          </>
+        )}
+        想要就掛回 MA20 附近限價,別市價追。
       </WarnBox>,
     );
   } else if (ctx.zone === "pullback") {
@@ -131,6 +161,18 @@ function ContextPanel({ ctx }: { ctx: BuyContext }) {
         {ctx.recentSell.price.toLocaleString()} 賣出,現價{" "}
         {ctx.currentPrice?.toLocaleString()} 更高。歷史回追:
         {ctx.reentryWins} 勝 {ctx.reentryLosses} 敗(2408 6/25 即此型態,−8.2%)。
+      </WarnBox>,
+    );
+  }
+
+  if (ctx.upcomingEvents.length > 0) {
+    boxes.push(
+      <WarnBox key="ev" tone="amber">
+        📅 <b>事件風險</b>:
+        {ctx.upcomingEvents
+          .map((e) => `${EVENT_LABEL[e.type] ?? e.type} ${e.date.slice(5)}`)
+          .join("、")}
+        (14 日內)— 事件前進場 = 對結果下注,想清楚再進。
       </WarnBox>,
     );
   }

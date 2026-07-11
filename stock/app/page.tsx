@@ -320,26 +320,42 @@ export default async function Dashboard() {
   const holdingRows = (holdings as HoldingFull[] | null) ?? [];
   const heldRankMap: Record<string, HeldRank> = {};
   const zoneMap: Record<string, string> = {};
+  const eventsMap: Record<string, { type: string; date: string }[]> = {};
   if (holdingRows.length > 0) {
     const heldSymbols = holdingRows.map((h) => h.symbol);
-    const [{ data: heldRanks }, { data: heldZones }] = await Promise.all([
-      sb
-        .from("v_entry_signal")
-        .select(
-          "symbol, expected_rank, weighted_score, is_entry_signal, signal_strength, fund_count_pos, fund_count_total, mom_count_pos, mom_count_total, chip_count_pos, chip_count_total",
-        )
-        .in("symbol", heldSymbols),
-      sb
-        .from("v_entry_quality")
-        .select("symbol, entry_zone")
-        .in("symbol", heldSymbols),
-    ]);
+    const today = new Date().toISOString().slice(0, 10);
+    const horizon = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
+    const [{ data: heldRanks }, { data: heldZones }, { data: heldEvents }] =
+      await Promise.all([
+        sb
+          .from("v_entry_signal")
+          .select(
+            "symbol, expected_rank, weighted_score, is_entry_signal, signal_strength, fund_count_pos, fund_count_total, mom_count_pos, mom_count_total, chip_count_pos, chip_count_total",
+          )
+          .in("symbol", heldSymbols),
+        sb
+          .from("v_entry_quality")
+          .select("symbol, entry_zone")
+          .in("symbol", heldSymbols),
+        sb
+          .from("stock_events")
+          .select("symbol, event_type, event_date")
+          .in("symbol", heldSymbols)
+          .gte("event_date", today)
+          .lte("event_date", horizon)
+          .order("event_date", { ascending: true }),
+      ]);
     for (const r of (heldRanks as HeldRank[] | null) ?? []) {
       heldRankMap[r.symbol] = r;
     }
     for (const z of (heldZones as { symbol: string; entry_zone: string | null }[] | null) ??
       []) {
       if (z.entry_zone) zoneMap[z.symbol] = z.entry_zone;
+    }
+    for (const e of (heldEvents as
+      | { symbol: string; event_type: string; event_date: string }[]
+      | null) ?? []) {
+      (eventsMap[e.symbol] ??= []).push({ type: e.event_type, date: e.event_date });
     }
   }
 
@@ -390,6 +406,7 @@ export default async function Dashboard() {
       stop_loss_price: s?.stop_loss_price ?? null,
       rsi14: s?.rsi14 ?? null,
       entry_zone: zoneMap[h.symbol] ?? null,
+      events: eventsMap[h.symbol] ?? [],
     };
   });
   const signalTop: MorningSignalPick[] = signalRows.slice(0, 3).map((s) => ({

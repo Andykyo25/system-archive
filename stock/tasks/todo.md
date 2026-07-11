@@ -1995,6 +1995,28 @@ Andy 定調「不縮成儀表板,要走在市場前面」(抓真實事件 + 升�
   - ActiveAlertsSection(/holdings:全部 enabled alerts 含非持股遺留,可取消)
 - [x] 3. 驗證 + commit + push(Railway 部署後 Andy 驗視覺,[[L50]];本機無 node/npm,同 6/30 環境)
 
+## 2026-07-10 — 規畫④:regime 條件化警示 + 事件日曆(Andy「繼續」;③ ATR 出場回測依紀律留獨立 session)
+
+**Gate-0 實證([[L41]],先驗再設計)**:7 筆追高/回追進場時 0050 近季全在 +23~48(U 型「>20 有利區」)— 5 勝 @ +23~32、2 敗 @ +43~48。結論:① U 型地雷區(10-20)條件化會零命中,不做假 gate;② BuyForm「行情轉弱後連 2 敗」措辭與事實不符(敗在大盤更過熱段),要修正;③ 做「動態呈現」不做「n=2 假門檻」。
+
+### A — regime 條件化警示(呈現層,免 OOS 閘)
+- [x] A1 migration:v_trade_behavior v3 — append `regime_60d_at_entry`(開倉日 0050 近 61 筆還原報酬,[[L37]] append-only)→ verify: 7 筆與 Gate-0 查詢 byte 一致
+- [x] A2 checkBuyContext:+ regimeRet(0050 61 bars 同 dashboard 口徑)+ 追高/回追勝敗的 regime 分布(動態聚合,永不 stale)
+- [x] A3 BuyForm:追高/回追警示框加「進場此刻 regime + 你的勝敗 regime 分布」;修正「行情轉弱」錯誤措辭;樣本小 caveat
+### B — 事件日曆(法說會/除權息,零 quota)
+- [x] B1 實證 TWSE/TPEX OpenAPI 事件 endpoint 欄位([[L47]] 文件≠行為,先 probe)
+- [x] B2 migration:`stock_events` 表(symbol, event_type, event_date PK)+ RLS deny-all
+- [x] B3 EF fetch-stock-events + 每日 cron([[L49]] PowerShell 機械 escape deploy + 拉回核對)+ 手動觸發驗資料
+- [x] B4 UI:MorningPanel 持股 chip 📅 N日內事件 + BuyForm 事件風險警示(checkBuyContext 加 stock_events 查詢)
+- [x] 驗證 + commit + push(build 交 Railway [[L50]])
+
+**Review(2026-07-11,④完成)**:
+- A:v_trade_behavior v3 上線(DO block pg_get_viewdef 機械包裹,7 筆 regime 與 Gate-0 byte 一致);BuyForm 追高警示 = regime 動態呈現(此刻 0050 近季% + 勝敗 regime 區間自動聚合)+ U 型地雷區(10-20)升級紅色(12 季樣本 backing);「行情轉弱後連 2 敗」錯誤敘事修正為數據敘事(敗在 +43~48 過熱段)
+- B:**endpoint 實證結論** — TWSE OpenAPI 無法說會日曆;法說會用 t187ap04_L 每日重大訊息 filter「法人說明會」累積(⚠ 部署日起才有覆蓋,主旨 key 帶尾隨空格);除權息 = TWT48U_ALL(上市)+ tpex_exright_prepost(上櫃);股東會 = t187ap38_L(含停止過戶=融券回補日,detail 留存)。鏡像源每跑先刪未來列再插(改期自動修正),法說會純累積
+- E2E 首跑四源全綠:ex_dividend 572 / shareholder_meeting 1105 / investor_conference 3;**2408 的 7/10 南亞科法說被自動抓進**(端到端證明)。cron 每日 21:30 Taipei。PS 5.1 ConvertTo-Json 不 escape CJK 且會包 {"value":} wrapper — 手動 StringBuilder 全量 escape 才是對的(記進 lessons 候選)
+- UI:MorningPanel 持股 chip 📅(最近事件+數量,tooltip 全列)/ BuyForm 事件風險框(14 日內)— 「買在法說前」從此看得見
+- 待 Andy:Railway 部署驗視覺。剩 ③ ATR/time-stop 出場回測(獨立 session,過 [[L36]] OOS 閘)
+
 ## 2026-07-10 — 規畫②:ATR 部位管理 + 集中度警示(Andy「接第二塊」)
 
 - [x] migration `20260710000001_position_sizing_settings`:app_settings 種 `risk_pct_per_trade`(0.01)+ `atr_stop_multiple`(2)— settings 頁 otherSettings 通用列自動可編輯,零新 UI

@@ -28,6 +28,13 @@ export function pctColor(n: string | number | null | undefined): string {
   return v > 0 ? "text-red-400" : "text-green-400";
 }
 
+// 事件日曆標籤(stock_events.event_type → 顯示名;BuyForm + MorningPanel 共用)
+export const EVENT_LABEL: Record<string, string> = {
+  ex_dividend: "除權息",
+  shareholder_meeting: "股東會",
+  investor_conference: "法說會",
+};
+
 // 集中度配色(部位市值 / 資本 %):>100 超額紅、>60 橘、>30 黃(BuyForm sizing + /holdings 占比共用)
 export function concentrationClass(pct: number | null): string {
   if (pct == null || !Number.isFinite(pct)) return "text-zinc-400";

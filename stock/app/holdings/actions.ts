@@ -151,6 +151,13 @@ export interface BuyContext {
   reentryWins: number;
   reentryLosses: number;
   sizing: BuySizing | null; // 資料不足(<15 bars / 無本金設定)= null,不偽造
+  // regime 條件化(規畫④A 2026-07-11):此刻 0050 近 61 筆還原報酬%(同 dashboard 口徑)
+  regimeRet: number | null;
+  // 你的追高買勝/敗發生時的 regime 區間 [min, max](v_trade_behavior v3 動態聚合,永不 stale)
+  chaseWinRegimeBand: [number, number] | null;
+  chaseLossRegimeBand: [number, number] | null;
+  // 未來 14 天內事件(法說會/除權息/股東會,stock_events)
+  upcomingEvents: { type: string; date: string }[];
 }
 
 // ATR 部位管理(拍板規畫② 2026-07-10):建議張數 = 風險預算 ÷ (k×ATR14×1000)。
@@ -183,7 +190,9 @@ export async function checkBuyContext(symbol: string): Promise<BuyContext | null
   if (!/^[0-9A-Za-z]{4,6}$/.test(s)) return null;
   const sb = createClient();
   const since = new Date(Date.now() - 10 * 86400000).toISOString().slice(0, 10);
-  const [eq, pf, rt, sells, behavior, bars, sizingSettings, summary, pnl] = await Promise.all([
+  const today = new Date().toISOString().slice(0, 10);
+  const eventHorizon = new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10);
+  const [eq, pf, rt, sells, behavior, bars, sizingSettings, summary, pnl, regimeBars, events] = await Promise.all([
     sb
       .from("v_entry_quality")
       .select("entry_zone, dev_ma20_pct, off_high_pct")
@@ -203,7 +212,9 @@ export async function checkBuyContext(symbol: string): Promise<BuyContext | null
       .gte("txn_date", since)
       .order("txn_date", { ascending: false })
       .limit(1),
-    sb.from("v_trade_behavior").select("is_win, is_chase_buy, is_reentry_buy"),
+    sb
+      .from("v_trade_behavior")
+      .select("is_win, is_chase_buy, is_reentry_buy, regime_60d_at_entry"),
     sb
       .from("price_daily")
       .select("high, low, close")
@@ -220,17 +231,59 @@ export async function checkBuyContext(symbol: string): Promise<BuyContext | null
       .select("total_realized_pnl, total_unrealized_pnl")
       .single(),
     sb.from("v_holdings_pnl").select("symbol, market_value"),
+    sb
+      .from("price_daily")
+      .select("close, adj_factor")
+      .eq("symbol", "0050")
+      .gt("close", 0)
+      .order("trade_date", { ascending: false })
+      .limit(61),
+    sb
+      .from("stock_events")
+      .select("event_type, event_date")
+      .eq("symbol", s)
+      .gte("event_date", today)
+      .lte("event_date", eventHorizon)
+      .order("event_date", { ascending: true }),
   ]);
 
   let chaseWins = 0,
     chaseLosses = 0,
     reentryWins = 0,
     reentryLosses = 0;
+  const chaseWinRegimes: number[] = [];
+  const chaseLossRegimes: number[] = [];
   for (const r of (behavior.data as
-    | { is_win: boolean; is_chase_buy: boolean | null; is_reentry_buy: boolean }[]
+    | {
+        is_win: boolean;
+        is_chase_buy: boolean | null;
+        is_reentry_buy: boolean;
+        regime_60d_at_entry: number | string | null;
+      }[]
     | null) ?? []) {
-    if (r.is_chase_buy === true) r.is_win ? chaseWins++ : chaseLosses++;
+    if (r.is_chase_buy === true) {
+      r.is_win ? chaseWins++ : chaseLosses++;
+      const reg = n(r.regime_60d_at_entry);
+      if (reg != null) (r.is_win ? chaseWinRegimes : chaseLossRegimes).push(reg);
+    }
     if (r.is_reentry_buy) r.is_win ? reentryWins++ : reentryLosses++;
+  }
+  const band = (xs: number[]): [number, number] | null =>
+    xs.length > 0 ? [Math.min(...xs), Math.max(...xs)] : null;
+
+  // 此刻 regime(0050 近 61 筆還原報酬,同 dashboard getCachedRegime 口徑)
+  let regimeRet: number | null = null;
+  {
+    const rows = (regimeBars.data as
+      | { close: number | string; adj_factor: number | string | null }[]
+      | null) ?? [];
+    if (rows.length === 61) {
+      const adj = (r: (typeof rows)[number]) =>
+        Number(r.close) * Number(r.adj_factor ?? 1);
+      const last = adj(rows[0]);
+      const base = adj(rows[60]);
+      if (base > 0) regimeRet = (last / base - 1) * 100;
+    }
   }
 
   const eqRow = eq.data as
@@ -322,6 +375,12 @@ export async function checkBuyContext(symbol: string): Promise<BuyContext | null
     reentryWins,
     reentryLosses,
     sizing,
+    regimeRet,
+    chaseWinRegimeBand: band(chaseWinRegimes),
+    chaseLossRegimeBand: band(chaseLossRegimes),
+    upcomingEvents: (
+      (events.data as { event_type: string; event_date: string }[] | null) ?? []
+    ).map((e) => ({ type: e.event_type, date: e.event_date })),
   };
 }
 
