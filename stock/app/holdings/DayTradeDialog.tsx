@@ -87,7 +87,7 @@ export function DayTradeDialog({ feeRate, taxStock, taxEtf }: Props) {
           onClick={close}
         >
           <div
-            className="w-full max-w-md rounded-lg border border-zinc-700 bg-zinc-900 p-5"
+            className="w-full max-w-md rounded-2xl border border-white/10 bg-zinc-900 p-5"
             onClick={(e) => e.stopPropagation()}
           >
             <h3 className="mb-1 text-lg font-semibold">記一筆當沖</h3>
@@ -102,7 +102,7 @@ export function DayTradeDialog({ feeRate, taxStock, taxEtf }: Props) {
                   value={symbol}
                   onChange={(e) => setSymbol(e.target.value)}
                   placeholder="例:2408"
-                  className="w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 font-mono text-sm text-zinc-100"
+                  className="w-full rounded-xl border border-white/10 bg-zinc-950/80 px-3 py-2 font-mono text-sm text-zinc-100"
                 />
               </Field>
 
@@ -114,7 +114,7 @@ export function DayTradeDialog({ feeRate, taxStock, taxEtf }: Props) {
                     step={1}
                     value={qtyStr}
                     onChange={(e) => setQtyStr(e.target.value)}
-                    className="w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100"
+                    className="w-full rounded-xl border border-white/10 bg-zinc-950/80 px-3 py-2 text-sm text-zinc-100"
                   />
                 </Field>
                 <Field label="日期">
@@ -122,7 +122,7 @@ export function DayTradeDialog({ feeRate, taxStock, taxEtf }: Props) {
                     type="date"
                     value={dateStr}
                     onChange={(e) => setDateStr(e.target.value)}
-                    className="w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100"
+                    className="w-full rounded-xl border border-white/10 bg-zinc-950/80 px-3 py-2 text-sm text-zinc-100"
                   />
                 </Field>
               </div>
@@ -134,7 +134,7 @@ export function DayTradeDialog({ feeRate, taxStock, taxEtf }: Props) {
                     step="0.01"
                     value={buyStr}
                     onChange={(e) => setBuyStr(e.target.value)}
-                    className="w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100"
+                    className="w-full rounded-xl border border-white/10 bg-zinc-950/80 px-3 py-2 text-sm text-zinc-100"
                   />
                 </Field>
                 <Field label="賣出價">
@@ -143,7 +143,7 @@ export function DayTradeDialog({ feeRate, taxStock, taxEtf }: Props) {
                     step="0.01"
                     value={sellStr}
                     onChange={(e) => setSellStr(e.target.value)}
-                    className="w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100"
+                    className="w-full rounded-xl border border-white/10 bg-zinc-950/80 px-3 py-2 text-sm text-zinc-100"
                   />
                 </Field>
               </div>
@@ -154,18 +154,18 @@ export function DayTradeDialog({ feeRate, taxStock, taxEtf }: Props) {
                   value={note}
                   onChange={(e) => setNote(e.target.value)}
                   placeholder="例:當沖、放空回補"
-                  className="w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100"
+                  className="w-full rounded-xl border border-white/10 bg-zinc-950/80 px-3 py-2 text-sm text-zinc-100"
                 />
               </Field>
             </div>
 
             {valid && (
-              <div className="mt-4 rounded-md border border-zinc-800 bg-zinc-950 p-3 text-sm">
+              <div className="mt-4 rounded-xl border border-white/[0.06] bg-zinc-950/80 p-3 text-sm">
                 <Row label="賣出總額" value={(sell * qty).toLocaleString()} />
                 <Row label="− 買進總額" value={(buy * qty).toLocaleString()} />
                 <Row label="− 手續費(買+賣)" value={(buyFee + sellFee).toLocaleString()} />
                 <Row label="− 當沖稅" value={tax.toLocaleString()} />
-                <div className="my-2 border-t border-zinc-800" />
+                <div className="my-2 border-t border-white/[0.04]" />
                 <Row
                   label="本次當沖損益"
                   value={realized.toLocaleString()}
@@ -202,14 +202,14 @@ export function DayTradeDialog({ feeRate, taxStock, taxEtf }: Props) {
               <button
                 onClick={close}
                 disabled={pending}
-                className="rounded-md border border-zinc-700 px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800"
+                className="rounded-xl border border-white/10 px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800"
               >
                 取消
               </button>
               <button
                 onClick={submit}
                 disabled={!valid || pending}
-                className="rounded-md bg-amber-700 px-4 py-2 text-sm font-medium text-white hover:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-50"
+                className="rounded-xl bg-amber-700 px-4 py-2 text-sm font-medium text-white hover:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {pending ? "送出中..." : "確認記錄"}
               </button>

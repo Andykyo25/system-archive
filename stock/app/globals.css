@@ -15,4 +15,31 @@ body {
     "Noto Sans TC",
     "Microsoft JhengHei",
     sans-serif;
+  /* 柔和深色底:近黑 + 兩道極淡的品牌色光暈(藍/翠),取代死平 zinc-950 */
+  background:
+    radial-gradient(1100px 560px at 85% -10%, rgba(59, 130, 246, 0.08), transparent 60%),
+    radial-gradient(900px 520px at -10% 115%, rgba(16, 185, 129, 0.05), transparent 60%),
+    #09090b;
+  background-attachment: fixed;
+}
+
+::selection {
+  background: rgba(59, 130, 246, 0.35);
+}
+
+/* 細滾動條(表格橫向卷動很常見,粗滾動條破壞質感) */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.14) transparent;
+}
+*::-webkit-scrollbar {
+  height: 8px;
+  width: 8px;
+}
+*::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
 }

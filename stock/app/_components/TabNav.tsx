@@ -15,7 +15,7 @@ const tabs = [
 export function TabNav() {
   const path = usePathname();
   return (
-    <nav className="flex gap-1 border-b border-zinc-800 px-4">
+    <nav className="flex gap-1 border-b border-white/[0.06] px-4">
       {tabs.map((t) => {
         const active = path === t.href;
         return (

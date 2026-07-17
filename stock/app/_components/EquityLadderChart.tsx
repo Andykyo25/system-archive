@@ -24,7 +24,7 @@ export function EquityLadderChart({
 }) {
   if (points.length === 0) {
     return (
-      <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-6 text-center text-sm text-zinc-500">
+      <div className="rounded-2xl border border-white/[0.06] bg-zinc-900/60 p-6 text-center text-sm text-zinc-500">
         尚無交易紀錄,無法繪製權益曲線。
       </div>
     );
@@ -64,7 +64,7 @@ export function EquityLadderChart({
     initialCapital > 0 ? (finalEquity / initialCapital - 1) * 100 : 0;
 
   return (
-    <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
+    <div className="rounded-2xl border border-white/[0.06] bg-zinc-900/60 p-4">
       <svg width="100%" viewBox={`0 0 ${W} ${H}`} className="text-xs">
         {/* 本金基準線 */}
         <line

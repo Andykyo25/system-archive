@@ -98,8 +98,8 @@ export function PerformanceWidget({
       : null;
 
   return (
-    <section className="rounded-lg border border-zinc-800 bg-zinc-900">
-      <header className="flex items-baseline justify-between border-b border-zinc-800 px-4 py-3">
+    <section className="rounded-2xl border border-white/[0.06] bg-zinc-900/60">
+      <header className="flex items-baseline justify-between border-b border-white/[0.06] px-4 py-3">
         <h2 className="text-base font-semibold text-zinc-100">
           我的交易表現
         </h2>
@@ -171,7 +171,7 @@ export function PerformanceWidget({
                 return (
                   <li
                     key={`${r.symbol}-${r.sell_date}-${idx}`}
-                    className="flex items-center justify-between rounded-md border border-zinc-800 bg-zinc-950 px-2.5 py-1.5 text-xs"
+                    className="flex items-center justify-between rounded-xl border border-white/[0.06] bg-zinc-950/80 px-2.5 py-1.5 text-xs"
                   >
                     <div className="flex min-w-0 items-center gap-2">
                       <span className="font-mono text-zinc-300">
@@ -238,7 +238,7 @@ function Mini({
   color?: string;
 }) {
   return (
-    <div className="rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2">
+    <div className="rounded-xl border border-white/[0.06] bg-zinc-950/80 px-3 py-2">
       <div className="text-[10px] uppercase tracking-wide text-zinc-500">
         {label}
       </div>

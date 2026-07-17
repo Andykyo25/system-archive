@@ -527,7 +527,7 @@ function EntrySignalWidget({
       </div>
 
       {rows.length === 0 ? (
-        <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-6 text-center text-sm text-zinc-500">
+        <div className="rounded-2xl border border-white/[0.06] bg-zinc-900/60 p-6 text-center text-sm text-zinc-500">
           <p>目前沒有進場訊號</p>
           <p className="mt-1 text-xs text-zinc-600">
             factor 資料累積中(籌碼 / 動能 / 基本面對齊條件)。
@@ -535,9 +535,9 @@ function EntrySignalWidget({
           </p>
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-zinc-800 bg-zinc-900">
+        <div className="overflow-x-auto rounded-2xl border border-white/[0.06] bg-zinc-900/60">
           <table className="w-full text-sm">
-            <thead className="border-b border-zinc-800 bg-zinc-950 text-left text-xs text-zinc-400">
+            <thead className="border-b border-white/[0.06] text-left text-[11px] uppercase tracking-wider text-zinc-500">
               <tr>
                 <th className="px-3 py-2 text-right">#</th>
                 <th className="px-3 py-2">股號</th>
@@ -553,7 +553,7 @@ function EntrySignalWidget({
               {rows.map((s) => {
                 const strong = s.signal_strength === "strong";
                 return (
-                  <tr key={s.symbol} className="border-t border-zinc-800">
+                  <tr key={s.symbol} className="border-t border-white/[0.04]">
                     <td className="px-3 py-2 text-right tabular-nums text-zinc-500">
                       {s.expected_rank}
                     </td>
@@ -630,7 +630,7 @@ function fmtScore(n: string | number | null | undefined): string {
 function SummaryCards({ summary }: { summary: PortfolioSummary | null }) {
   if (!summary || Number(summary.positions) === 0) {
     return (
-      <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-8 text-center">
+      <div className="rounded-2xl border border-white/[0.06] bg-zinc-900/60 p-8 text-center">
         <p className="text-zinc-400">還沒有真實持股</p>
         <p className="mt-2 text-sm text-zinc-500">到「持股」tab 加一筆</p>
       </div>
@@ -672,7 +672,7 @@ function Stat({
   color?: string;
 }) {
   return (
-    <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
+    <div className="rounded-2xl border border-white/[0.06] bg-zinc-900/60 p-4">
       <div className="text-xs text-zinc-400">{label}</div>
       <div className={`mt-1 text-2xl font-semibold tabular-nums ${color}`}>
         {value}
@@ -697,13 +697,10 @@ function HoldingsAnalysis({
   const COL_COUNT = 13;
   return (
     <section>
-      <div className="mb-2 flex items-baseline justify-between">
-        <h2 className="text-lg font-semibold">真實持股</h2>
-        <span className="text-xs text-zinc-500">分數 hover 看完整分析,下方列出失分項目</span>
-      </div>
-      <div className="overflow-x-auto rounded-lg border border-zinc-800 bg-zinc-900">
+      <h2 className="mb-2 text-lg font-semibold">真實持股</h2>
+      <div className="overflow-x-auto rounded-2xl border border-white/[0.06] bg-zinc-900/60">
         <table className="w-full text-sm">
-          <thead className="border-b border-zinc-800 bg-zinc-950 text-left text-xs text-zinc-400">
+          <thead className="border-b border-white/[0.06] text-left text-[11px] uppercase tracking-wider text-zinc-500">
             <tr>
               <th className="px-3 py-2">股號</th>
               <th className="px-3 py-2 text-center" title="上=基本面 6 條規則;下=19 因子綜合排名(⭐=進場訊號)">分 / 綜合</th>
@@ -747,7 +744,7 @@ function HoldingsAnalysis({
                   : "";
               return (
                 <Fragment key={h.symbol}>
-                <tr className="border-t border-zinc-800">
+                <tr className="border-t border-white/[0.04]">
                   <td className="px-3 py-2 font-mono">
                     <Link href={`/stocks/${h.symbol}`} className="text-blue-400 hover:text-blue-300 hover:underline">
                       {h.symbol}
@@ -823,12 +820,6 @@ function HoldingsAnalysis({
           </tbody>
         </table>
       </div>
-      <p className="mt-2 text-xs text-zinc-500">
-        「分」0-6 = 基本面 6 條:EPS 連 4 季正 / ROE&gt;15% / FCF&gt;0 / PEG&lt;1 / PB&lt;產業門檻 / 月營收 YoY&gt;0。
-        「綜合 #」= 19 因子綜合排名(基本面+動能+籌碼),⭐ = 進場訊號 —{" "}
-        <span className="text-zinc-400">基本面分對景氣循環股偏嚴,綜合排名才是系統完整判斷</span>。
-        淨損益已扣手續費(0.0855%×2)+ 證交稅(現股 0.3%、ETF 0.1%)
-      </p>
     </section>
   );
 }

@@ -84,7 +84,7 @@ export function SellDialog({
           onClick={close}
         >
           <div
-            className="w-full max-w-md rounded-lg border border-zinc-700 bg-zinc-900 p-5"
+            className="w-full max-w-md rounded-2xl border border-white/10 bg-zinc-900 p-5"
             onClick={(e) => e.stopPropagation()}
           >
             <h3 className="mb-1 text-lg font-semibold">
@@ -103,7 +103,7 @@ export function SellDialog({
                   step={1}
                   value={qtyStr}
                   onChange={(e) => setQtyStr(e.target.value)}
-                  className="w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100"
+                  className="w-full rounded-xl border border-white/10 bg-zinc-950/80 px-3 py-2 text-sm text-zinc-100"
                 />
                 {!qtyValid && qtyStr !== "" && (
                   <p className="mt-1 text-xs text-red-400">
@@ -118,7 +118,7 @@ export function SellDialog({
                   step="0.01"
                   value={priceStr}
                   onChange={(e) => setPriceStr(e.target.value)}
-                  className="w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100"
+                  className="w-full rounded-xl border border-white/10 bg-zinc-950/80 px-3 py-2 text-sm text-zinc-100"
                 />
               </Field>
 
@@ -127,7 +127,7 @@ export function SellDialog({
                   type="date"
                   value={dateStr}
                   onChange={(e) => setDateStr(e.target.value)}
-                  className="w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100"
+                  className="w-full rounded-xl border border-white/10 bg-zinc-950/80 px-3 py-2 text-sm text-zinc-100"
                 />
               </Field>
 
@@ -137,18 +137,18 @@ export function SellDialog({
                   value={note}
                   onChange={(e) => setNote(e.target.value)}
                   placeholder="例:停利、停損、調節"
-                  className="w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100"
+                  className="w-full rounded-xl border border-white/10 bg-zinc-950/80 px-3 py-2 text-sm text-zinc-100"
                 />
               </Field>
             </div>
 
             {valid && (
-              <div className="mt-4 rounded-md border border-zinc-800 bg-zinc-950 p-3 text-sm">
+              <div className="mt-4 rounded-xl border border-white/[0.06] bg-zinc-950/80 p-3 text-sm">
                 <Row label="賣出總額" value={proceeds.toLocaleString()} />
                 <Row label="− 手續費" value={fee.toLocaleString()} />
                 <Row label="− 證交稅" value={tax.toLocaleString()} />
                 <Row label="− 成本" value={cost.toLocaleString()} />
-                <div className="my-2 border-t border-zinc-800" />
+                <div className="my-2 border-t border-white/[0.04]" />
                 <Row
                   label="本次實現損益"
                   value={realized.toLocaleString()}
@@ -185,14 +185,14 @@ export function SellDialog({
               <button
                 onClick={close}
                 disabled={pending}
-                className="rounded-md border border-zinc-700 px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800"
+                className="rounded-xl border border-white/10 px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800"
               >
                 取消
               </button>
               <button
                 onClick={submit}
                 disabled={!valid || pending}
-                className="rounded-md bg-red-700 px-4 py-2 text-sm font-medium text-white hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-50"
+                className="rounded-xl bg-red-700 px-4 py-2 text-sm font-medium text-white hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {pending ? "送出中..." : "確認賣出"}
               </button>

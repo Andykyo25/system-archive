@@ -258,7 +258,7 @@ export function HoldingsAdvice({
     return (
       <section>
         <h2 className="mb-3 text-lg font-semibold">動態建議</h2>
-        <p className="rounded-lg border border-zinc-800 bg-zinc-900 p-6 text-center text-sm text-zinc-500">
+        <p className="rounded-2xl border border-white/[0.06] bg-zinc-900/60 p-6 text-center text-sm text-zinc-500">
           目前無持股 — 沒有需要分析的部位
         </p>
       </section>
@@ -267,10 +267,7 @@ export function HoldingsAdvice({
 
   return (
     <section>
-      <h2 className="mb-1 text-lg font-semibold">動態建議</h2>
-      <p className="mb-3 text-xs text-zinc-500">
-        依你「整張為單位、不買零股」紀律。資料即時 reflect — 任何時候打開都是當下最新分析。
-      </p>
+      <h2 className="mb-3 text-lg font-semibold">動態建議</h2>
       <div className="grid grid-cols-1 gap-3">
         {rows.map((r) => (
           <AdviceCard
@@ -393,7 +390,7 @@ function SignalsGrid({ signal }: { signal: SignalRow }) {
   const collapsed = secondary.filter((s) => !ESCALATE_LEVELS.has(s.level));
 
   return (
-    <div className="border-t border-zinc-800 px-4 py-3">
+    <div className="border-t border-white/[0.04] px-4 py-3">
       <div className="mb-2 flex items-center justify-between gap-2">
         <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
           重點訊號
@@ -460,9 +457,9 @@ function AdviceCard({
     : "";
 
   return (
-    <div className="overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900">
+    <div className="overflow-hidden rounded-2xl border border-white/[0.06] bg-zinc-900/60">
       {/* Header */}
-      <header className="flex items-center justify-between gap-3 border-b border-zinc-800 bg-zinc-950 px-4 py-2.5">
+      <header className="flex items-center justify-between gap-3 border-b border-white/[0.06] bg-zinc-950 px-4 py-2.5">
         <div className="flex items-center gap-3">
           <Link
             href={`/stocks/${row.symbol}`}
@@ -506,7 +503,7 @@ function AdviceCard({
       {signal && <SignalsGrid signal={signal} />}
 
       {/* 價位線 */}
-      <div className="grid grid-cols-5 gap-0 border-t border-zinc-800 text-[10px]">
+      <div className="grid grid-cols-5 gap-0 border-t border-white/[0.04] text-[10px]">
         <PriceTick
           label="停損"
           value={row.stop_loss_price}
@@ -540,7 +537,7 @@ function AdviceCard({
       </div>
 
       {/* Footer:系統 factor + timestamp */}
-      <footer className="flex items-center justify-between border-t border-zinc-800 bg-zinc-950 px-4 py-2 text-[10px] text-zinc-500">
+      <footer className="flex items-center justify-between border-t border-white/[0.04] bg-zinc-950 px-4 py-2 text-[10px] text-zinc-500">
         <span>
           系統排名 #{row.expected_rank ?? "-"} · fund {row.fund_count_pos ?? 0}/
           {row.fund_count_total ?? 0} · mom {row.mom_count_pos ?? 0}/

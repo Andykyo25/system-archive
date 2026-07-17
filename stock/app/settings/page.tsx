@@ -27,9 +27,9 @@ interface EtfMeta {
 const CATEGORIES = ["市值型", "高股息", "主題", "主動式", "債券", "其他"];
 
 const inputCls =
-  "rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-500 focus:border-blue-500 focus:outline-none";
+  "rounded-xl border border-white/10 bg-zinc-950/80 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-500 focus:border-blue-500 focus:outline-none";
 const btnCls =
-  "rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-blue-700";
+  "rounded-xl bg-blue-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-blue-700";
 const btnDangerCls =
   "rounded-md bg-red-900/50 px-3 py-1.5 text-xs font-medium text-red-200 transition-colors hover:bg-red-900";
 
@@ -67,7 +67,7 @@ export default async function SettingsPage() {
         {budgetSetting ? (
           <BudgetRow setting={budgetSetting} />
         ) : (
-          <p className="rounded-lg border border-zinc-800 bg-zinc-900 p-3 text-sm text-zinc-500">
+          <p className="rounded-2xl border border-white/[0.06] bg-zinc-900/60 p-3 text-sm text-zinc-500">
             budget_ntd 設定尚未建立(套用 migration 71 後會自動出現)
           </p>
         )}
@@ -82,7 +82,7 @@ export default async function SettingsPage() {
         {capitalSetting ? (
           <CapitalRow setting={capitalSetting} />
         ) : (
-          <p className="rounded-lg border border-zinc-800 bg-zinc-900 p-3 text-sm text-zinc-500">
+          <p className="rounded-2xl border border-white/[0.06] bg-zinc-900/60 p-3 text-sm text-zinc-500">
             initial_capital 設定尚未建立(套用 migration 後會自動出現)
           </p>
         )}
@@ -98,7 +98,7 @@ export default async function SettingsPage() {
         {defaultTopNSetting ? (
           <DefaultTopNRow setting={defaultTopNSetting} />
         ) : (
-          <p className="rounded-lg border border-zinc-800 bg-zinc-900 p-3 text-sm text-zinc-500">
+          <p className="rounded-2xl border border-white/[0.06] bg-zinc-900/60 p-3 text-sm text-zinc-500">
             default_top_n 設定尚未建立(套用 migration 後會自動出現)
           </p>
         )}
@@ -125,9 +125,9 @@ export default async function SettingsPage() {
           影響「ETF」tab。每行可改後按儲存,新增空白 row 在最下方。內扣費用 / 規模 / 類型不改不影響評分。
         </p>
 
-        <div className="overflow-x-auto rounded-lg border border-zinc-800 bg-zinc-900">
+        <div className="overflow-x-auto rounded-2xl border border-white/[0.06] bg-zinc-900/60">
           <table className="w-full text-sm">
-            <thead className="border-b border-zinc-800 bg-zinc-950 text-left text-xs text-zinc-400">
+            <thead className="border-b border-white/[0.06] text-left text-[11px] uppercase tracking-wider text-zinc-500">
               <tr>
                 <th className="px-2 py-2">股號</th>
                 <th className="px-2 py-2">名稱</th>
@@ -159,7 +159,7 @@ function BudgetRow({ setting }: { setting: AppSetting }) {
   return (
     <form
       action={updateSetting}
-      className="grid grid-cols-1 gap-2 rounded-lg border border-zinc-800 bg-zinc-900 p-3 md:grid-cols-[1fr_240px_100px]"
+      className="grid grid-cols-1 gap-2 rounded-2xl border border-white/[0.06] bg-zinc-900/60 p-3 md:grid-cols-[1fr_240px_100px]"
     >
       <div>
         <div className="font-mono text-sm text-zinc-200">{setting.key}</div>
@@ -191,7 +191,7 @@ function CapitalRow({ setting }: { setting: AppSetting }) {
   return (
     <form
       action={updateSetting}
-      className="grid grid-cols-1 gap-2 rounded-lg border border-zinc-800 bg-zinc-900 p-3 md:grid-cols-[1fr_240px_100px]"
+      className="grid grid-cols-1 gap-2 rounded-2xl border border-white/[0.06] bg-zinc-900/60 p-3 md:grid-cols-[1fr_240px_100px]"
     >
       <div>
         <div className="font-mono text-sm text-zinc-200">{setting.key}</div>
@@ -225,7 +225,7 @@ function DefaultTopNRow({ setting }: { setting: AppSetting }) {
   return (
     <form
       action={updateSetting}
-      className="grid grid-cols-1 gap-2 rounded-lg border border-zinc-800 bg-zinc-900 p-3 md:grid-cols-[1fr_240px_100px]"
+      className="grid grid-cols-1 gap-2 rounded-2xl border border-white/[0.06] bg-zinc-900/60 p-3 md:grid-cols-[1fr_240px_100px]"
     >
       <div>
         <div className="font-mono text-sm text-zinc-200">{setting.key}</div>
@@ -256,7 +256,7 @@ function SettingRow({ setting }: { setting: AppSetting }) {
   return (
     <form
       action={updateSetting}
-      className="grid grid-cols-1 gap-2 rounded-lg border border-zinc-800 bg-zinc-900 p-3 md:grid-cols-[1fr_180px_100px]"
+      className="grid grid-cols-1 gap-2 rounded-2xl border border-white/[0.06] bg-zinc-900/60 p-3 md:grid-cols-[1fr_180px_100px]"
     >
       <div>
         <div className="font-mono text-sm text-zinc-200">{setting.key}</div>
@@ -284,7 +284,7 @@ function EtfRow({ etf, isNew }: { etf: EtfMeta | null; isNew: boolean }) {
   const isActive = etf?.is_active_etf ?? false;
 
   return (
-    <tr className="border-t border-zinc-800">
+    <tr className="border-t border-white/[0.04]">
       <td className="px-2 py-2" colSpan={7}>
         <form action={upsertEtf} className="grid grid-cols-12 gap-2">
           <input

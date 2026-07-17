@@ -352,7 +352,7 @@ function Card({
   sub?: string;
 }) {
   return (
-    <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
+    <div className="rounded-2xl border border-white/[0.06] bg-zinc-900/60 p-4">
       <div className="text-xs text-zinc-400">{label}</div>
       <div className={`mt-1 text-2xl font-semibold tabular-nums ${color}`}>
         {value}
@@ -374,10 +374,6 @@ function AddBuySection({ fees }: { fees: FeeSettings }) {
         />
       </div>
       <BuyForm />
-      <p className="mt-2 text-xs text-zinc-500">
-        手續費會自動依設定算入 fee 欄(雙邊都收)。BUY 不收證交稅。
-        股號輸入後會自動顯示進場脈絡(追高 / 回追 / 盲區警示)。
-      </p>
     </section>
   );
 }
@@ -399,13 +395,13 @@ function CurrentHoldingsSection({
     <section>
       <h2 className="mb-3 text-lg font-semibold">持有中 ({rows.length})</h2>
       {rows.length === 0 ? (
-        <p className="rounded-lg border border-zinc-800 bg-zinc-900 p-6 text-center text-sm text-zinc-500">
+        <p className="rounded-2xl border border-white/[0.06] bg-zinc-900/60 p-6 text-center text-sm text-zinc-500">
           沒有持股
         </p>
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-zinc-800 bg-zinc-900">
+        <div className="overflow-x-auto rounded-2xl border border-white/[0.06] bg-zinc-900/60">
           <table className="w-full text-sm">
-            <thead className="border-b border-zinc-800 bg-zinc-950 text-left text-xs text-zinc-400">
+            <thead className="border-b border-white/[0.06] text-left text-[11px] uppercase tracking-wider text-zinc-500">
               <tr>
                 <th className="px-3 py-2">股號</th>
                 <th className="px-3 py-2 text-right">股數</th>
@@ -431,7 +427,7 @@ function CurrentHoldingsSection({
                 const currentPrice =
                   h.current_price == null ? null : Number(h.current_price);
                 return (
-                  <tr key={h.symbol} className="border-t border-zinc-800">
+                  <tr key={h.symbol} className="border-t border-white/[0.04]">
                     <td className="px-3 py-2 font-mono">
                       {h.symbol}
                       {isEtfSymbol(h.symbol) && (
@@ -508,12 +504,6 @@ function CurrentHoldingsSection({
           </table>
         </div>
       )}
-      <p className="mt-2 text-xs text-zinc-500">
-        現價來自 v_latest_price_realtime(yahoo &lt; 30min &gt; 今日收盤 &gt;
-        最近收盤)。hover 現價可看資料日期 / 來源。
-        「占比」= 市值 ÷ 資本(初始本金 + 已實現 + 未實現;單一本金假設)—
-        單檔 &gt;30% 開始注意集中度,&gt;100% 表示已超過帳上資本。
-      </p>
     </section>
   );
 }
@@ -533,11 +523,11 @@ function ActiveAlertsSection({
           盤中每 10 分檢查,觸價 TG 推播後自動停用
         </span>
       </h2>
-      <div className="rounded-lg border border-zinc-800 bg-zinc-900">
+      <div className="rounded-2xl border border-white/[0.06] bg-zinc-900/60">
         {rows.map((a) => (
           <div
             key={a.id}
-            className="flex flex-wrap items-center justify-between gap-2 border-t border-zinc-800 px-4 py-2 text-sm first:border-t-0"
+            className="flex flex-wrap items-center justify-between gap-2 border-t border-white/[0.04] px-4 py-2 text-sm first:border-t-0"
           >
             <div className="flex flex-wrap items-baseline gap-x-3">
               <span className="font-mono text-blue-400">{a.symbol}</span>
@@ -552,7 +542,7 @@ function ActiveAlertsSection({
             </div>
             <form action={cancelPriceAlert}>
               <input type="hidden" name="id" value={a.id} />
-              <button className="rounded-md border border-zinc-700 px-2.5 py-1 text-xs text-zinc-400 hover:bg-zinc-800 hover:text-red-300">
+              <button className="rounded-md border border-white/10 px-2.5 py-1 text-xs text-zinc-400 hover:bg-zinc-800 hover:text-red-300">
                 取消
               </button>
             </form>
@@ -578,15 +568,19 @@ function VerdictTag({
   daysAvail: number;
 }) {
   if (fwd == null) {
+    // 未滿 20 交易日 → 顯示累積進度,不再只給 —(讓「還在等」跟「沒資料」可分辨)
+    if (daysAvail > 0) {
+      return (
+        <span
+          className="rounded-full bg-zinc-800/80 px-2 py-0.5 text-[11px] tabular-nums text-zinc-400"
+          title="賣出後累積滿 20 個交易日才判定(賣太早/時機佳)"
+        >
+          {daysAvail}/20 日
+        </span>
+      );
+    }
     return (
-      <span
-        className="text-zinc-600"
-        title={
-          daysAvail === 0
-            ? "已出清且不在追蹤池,賣後無收盤資料"
-            : "賣後尚不足 20 交易日,待累積"
-        }
-      >
+      <span className="text-zinc-600" title="已出清且賣後尚無收盤資料">
         —
       </span>
     );
@@ -672,9 +666,9 @@ function TradeBehaviorSection({ rows }: { rows: TradeBehaviorRow[] }) {
           sub="續抱 ±3% 判定"
         />
       </div>
-      <div className="overflow-x-auto rounded-lg border border-zinc-800 bg-zinc-900">
+      <div className="overflow-x-auto rounded-2xl border border-white/[0.06] bg-zinc-900/60">
         <table className="w-full text-sm">
-          <thead className="border-b border-zinc-800 bg-zinc-950 text-left text-xs text-zinc-400">
+          <thead className="border-b border-white/[0.06] text-left text-[11px] uppercase tracking-wider text-zinc-500">
             <tr>
               <th className="px-3 py-2">賣出日</th>
               <th className="px-3 py-2">股號</th>
@@ -708,7 +702,7 @@ function TradeBehaviorSection({ rows }: { rows: TradeBehaviorRow[] }) {
               const fwd20 = num(r.fwd_20d_pct);
               const fwdMax = num(r.fwd_max20_pct);
               return (
-                <tr key={r.txn_id} className="border-t border-zinc-800">
+                <tr key={r.txn_id} className="border-t border-white/[0.04]">
                   <td className="px-3 py-2 text-zinc-400">{r.sell_date}</td>
                   <td className="px-3 py-2 font-mono">{r.symbol}</td>
                   <td
@@ -727,12 +721,12 @@ function TradeBehaviorSection({ rows }: { rows: TradeBehaviorRow[] }) {
                   <td
                     className={`px-3 py-2 text-right tabular-nums ${pctColor(fwd20)}`}
                   >
-                    {fwd20 != null ? fmtPct(fwd20) : "N/A"}
+                    {fwd20 != null ? fmtPct(fwd20) : "—"}
                   </td>
                   <td
                     className={`px-3 py-2 text-right tabular-nums ${pctColor(fwdMax)}`}
                   >
-                    {fwdMax != null ? fmtPct(fwdMax) : "N/A"}
+                    {fwdMax != null ? fmtPct(fwdMax) : "—"}
                   </td>
                   <td className="px-3 py-2 text-center">
                     <VerdictTag fwd={fwd20} daysAvail={r.fwd_days_available} />
@@ -743,12 +737,6 @@ function TradeBehaviorSection({ rows }: { rows: TradeBehaviorRow[] }) {
           </tbody>
         </table>
       </div>
-      <p className="mt-2 text-xs text-zinc-500">
-        「買點 MA20±」= 開倉日收盤 vs MA20 偏離(&gt;+10% 紅字 = 追高區;🔁 =
-        近 10 日賣過又更高價買回);「續抱20日」= 賣出後第 20 交易日 vs
-        賣出價;「期間最高」= 賣後 20 交易日內最高(完美時機上限)。正 =
-        賣太早、負 = 出場時機佳。N/A = 資料不足。持有天數以開倉日(淨部位歸零後首買)起算。樣本小,僅供自我檢視。
-      </p>
     </section>
   );
 }
@@ -784,13 +772,13 @@ function RealizedSection({ rows }: { rows: RealizedRow[] }) {
         已實現損益歷史 ({rows.length})
       </h2>
       {rows.length === 0 ? (
-        <p className="rounded-lg border border-zinc-800 bg-zinc-900 p-6 text-center text-sm text-zinc-500">
+        <p className="rounded-2xl border border-white/[0.06] bg-zinc-900/60 p-6 text-center text-sm text-zinc-500">
           還沒有賣出紀錄
         </p>
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-zinc-800 bg-zinc-900">
+        <div className="overflow-x-auto rounded-2xl border border-white/[0.06] bg-zinc-900/60">
           <table className="w-full text-sm">
-            <thead className="border-b border-zinc-800 bg-zinc-950 text-left text-xs text-zinc-400">
+            <thead className="border-b border-white/[0.06] text-left text-[11px] uppercase tracking-wider text-zinc-500">
               <tr>
                 <th className="px-3 py-2">賣出日</th>
                 <th className="px-3 py-2">股號</th>
@@ -806,7 +794,7 @@ function RealizedSection({ rows }: { rows: RealizedRow[] }) {
             </thead>
             <tbody>
               {rows.map((r) => (
-                <tr key={r.txn_id} className="border-t border-zinc-800">
+                <tr key={r.txn_id} className="border-t border-white/[0.04]">
                   <td className="px-3 py-2 text-zinc-400">{r.sell_date}</td>
                   <td className="px-3 py-2 font-mono">
                     {r.symbol}
@@ -857,7 +845,7 @@ function RealizedSection({ rows }: { rows: RealizedRow[] }) {
 function TransactionLogSection({ rows }: { rows: Transaction[] }) {
   return (
     <section>
-      <details open className="rounded-lg border border-zinc-800 bg-zinc-900">
+      <details open className="rounded-2xl border border-white/[0.06] bg-zinc-900/60">
         <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-zinc-200">
           全部交易紀錄 ({rows.length})
           <span className="ml-2 text-xs font-normal text-zinc-500">
@@ -869,7 +857,7 @@ function TransactionLogSection({ rows }: { rows: Transaction[] }) {
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="border-y border-zinc-800 bg-zinc-950 text-left text-xs text-zinc-400">
+              <thead className="border-y border-white/[0.06] text-left text-[11px] uppercase tracking-wider text-zinc-500">
                 <tr>
                   <th className="px-3 py-2">日期</th>
                   <th className="px-3 py-2">類型</th>
@@ -884,7 +872,7 @@ function TransactionLogSection({ rows }: { rows: Transaction[] }) {
               </thead>
               <tbody>
                 {rows.map((t) => (
-                  <tr key={t.id} className="border-t border-zinc-800">
+                  <tr key={t.id} className="border-t border-white/[0.04]">
                     <td className="px-3 py-2 text-zinc-400">{t.txn_date}</td>
                     <td className="px-3 py-2">
                       <span
@@ -925,7 +913,7 @@ function TransactionLogSection({ rows }: { rows: Transaction[] }) {
             </table>
           </div>
         )}
-        <p className="border-t border-zinc-800 px-4 py-2 text-xs text-zinc-500">
+        <p className="border-t border-white/[0.04] px-4 py-2 text-xs text-zinc-500">
           顯示最近 200 筆。刪除單筆會影響後續 SELL 的成本計算,謹慎使用。
         </p>
       </details>

@@ -181,8 +181,12 @@ Deno.serve(async (req: Request) => {
   for (const r of universe.data ?? []) {
     symbolToMarket.set(r.symbol, (r.market ?? "twse").toLowerCase());
   }
+  // v6(2026-07-17):universe 外的 symbol(純持股/watchlist)market 未知,舊版預設 'twse'
+  //   → 上櫃持股(6207 案例)被組成無效 channel tse_6207.tw,intraday cache 永遠零筆。
+  //   改標 'unknown' → 下方同時掛 tse_ + otc_ 雙 channel:MIS 對無效 channel 回空殼
+  //   (c 欄空,quoteToRow 安全 skip,2026-07-17 實證),有效那個自然進 cache。
   const addIfMissing = (sym: string) => {
-    if (!symbolToMarket.has(sym)) symbolToMarket.set(sym, "twse");
+    if (!symbolToMarket.has(sym)) symbolToMarket.set(sym, "unknown");
   };
   // B2:持股優先 add(v_holdings_current);fallback view 異常退回舊 holdings 表(零退化)
   if (holdingsCurrent.error) {
@@ -199,11 +203,12 @@ Deno.serve(async (req: Request) => {
     return Response.json({ skipped: "no_target_symbols" });
   }
 
-  // build channels: tse_X.tw or otc_X.tw
+  // build channels: tse_X.tw or otc_X.tw;market unknown → 兩個都掛(無效者回空殼)
   const channels: string[] = [];
   for (const [sym, mkt] of symbolToMarket) {
-    const prefix = mkt === "tpex" || mkt === "otc" ? "otc" : "tse";
-    channels.push(`${prefix}_${sym}.tw`);
+    if (mkt === "tpex" || mkt === "otc") channels.push(`otc_${sym}.tw`);
+    else if (mkt === "unknown") channels.push(`tse_${sym}.tw`, `otc_${sym}.tw`);
+    else channels.push(`tse_${sym}.tw`);
   }
   channels.sort();
 

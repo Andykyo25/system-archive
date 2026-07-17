@@ -83,7 +83,7 @@ export default async function BacktestDetailPage({
 
   return (
     <div className="space-y-6">
-      <header className="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
+      <header className="rounded-2xl border border-white/[0.06] bg-zinc-900/60 p-4">
         <div className="flex items-baseline justify-between">
           <div>
             <Link
@@ -244,7 +244,7 @@ function SummaryCards({ summary }: { summary: BacktestSummary }) {
   return (
     <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
       {cards.map((c) => (
-        <div key={c.label} className="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
+        <div key={c.label} className="rounded-2xl border border-white/[0.06] bg-zinc-900/60 p-4">
           <div className="text-xs text-zinc-400">{c.label}</div>
           <div
             className={`mt-1 text-2xl font-semibold tabular-nums ${c.color ?? ""}`}
@@ -300,7 +300,7 @@ function EquityCurveChart({ summary }: { summary: BacktestSummary }) {
   return (
     <section>
       <h2 className="mb-2 text-lg font-semibold">資產曲線 vs Benchmark</h2>
-      <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
+      <div className="rounded-2xl border border-white/[0.06] bg-zinc-900/60 p-4">
         <svg width="100%" viewBox={`0 0 ${W} ${H}`} className="text-xs">
           {/* y baseline = 1.0 */}
           <line
@@ -415,7 +415,7 @@ function MonthlyPnLChart({ trades }: { trades: BacktestTrade[] }) {
   return (
     <section>
       <h2 className="mb-2 text-lg font-semibold">月度平均報酬</h2>
-      <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
+      <div className="rounded-2xl border border-white/[0.06] bg-zinc-900/60 p-4">
         <svg width="100%" viewBox={`0 0 ${W} ${H}`} className="text-xs">
           <line
             x1={padL}
@@ -512,9 +512,9 @@ function TradesTable({ trades }: { trades: BacktestTrade[] }) {
           {trades.length} 筆,顯示前 200 · benchmark 用灰底
         </span>
       </div>
-      <div className="overflow-x-auto rounded-lg border border-zinc-800 bg-zinc-900">
+      <div className="overflow-x-auto rounded-2xl border border-white/[0.06] bg-zinc-900/60">
         <table className="w-full text-sm">
-          <thead className="border-b border-zinc-800 bg-zinc-950 text-left text-xs text-zinc-400">
+          <thead className="border-b border-white/[0.06] text-left text-[11px] uppercase tracking-wider text-zinc-500">
             <tr>
               <th className="px-3 py-2">股號</th>
               <th className="px-3 py-2 text-right">Rank</th>
@@ -529,7 +529,7 @@ function TradesTable({ trades }: { trades: BacktestTrade[] }) {
             {top.map((t) => (
               <tr
                 key={t.id}
-                className={`border-t border-zinc-800 ${t.is_benchmark ? "bg-zinc-950/60" : ""}`}
+                className={`border-t border-white/[0.04] ${t.is_benchmark ? "bg-zinc-950/60" : ""}`}
               >
                 <td className="px-3 py-2 font-mono">
                   <Link

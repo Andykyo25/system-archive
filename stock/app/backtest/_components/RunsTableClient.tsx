@@ -123,9 +123,9 @@ export function RunsTableClient({ runs }: { runs: BacktestRun[] }) {
           對比選定 ({selected.size}) →
         </button>
       </div>
-      <div className="overflow-x-auto rounded-lg border border-zinc-800 bg-zinc-900">
+      <div className="overflow-x-auto rounded-2xl border border-white/[0.06] bg-zinc-900/60">
         <table className="w-full text-sm">
-          <thead className="border-b border-zinc-800 bg-zinc-950 text-left text-xs text-zinc-400">
+          <thead className="border-b border-white/[0.06] text-left text-[11px] uppercase tracking-wider text-zinc-500">
             <tr>
               <th className="w-10 px-3 py-2 text-center">☐</th>
               <th className="px-3 py-2">名稱</th>
@@ -187,7 +187,7 @@ function RunRow({
     );
   return (
     <tr
-      className={`border-t border-zinc-800 ${checked ? "bg-emerald-950/20" : ""}`}
+      className={`border-t border-white/[0.04] ${checked ? "bg-emerald-950/20" : ""}`}
     >
       <td className="px-3 py-2 text-center">
         {canSelect ? (

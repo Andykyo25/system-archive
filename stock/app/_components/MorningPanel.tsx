@@ -123,7 +123,7 @@ export function MorningPanel({
   const zone = regimeRet != null ? regimeZone(regimeRet) : null;
 
   return (
-    <section className="rounded-lg border border-zinc-800 bg-zinc-900/70 divide-y divide-zinc-800">
+    <section className="rounded-2xl border border-white/[0.06] bg-zinc-900/50 backdrop-blur divide-y divide-white/[0.06]">
       {/* 環境行:regime + 海外 gate */}
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 px-4 py-2.5 text-sm">
         <span className="text-xs font-semibold uppercase tracking-wide text-zinc-500">

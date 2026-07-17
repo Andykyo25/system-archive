@@ -1995,6 +1995,13 @@ Andy 定調「不縮成儀表板,要走在市場前面」(抓真實事件 + 升�
   - ActiveAlertsSection(/holdings:全部 enabled alerts 含非持股遺留,可取消)
 - [x] 3. 驗證 + commit + push(Railway 部署後 Andy 驗視覺,[[L50]];本機無 node/npm,同 6/30 環境)
 
+## 2026-07-17 — 6207 即時修復 + UI 全面改版(Andy 三點指示)
+
+1. [x] **6207 沒即時更新(root cause + fix + 盤中直接驗證)**:fetch-yahoo-intraday 對 universe 外 symbol(純持股)一律預設 `tse_` channel → 上櫃 6207 組成無效 channel,intraday cache 永遠零筆(3236 同型態;歷來持股全上市所以沒踩過)。v6:unknown market → tse_+otc_ 雙 channel(MIS 對無效 channel 回空殼,實證安全)。**盤中驗證:6207 已進 cache(139.25 五檔中價)每分鐘更新,realtime view 即時了** ✓
+2. [x] **UI 全面改版**:設計語言統一 — 卡片 rounded-2xl + border-white/[0.06] + bg-zinc-900/60、表頭 uppercase tracking-wider、row 分隔 white/[0.04]、輸入/按鈕 rounded-xl、Sidebar 簡化(gradient logo + pill active + 移除副標/底部說明 + 補「績效」入口)、TopBar 去裝飾、globals 柔和漸層底 + 細滾動條、layout max-w-6xl。核心用 sed 精準替換字面 class(43+ 處卡片、8 表頭、21 row border 等),L24 合規全字面
+3. [x] **備註清理 + 交易行為判定顯示**:刪 dashboard 持股表長註/持有中註/新增買入註/交易行為長註/rank 權重長註/K線註/動態建議註/持股情報 footer/Sidebar footer/TopBar 假狀態燈(重要語意保留在 th/chip tooltip);交易行為「判定」未滿 20 日改顯示 **N/20 日 pill**(原本 —/N/A 看起來像壞掉,實際是 6/23 賣的才 16 日、7/13 的 3 日 = 未滿期正常),N/A → —
+- 驗證:grep 老樣式歸零;build 交 Railway([[L50]])
+
 ## 2026-07-11 — 晨間情報改版(Andy 四點指示)
 
 1. [x] 取消早上 TG 推播(cron `telegram-holdings-advice-preopen` 08:55),保留盤後(13:35)

@@ -133,7 +133,7 @@ export default async function StockDetailPage({
         </Link>
       </div>
 
-      <header className="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
+      <header className="rounded-2xl border border-white/[0.06] bg-zinc-900/60 p-4">
         <div className="flex items-baseline gap-3">
           <h1 className="font-mono text-2xl font-semibold">{symbol}</h1>
           <span className="text-lg text-zinc-300">{meta.name ?? "—"}</span>
@@ -186,12 +186,9 @@ export default async function StockDetailPage({
 
       <section>
         <h2 className="mb-3 text-lg font-semibold">K 線(過去 ~90 天)</h2>
-        <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-2">
+        <div className="rounded-xl border border-white/[0.06] bg-zinc-950/60 p-2">
           <KLineChart data={ohlcv} />
         </div>
-        <p className="mt-2 text-xs text-zinc-500">
-          紅 K = 漲(台股慣例)· 底下副圖為成交量 · {rows.length} 筆資料
-        </p>
       </section>
 
       <FactorSection
@@ -255,7 +252,7 @@ function FactorSection({
     return (
       <section>
         <h2 className="mb-3 text-lg font-semibold">因子分析</h2>
-        <p className="rounded-lg border border-zinc-800 bg-zinc-900 p-4 text-sm text-zinc-500">
+        <p className="rounded-2xl border border-white/[0.06] bg-zinc-900/60 p-4 text-sm text-zinc-500">
           尚未產生因子資料(可能 universe 還沒包含此股,或資料量不足 60 個交易日)
         </p>
       </section>
@@ -291,7 +288,7 @@ function FactorSection({
         </div>
       </div>
 
-      <div className="grid gap-4 rounded-lg border border-zinc-800 bg-zinc-900 p-4 md:grid-cols-2">
+      <div className="grid gap-4 rounded-2xl border border-white/[0.06] bg-zinc-900/60 p-4 md:grid-cols-2">
         <div>
           <FactorRadar axes={axes} size={320} />
         </div>
@@ -404,7 +401,7 @@ function DimRow({
 
 function FactorList({ axes }: { axes: FactorAxis[] }) {
   return (
-    <details className="rounded border border-zinc-800 bg-zinc-950 p-2 text-xs">
+    <details className="rounded border border-white/[0.06] bg-zinc-950/80 p-2 text-xs">
       <summary className="cursor-pointer text-zinc-400">逐項因子狀態</summary>
       <ul className="mt-2 grid grid-cols-2 gap-1">
         {axes.map((a) => (
@@ -445,13 +442,13 @@ function NewsSection({ rows }: { rows: NewsRow[] }) {
     <section>
       <h2 className="mb-3 text-lg font-semibold">即時新聞(Google News,每 6 小時更新)</h2>
       {rows.length === 0 ? (
-        <p className="rounded-lg border border-zinc-800 bg-zinc-900 p-4 text-sm text-zinc-500">
+        <p className="rounded-2xl border border-white/[0.06] bg-zinc-900/60 p-4 text-sm text-zinc-500">
           尚無新聞,等下次 cron(UTC 0/6/12/18 = Taipei 8/14/20/02)抓回。
         </p>
       ) : (
         <ul className="space-y-2">
           {rows.map((n, i) => (
-            <li key={i} className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2">
+            <li key={i} className="rounded-2xl border border-white/[0.06] bg-zinc-900/60 px-3 py-2">
               <a
                 href={n.url}
                 target="_blank"

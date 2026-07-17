@@ -7,7 +7,7 @@
 export function SkeletonBlock({ className = "" }: { className?: string }) {
   return (
     <div
-      className={`animate-pulse rounded-lg bg-zinc-800/60 ${className}`}
+      className={`animate-pulse rounded-2xl bg-white/[0.05] ${className}`}
     />
   );
 }

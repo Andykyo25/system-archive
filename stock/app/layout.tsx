@@ -15,12 +15,14 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="zh-TW" className="h-full antialiased">
-      <body className="min-h-full bg-zinc-950 text-zinc-100">
+      <body className="min-h-full text-zinc-100">
         <div className="flex min-h-screen">
           <Sidebar />
           <div className="flex min-w-0 flex-1 flex-col">
             <TopBar />
-            <main className="flex-1 px-4 py-6 md:px-8">{children}</main>
+            <main className="flex-1 px-4 py-6 md:px-8">
+              <div className="mx-auto w-full max-w-6xl">{children}</div>
+            </main>
           </div>
         </div>
       </body>

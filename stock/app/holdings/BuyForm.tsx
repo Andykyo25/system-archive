@@ -15,9 +15,9 @@ import { concentrationClass, EVENT_LABEL, fmtMoney } from "../_components/Format
 // 但沒出現在下單記錄路徑上。
 
 const inputCls =
-  "rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-500 focus:border-blue-500 focus:outline-none";
+  "rounded-xl border border-white/10 bg-zinc-950/80 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-500 focus:border-blue-500 focus:outline-none";
 const btnCls =
-  "rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700";
+  "rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700";
 
 export function BuyForm() {
   const [ctx, setCtx] = useState<BuyContext | null>(null);
@@ -194,7 +194,7 @@ function SizingBox({ z }: { z: BuySizing }) {
     lotValuePct != null ? ((z.existingValue + (z.lotValue ?? 0)) / z.capital) * 100 : null;
   const overBudget = z.suggestedLots === 0;
   return (
-    <div className="rounded border border-zinc-700/60 bg-zinc-900/60 px-3 py-2 text-xs leading-relaxed text-zinc-300">
+    <div className="rounded border border-white/[0.08] bg-zinc-900/60 px-3 py-2 text-xs leading-relaxed text-zinc-300">
       <p>
         📐 <b>部位管理</b>:ATR14 {z.atr14.toFixed(1)}({z.atrPct.toFixed(1)}%)
         · 停損距 {z.kMultiple}×ATR = {z.stopDistance.toFixed(1)} · 風險預算{" "}

@@ -151,12 +151,7 @@ export function HoldingsIntelWidget({
 
   return (
     <section>
-      <div className="mb-2 flex items-baseline justify-between">
-        <h2 className="text-lg font-semibold">晨間持股情報</h2>
-        <span className="text-xs text-zinc-500">
-          美股 = 隔夜收盤 · 韓股 = 盤中快照 · 新聞連結開新分頁
-        </span>
-      </div>
+      <h2 className="mb-2 text-lg font-semibold">晨間持股情報</h2>
       <div className="space-y-3">
         {holdings.map((h) => {
           const intel =
@@ -195,7 +190,7 @@ export function HoldingsIntelWidget({
           return (
             <div
               key={h.symbol}
-              className="rounded-lg border border-zinc-800 bg-zinc-900 px-4 py-3"
+              className="rounded-2xl border border-white/[0.06] bg-zinc-900/60 px-4 py-3"
             >
               <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
                 <span className="font-mono text-blue-400">{h.symbol}</span>
@@ -286,12 +281,6 @@ export function HoldingsIntelWidget({
           );
         })}
       </div>
-      <p className="mt-2 text-xs text-zinc-500">
-        判讀與「今日建議」為純規則彙總(同業漲跌家數 + 標題關鍵字計分 + 紀律價位;新聞
-        chip hover 可看命中詞),**非語意理解、非投資指令**。僅「記憶體→美光」等已驗證領先源觸發
-        ⛔ gate,韓股為資訊性對照未經 lead-lag 驗證。台灣新聞每 6 小時、國際新聞每日 07:50
-        更新,進來後下次刷新即反映。
-      </p>
     </section>
   );
 }
