@@ -2006,6 +2006,10 @@ Andy 定調「不縮成儀表板,要走在市場前面」(抓真實事件 + 升�
 - 前向驗證:snapshot 累積 20-30 個交易日後算 fwd 5/10/20 日報酬 vs benchmark,有統計才拿掉「驗證中」標(誠實條款;Andy 實戰數據顯示回檔買也會接刀 — 2344 dev −6.5 敗 −10.6%)
 - 可調 knob(未動,Andy 說要再調):雷達三榜 Top30→Top50、cap 50→80(scan_hot_stocks 參數,token2 quota 裝得下)
 
+**v2(2026-07-17,Andy 回饋「有些沒名稱 + 我玩短線,60日OK嗎」)**:
+- 股名根治:`stock_names` 表(1,981 檔 = TWSE t187ap03_L 1,090 + TPEX mopsfin_t187ap03_O 891,零 quota)+ EF fetch-stock-names(週日 cron)+ swing view coalesce + dashboard getCachedNames 加 fallback 源 — 動態熱股全 UI 有名(富鼎/臻鼎-KY/景碩/旺矽/雷科)
+- 60 日答案(數據驗證):60 日門檻保留(定義波段存在),**加 `ret_20d_pct > 0` 濾網** — 實證 8 筆勝單 ret20d_at_buy 全正(+3.7~+50.2),唯一 20 日轉負買入 = 2344 深接刀敗(−4.5 → −10.6%);排序改(hot, ret_20d desc)= 進行式優先。16 檔 → 10 檔(力成/國泰金/華碩/技嘉/晶豪科/臻鼎熄火剔除)
+
 ## 2026-07-17 — 規畫③:ATR 出場回測(Andy「ATR出場回測」,獨立實驗 session)
 
 > 前提盤點:run-backtest EF v7 **已內建** stop_loss_pct(M9.4b 證偽)/ stop_atr_mult(A:進場日 ATR14 固定距離)/ stop_chandelier_mult(B:trailing,runHigh−k×ATR_t),三互斥、0=關閉=[[L39]] 錨點內建 → 本輪零 code 零 deploy,純實驗。

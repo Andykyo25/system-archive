@@ -193,10 +193,11 @@ const getCachedNames = unstable_cache(
     industryMap: Record<string, string | null>;
   }> => {
     const sb = createClient();
-    const [is, su, em] = await Promise.all([
+    const [is, su, em, sn] = await Promise.all([
       sb.from("industry_stocks").select("symbol, name, industry"),
       sb.from("stock_universe").select("symbol, name"),
       sb.from("etf_metadata").select("symbol, name"),
+      sb.from("stock_names").select("symbol, name"),
     ]);
     const nameMap: Record<string, string | null> = {};
     const industryMap: Record<string, string | null> = {};
@@ -211,6 +212,10 @@ const getCachedNames = unstable_cache(
       | null) ?? []) {
       if (!nameMap[r.symbol] && r.name) nameMap[r.symbol] = r.name;
       if (r.industry) industryMap[r.symbol] = r.industry;
+    }
+    // 全市場股名 fallback(stock_names,週更;動態熱股/池外持股靠這層)
+    for (const r of (sn.data as { symbol: string; name: string | null }[] | null) ?? []) {
+      if (!nameMap[r.symbol] && r.name) nameMap[r.symbol] = r.name;
     }
     return { nameMap, industryMap };
   },
