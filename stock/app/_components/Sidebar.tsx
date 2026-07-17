@@ -8,6 +8,7 @@ import { usePathname } from "next/navigation";
 const navItems = [
   { href: "/", label: "Dashboard", icon: "📊" },
   { href: "/holdings", label: "持股", icon: "💼" },
+  { href: "/swing", label: "波段", icon: "🌊" },
   { href: "/rank", label: "排名", icon: "⭐" },
   { href: "/performance", label: "績效", icon: "📈" },
   { href: "/backtest", label: "Backtest", icon: "🧪" },

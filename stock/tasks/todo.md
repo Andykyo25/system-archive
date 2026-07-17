@@ -1995,6 +1995,17 @@ Andy 定調「不縮成儀表板,要走在市場前面」(抓真實事件 + 升�
   - ActiveAlertsSection(/holdings:全部 enabled alerts 含非持股遺留,可取消)
 - [x] 3. 驗證 + commit + push(Railway 部署後 Andy 驗視覺,[[L50]];本機無 node/npm,同 6/30 環境)
 
+## 2026-07-17 — 波段掃描(Andy「排行對短線效益低」→ 拍板做獨立波段視圖)
+
+**背景實證**:排名 20d IC(B3)fund −0.020 / rev −0.082 / mom +0.125 = 質篩排名天生非短線工具;正在噴的波段股被埋在 #75~#103(2408/聯電)。改排名的路已全關(B2/B3/L52),解法 = 獨立呈現層視圖,不動排名。
+**覆蓋確認(Andy 問)**:三層 — 全市場價格雷達 1,984 檔(7/03 起,90 交易日滾動)/ 深度分析 179 檔(148 seed + 10 產業 106 檔 + 持股 + 動態熱股 17/cap50)/ 每日全市場三榜(成交值/漲幅/新高帶量 Top30)自動晉升+backfill。池外股 60 日動能 ~9 月底才齊 → 掃描跑 focus∪dynamic,靠雷達晉升達成全市場等效覆蓋(T+1 時滯)。
+
+- [x] migration `20260717000001_swing_scan`:v_swing_scan(pullback + ret_60d>20 + close>MA60;ATR14 lateral;hot 標記)+ swing_scan_snapshot 表 + 每交易日 21:00 Taipei snapshot cron(純 SQL 零 EF)
+- [x] /swing 頁 + Sidebar「波段 🌊」:regime 燈 header + 誠實 banner(候選產生器非買訊,前向驗證中起算 2026-07-17)+ 表(現價/60日/20日/距MA20[<-5% 接刀 ⚠]/離高/量比/RSI/ATR%/綜合#/事件 📅)
+- [x] 首掃 15 檔:熱股 8261(+121% 回 MA20 −1.6%,#2)/4958/3189/6223 置頂;2408/聯電/晶豪科等
+- 前向驗證:snapshot 累積 20-30 個交易日後算 fwd 5/10/20 日報酬 vs benchmark,有統計才拿掉「驗證中」標(誠實條款;Andy 實戰數據顯示回檔買也會接刀 — 2344 dev −6.5 敗 −10.6%)
+- 可調 knob(未動,Andy 說要再調):雷達三榜 Top30→Top50、cap 50→80(scan_hot_stocks 參數,token2 quota 裝得下)
+
 ## 2026-07-17 — 規畫③:ATR 出場回測(Andy「ATR出場回測」,獨立實驗 session)
 
 > 前提盤點:run-backtest EF v7 **已內建** stop_loss_pct(M9.4b 證偽)/ stop_atr_mult(A:進場日 ATR14 固定距離)/ stop_chandelier_mult(B:trailing,runHigh−k×ATR_t),三互斥、0=關閉=[[L39]] 錨點內建 → 本輪零 code 零 deploy,純實驗。
