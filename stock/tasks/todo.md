@@ -1995,6 +1995,30 @@ Andy 定調「不縮成儀表板,要走在市場前面」(抓真實事件 + 升�
   - ActiveAlertsSection(/holdings:全部 enabled alerts 含非持股遺留,可取消)
 - [x] 3. 驗證 + commit + push(Railway 部署後 Andy 驗視覺,[[L50]];本機無 node/npm,同 6/30 環境)
 
+## 2026-07-17 — 規畫③:ATR 出場回測(Andy「ATR出場回測」,獨立實驗 session)
+
+> 前提盤點:run-backtest EF v7 **已內建** stop_loss_pct(M9.4b 證偽)/ stop_atr_mult(A:進場日 ATR14 固定距離)/ stop_chandelier_mult(B:trailing,runHigh−k×ATR_t),三互斥、0=關閉=[[L39]] 錨點內建 → 本輪零 code 零 deploy,純實驗。
+> 基準(B3-base,3yr 2023-2025 連續,nextopen/dynamic_etf_diff/immediate,vs 0050):t5 alpha −81.0 / MDD 38.28 / sharpe 0.85;t10 −58.22 / 28.68 / 1.10。
+> **成功標準(先寫死,[[L36]])**:① t5+t10 alpha 皆不比 base 惡化 >3pp ② MDD 改善 ≥5pp 或 sharpe +≥0.05 至少一項(停損存在理由=風控)③ t5/t10 不得劇烈反向(>10pp)。預設假設:會敗(M9.4b whipsaw 前例)。
+
+- [x] 1. 錨點迴歸:EXIT3-anchor-t5/t10(stop 全 0)vs B3-base — **非 byte-exact,診斷後判定安全**:結構全同(bench 155.43 / 36 期 / 177 筆交易一致),差異=7 月除權息季 3 批 corporate_action(7/01、7/04、7/11)更新還原價 = 資料底床誠實演進非引擎漂移([[L39]] 誠實化不是 rollback 對象)。**實驗基準改用同底床 EXIT3-anchor**:t5 ret 74.71/α−80.72/MDD 40.21/sharpe 0.856;t10 ret 112.52/α−42.91/MDD 25.66/sharpe 1.232
+- [x] 2. 實驗矩陣(6 runs,全 finished):
+  | run | ret | α | Δα | MDD | ΔMDD | sharpe | 觸發 |
+  |---|---|---|---|---|---|---|---|
+  | chand3-t5 | 45.27 | −110.16 | **−29.4** ❌ | 25.31 | −14.9 | 0.775 | 118/177 |
+  | chand3-t10 | 83.37 | −72.06 | **−29.2** ❌ | 10.88 | −14.8 | 1.299 | 229/351 |
+  | chand2-t5 | 32.72 | −122.71 | **−42.0** ❌ | 12.62 | −27.6 | 0.740 | 163 |
+  | chand2-t10 | 41.67 | −113.77 | **−70.9** ❌ | 7.02 | −18.6 | 1.044 | 327 |
+  | atr2-t5 | 60.47 | −94.97 | **−14.3** ❌ | 32.69 | −7.5 | 0.831 | 77 |
+  | atr2-t10 | 104.80 | −50.64 | **−7.7** ❌ | 14.77 | −10.9 | **1.348** ✓ | 143 |
+- [x] 3. **判定:六格全數未過閘(標準① alpha 惡化 >3pp 全中),ATR 出場不採用,線上零改動**。runs 留痕 backtest_runs(EXIT3-* ×8,[[L36]] 審計)
+
+**Review(2026-07-17,③結案)**:
+- 機制(與 M9.4b fixed-10%、E 等回 MA20 三案合看):策略報酬集中於少數大贏家長波段(top5 尤甚),高波動動能股「正常回撤」本來就是 2-3×ATR 級,任何持有期內會被正常回撤觸發的停損都在誤殺大贏家;且停損後無 re-entry,現金閒置到下次 rebalance 錯過反彈。**ATR 正規化(L43 的形式化升級)沒有改變這個結構** — 三種「聰明出入場」全敗一致指向:20 日輪動 + 動能選股之下,最好的出場就是下次 rebalance 本身
+- 停損的功能面誠實記錄:MDD 全格大幅改善(它有做到風控),**atr2-t10 sharpe 1.348 > anchor 1.232 且 MDD 14.8 vs 25.7** — 若目標函數是風險調整報酬而非絕對 alpha,「ATR-static k=2 + top10」是已知可選配置(留檔備查,不上線不改預設)
+- 本輪零 code 零 deploy(引擎 v7 早已內建三模式,0=關閉);git 只進知識(todo+lessons),[[L36]] 理想型
+- 新 lesson L52(出場優化的結構性前提)
+
 ## 2026-07-17 — 6207 即時修復 + UI 全面改版(Andy 三點指示)
 
 1. [x] **6207 沒即時更新(root cause + fix + 盤中直接驗證)**:fetch-yahoo-intraday 對 universe 外 symbol(純持股)一律預設 `tse_` channel → 上櫃 6207 組成無效 channel,intraday cache 永遠零筆(3236 同型態;歷來持股全上市所以沒踩過)。v6:unknown market → tse_+otc_ 雙 channel(MIS 對無效 channel 回空殼,實證安全)。**盤中驗證:6207 已進 cache(139.25 五檔中價)每分鐘更新,realtime view 即時了** ✓
