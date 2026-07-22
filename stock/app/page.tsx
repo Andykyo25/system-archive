@@ -13,6 +13,10 @@ import {
   type PerfSummary,
 } from "./_components/PerformanceWidget";
 import {
+  DataHealthWidget,
+  type HealthSummaryRow,
+} from "./_components/DataHealthWidget";
+import {
   MorningPanel,
   type MorningHolding,
   type MorningSignalPick,
@@ -311,6 +315,25 @@ const getCachedRegime = unstable_cache(
   { revalidate: 3600 },
 );
 
+// 資料健康(2026-07-22):只取非 ok 的檢查項 + 總數,widget 判斷要不要出聲。
+// 動機 L42/L46/L55 —— 沉默 drift 已三次靠 Andy 肉眼發現,要讓它主動跳出來。
+// fetch_log 只在 cron 跑完才變,300s 快取足夠且不增加 dashboard 連線壓力。
+const getCachedHealth = unstable_cache(
+  async (): Promise<{ bad: HealthSummaryRow[]; total: number }> => {
+    const sb = createClient();
+    const { data } = await sb
+      .from("v_data_health")
+      .select("category, key, label, level, metric_text, detail");
+    const rows = (data as HealthSummaryRow[] | null) ?? [];
+    return {
+      bad: rows.filter((r) => r.level !== "ok"),
+      total: rows.length,
+    };
+  },
+  ["dashboard:data-health"],
+  { revalidate: 300 },
+);
+
 export default async function Dashboard() {
   const sb = createClient();
   // 即時查詢:報價 / 損益 / 持股,每次 render 要最新,不快取
@@ -354,11 +377,12 @@ export default async function Dashboard() {
 
   // 慢變查詢走快取(進場訊號 / 排名 / 名稱對照),高頻 render 命中快取不打 DB,
   // 大幅降低連線並發(根因緩解 dashboard 高頻 PostgREST 連線池 timeout)
-  const [signalRows, names, overseasRows, regimeRet] = await Promise.all([
+  const [signalRows, names, overseasRows, regimeRet, health] = await Promise.all([
     getCachedEntrySignals(),
     getCachedNames(),
     getCachedOverseas(),
     getCachedRegime(),
+    getCachedHealth(),
   ]);
   const { nameMap, industryMap } = names;
 
@@ -483,6 +507,9 @@ export default async function Dashboard() {
 
   return (
     <div className="space-y-6">
+      {/* 資料健康放最上面:若資料 stale,下面的持股燈/regime/海外領先全是過期的,
+          健康狀態是所有分析的前提。全綠時只是一行淡字,異常才會變紅框擋住視線。 */}
+      <DataHealthWidget rows={health.bad} total={health.total} />
       <MorningPanel
         regimeRet={regimeRet}
         overseasRows={overseasRows}

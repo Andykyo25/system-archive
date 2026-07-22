@@ -2174,3 +2174,21 @@ GitHub 報 6 個(4 high)。`npm audit fix` 修 3 個(@babel/core 任意檔案讀
 **遺留技術債**:
 - [ ] 其餘 **18 個 EF 同款 `String(e)` 序列化**(22 處 `throw error`)— 它們至今未觸發過,但一旦 DB 寫入失敗就會是瞎的日誌。宜統一抽 `_shared/errMsg.ts`
 - [ ] quota 目前是**手動分配**不是自動 failover。若 token_2 也吃緊,正解是 `pick_finmind_quota()` RPC 讓 EF 自動選有餘額的 token
+
+---
+
+## Part 2 — Phase C-1:資料健康儀表板(2026-07-22)
+
+> 讓 L42/L46/L55 那類「系統看起來在跑、實際停止收料」的沉默失敗變成看得見的東西,不用再靠 Andy 肉眼發現。
+
+- [x] migration `20260722000002_v_data_health.sql`:單一事實來源 view,統一「檢查項目」長格式(category/key/label/level/metric_num/metric_text/detail/last_at/sort_group),前端只讀不自組 SQL
+  - **source**:近 7 天各 EF runs/ok/fail + 最後成功時間 + 最後錯誤。`danger`=最近一次就失敗(現在正壞著)/`warn`=期間曾失敗但已恢復(間歇)
+  - **freshness**:9 張關鍵表最新資料日。**基準用 `price_daily` 的 max(trade_date) 而非 current_date** → 自動排除週末/國定假日,不會週一早上整排假警報。門檻依更新頻率分級(日更嚴 2-6 天 / 週更 12-20 / 月季更 70-250)
+  - **quota**:今日各 token used/budget,≥75% warn、≥95% danger
+- [x] `app/health/page.tsx`:整體狀態 3 卡 + 三區表格(資料源/新鮮度/配額),壞的排前面;底部列「已知且刻意不修」(tpex 間歇 L06、telegram stale 是正確防護、6213 FinMind 400)
+- [x] `app/_components/DataHealthWidget.tsx`:**平時不吵,有問題擋不住** — 全綠一行淡字、有異常轉紅/黃框列前 3 項 + 連 /health
+- [x] 掛在 dashboard **最上面(MorningPanel 之前)**:若資料 stale,下面的持股燈/regime/海外領先全是過期的,健康狀態是所有分析的前提
+- [x] `Sidebar` 系統組加「資料健康」(lucide `Activity`);`health/loading.tsx` skeleton
+- [x] `unstable_cache` 300s(fetch_log 只在 cron 跑完才變,不增加 dashboard 連線壓力)
+- [x] 驗證:view 實跑 —— freshness **9/9 全綠**(margin 剛修好)、quota 2/2 綠、source 5 danger + 3 warn(正確反映現況);`npm run build` 清 .next 後全綠,`/health` 路由生成,12 條路由
+- [ ] Andy 視覺驗收

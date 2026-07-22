@@ -9,6 +9,7 @@ import {
   Waves,
   Star,
   FlaskConical,
+  Activity,
   Settings,
   type LucideIcon,
 } from "lucide-react";
@@ -43,7 +44,10 @@ const navGroups: { label: string; items: NavItem[] }[] = [
   },
   {
     label: "系統",
-    items: [{ href: "/settings", label: "設定", icon: Settings }],
+    items: [
+      { href: "/health", label: "資料健康", icon: Activity },
+      { href: "/settings", label: "設定", icon: Settings },
+    ],
   },
 ];
 
