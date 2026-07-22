@@ -1,4 +1,9 @@
 import { TableShell, THead } from "@/app/_components/ui";
+import {
+  MomentumBoard,
+  type HeatRow,
+  type MomentumRow,
+} from "./_components/MomentumBoard";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { fmtMoney, fmtPct, pctColor } from "@/app/_components/Format";
@@ -89,6 +94,28 @@ function avgOrNull(xs: (number | null)[]): number | null {
 }
 
 // 構造 /rank URL,保留兩個 toggle state(防止互相覆蓋)
+// 兩個榜的切換(2026-07-22)。多因子排名 = 基本面 40% 主導;短線動能 = 純價格。
+// 刻意做成並列而非合併:兩把尺的假設不同,合併會讓「為什麼漲很多卻排後面」更難解釋。
+function BoardTabs({ board }: { board: "rank" | "momentum" }) {
+  const base =
+    "rounded-xl px-3 py-1.5 text-sm transition-colors";
+  const on = "bg-accent/10 font-medium text-blue-300 ring-1 ring-inset ring-accent/20";
+  const off = "text-zinc-400 hover:bg-surface-2 hover:text-zinc-100";
+  return (
+    <nav className="flex gap-1" aria-label="排名視角">
+      <Link href="/rank" className={`${base} ${board === "rank" ? on : off}`}>
+        多因子排名
+      </Link>
+      <Link
+        href="/rank?board=momentum"
+        className={`${base} ${board === "momentum" ? on : off}`}
+      >
+        短線動能
+      </Link>
+    </nav>
+  );
+}
+
 function buildRankHref(opts: { ignoreBudget?: boolean; focus?: number }): string {
   const qs: string[] = [];
   if (opts.ignoreBudget) qs.push("ignore_budget=1");
@@ -105,6 +132,55 @@ export default async function RankPage({
 }) {
   const sb = createClient();
   const sp = await searchParams;
+
+  // ?board=momentum → 短線動能榜。早期分流:不跑下面那批重查詢(v_rank_with_cost 等)
+  if (sp.board === "momentum") {
+    const [heatRes, momRes] = await Promise.all([
+      sb.from("v_industry_heat").select("*").order("avg_ret_20d", { ascending: false }),
+      sb
+        .from("v_stock_rank")
+        .select(
+          "symbol, ret_5d_pct, ret_20d_pct, ret_60d_pct, rsi14, off_high_60d_pct, expected_rank, latest_close",
+        )
+        .not("ret_20d_pct", "is", null)
+        .order("ret_20d_pct", { ascending: false })
+        .limit(40),
+    ]);
+    const heat = (heatRes.data as HeatRow[] | null) ?? [];
+    const momRaw =
+      (momRes.data as Omit<MomentumRow, "name" | "industry">[] | null) ?? [];
+
+    // 名稱 / 題材對照(分開查:v_stock_rank 沒有這兩欄)
+    const syms = momRaw.map((r) => r.symbol);
+    const [namesRes, indRes] = await Promise.all([
+      sb.from("stock_names").select("symbol, name").in("symbol", syms),
+      sb.from("industry_stocks").select("symbol, industry").in("symbol", syms),
+    ]);
+    const nameMap = new Map(
+      ((namesRes.data as { symbol: string; name: string | null }[] | null) ?? []).map(
+        (r) => [r.symbol, r.name],
+      ),
+    );
+    const indMap = new Map(
+      ((indRes.data as { symbol: string; industry: string }[] | null) ?? []).map((r) => [
+        r.symbol,
+        r.industry,
+      ]),
+    );
+    const momRows: MomentumRow[] = momRaw.map((r) => ({
+      ...r,
+      name: nameMap.get(r.symbol) ?? null,
+      industry: indMap.get(r.symbol) ?? null,
+    }));
+
+    return (
+      <div className="space-y-4">
+        <BoardTabs board="momentum" />
+        <MomentumBoard heat={heat} rows={momRows} />
+      </div>
+    );
+  }
+
   // ?ignore_budget=1 → 不套用預算 filter(一鍵切「不考慮資產」)
   const ignoreBudget = sp.ignore_budget === "1";
 
@@ -339,7 +415,9 @@ export default async function RankPage({
   const hasFwd = paperPicks.length > 0;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
+      <BoardTabs board="rank" />
+      <div className="space-y-6">
       <header className="rounded-2xl border border-line bg-surface-1 p-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
@@ -404,6 +482,7 @@ export default async function RankPage({
       )}
 
       <Legend />
+      </div>
     </div>
   );
 }
