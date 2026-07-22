@@ -4,8 +4,45 @@ import { KLineChart, type OHLCV } from "@/app/_components/KLineChart";
 import { fmtPct, pctColor } from "@/app/_components/Format";
 import { PriceCell } from "@/app/_components/PriceCell";
 import { FactorRadar, type FactorAxis } from "@/app/_components/FactorRadar";
+import {
+  Sparkline,
+  SparkBars,
+  ValuationBar,
+  type ChipPoint,
+} from "@/app/_components/ChipSparkline";
 
 export const dynamic = "force-dynamic";
+
+interface ChipSeriesRow {
+  series_key: string;
+  as_of: string;
+  value: number | string;
+}
+
+interface ValuationRow {
+  as_of: string | null;
+  pe_now: number | string | null;
+  pb_now: number | string | null;
+  dividend_yield: number | string | null;
+  pe_p20: number | string | null;
+  pe_p50: number | string | null;
+  pe_p80: number | string | null;
+  pe_n: number | null;
+  pe_since: string | null;
+  pe_pctile: number | string | null;
+  pb_p20: number | string | null;
+  pb_p50: number | string | null;
+  pb_p80: number | string | null;
+  pb_n: number | null;
+  pb_since: string | null;
+  pb_pctile: number | string | null;
+}
+
+function num(v: number | string | null | undefined): number | null {
+  if (v == null) return null;
+  const x = Number(v);
+  return Number.isFinite(x) ? x : null;
+}
 
 interface PriceRow {
   symbol: string;
@@ -47,6 +84,8 @@ export default async function StockDetailPage({
     { data: factorRow },
     { data: entryRow },
     { data: latestPriceRow },
+    { data: chipRows },
+    { data: valuationRow },
   ] = await Promise.all([
     sb
       .from("price_daily")
@@ -84,6 +123,18 @@ export default async function StockDetailPage({
     sb
       .from("v_latest_price_realtime")
       .select("current_price, as_of_ts, trade_date, source, is_provisional")
+      .eq("symbol", symbol)
+      .maybeSingle(),
+    // 籌碼時序(近 120 天長格式,前端分組畫 sparkline)
+    sb
+      .from("v_symbol_chip_series")
+      .select("series_key, as_of, value")
+      .eq("symbol", symbol)
+      .order("as_of", { ascending: true }),
+    // 估值分位帶(樣本量以 pe_n/pe_since 為準,UI 需誠實標註)
+    sb
+      .from("v_symbol_valuation_band")
+      .select("*")
       .eq("symbol", symbol)
       .maybeSingle(),
   ]);
@@ -190,6 +241,10 @@ export default async function StockDetailPage({
           <KLineChart data={ohlcv} />
         </div>
       </section>
+
+      <ChipSection rows={(chipRows as ChipSeriesRow[] | null) ?? []} />
+
+      <ValuationSection row={valuationRow as ValuationRow | null} />
 
       <FactorSection
         rank={factorRow as FactorRankRow | null}
@@ -479,6 +534,250 @@ function Stat({ label, value }: { label: string; value: React.ReactNode }) {
     <div>
       <div className="text-xs text-zinc-500">{label}</div>
       <div className="mt-0.5 text-base tabular-nums">{value}</div>
+    </div>
+  );
+}
+
+// ── 籌碼時序(2026-07-22)──────────────────────────────────────────
+// 動機:籌碼 4 表原本只被壓成 v_chip_factors 的布林燈號(過/不過),
+//   看不到「往哪個方向走、走多久了」。這裡把原始時序攤開。
+// 單位處理:法人淨買賣 FinMind 給的是股數 → /1000 換算成張(台股慣用);
+//   融資餘額 FinMind 定義即為張;借券量單位不明確故不標單位(寧可不標也不標錯)。
+const CHIP_META: Record<
+  string,
+  { label: string; hint: string; kind: "bars" | "line"; stroke: string; unit: string; divide: number }
+> = {
+  inst_net: {
+    label: "三大法人淨買賣",
+    hint: "紅=買超 綠=賣超",
+    kind: "bars",
+    stroke: "#f87171",
+    unit: " 張",
+    divide: 1000,
+  },
+  margin_balance: {
+    label: "融資餘額",
+    hint: "升=散戶加槓桿",
+    kind: "line",
+    stroke: "#fbbf24",
+    unit: " 張",
+    divide: 1,
+  },
+  lending_volume: {
+    label: "借券賣出量",
+    hint: "升=空方增溫",
+    kind: "line",
+    stroke: "#a78bfa",
+    unit: "",
+    divide: 1,
+  },
+  foreign_ratio: {
+    label: "外資持股比",
+    hint: "週更",
+    kind: "line",
+    stroke: "#60a5fa",
+    unit: "%",
+    divide: 1,
+  },
+};
+
+const CHIP_ORDER = ["inst_net", "margin_balance", "lending_volume", "foreign_ratio"];
+
+function ChipSection({ rows }: { rows: ChipSeriesRow[] }) {
+  const grouped: Record<string, ChipPoint[]> = {};
+  for (const r of rows) {
+    const v = num(r.value);
+    if (v == null) continue;
+    (grouped[r.series_key] ??= []).push({ as_of: r.as_of, value: v });
+  }
+
+  const available = CHIP_ORDER.filter((k) => (grouped[k]?.length ?? 0) >= 2);
+  if (available.length === 0) {
+    return (
+      <section>
+        <h2 className="mb-3 text-lg font-semibold">籌碼動向</h2>
+        <p className="rounded-2xl border border-line bg-surface-1 p-6 text-center text-sm text-zinc-500">
+          此標的近 120 天無籌碼資料（ETF 與部分上櫃股不在收料範圍）
+        </p>
+      </section>
+    );
+  }
+
+  return (
+    <section>
+      <h2 className="mb-1 text-lg font-semibold">籌碼動向</h2>
+      <p className="mb-3 text-xs text-zinc-500">
+        近 120 天走勢。這是<span className="text-zinc-400">資訊呈現</span>
+        ，不是買賣訊號——籌碼指標對個股的預測力本系統未做驗證。
+      </p>
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+        {available.map((key) => {
+          const meta = CHIP_META[key];
+          const pts = grouped[key];
+          const last = pts[pts.length - 1];
+          const first = pts[0];
+          const delta = last.value - first.value;
+          const shown = last.value / meta.divide;
+          return (
+            <div
+              key={key}
+              className="rounded-2xl border border-line bg-surface-1 p-3"
+            >
+              <div className="mb-1 flex items-baseline justify-between gap-2">
+                <span className="text-xs font-medium text-zinc-300">
+                  {meta.label}
+                </span>
+                <span className="text-[10px] text-zinc-600">{meta.hint}</span>
+              </div>
+              <div className="mb-1 flex items-baseline gap-2">
+                <span className="text-base font-semibold tabular-nums text-zinc-100">
+                  {shown.toLocaleString("zh-TW", { maximumFractionDigits: 2 })}
+                  <span className="text-xs font-normal text-zinc-500">
+                    {meta.unit}
+                  </span>
+                </span>
+                {key !== "inst_net" && (
+                  <span
+                    className={`text-[11px] tabular-nums ${
+                      delta > 0 ? "text-up" : delta < 0 ? "text-down" : "text-flat"
+                    }`}
+                  >
+                    {delta > 0 ? "▲" : delta < 0 ? "▼" : "―"}{" "}
+                    {Math.abs(delta / meta.divide).toLocaleString("zh-TW", {
+                      maximumFractionDigits: 2,
+                    })}
+                  </span>
+                )}
+              </div>
+              {meta.kind === "bars" ? (
+                <SparkBars points={pts} />
+              ) : (
+                <Sparkline points={pts} stroke={meta.stroke} />
+              )}
+              <div className="mt-1 flex justify-between text-[10px] text-zinc-600">
+                <span>{first.as_of}</span>
+                <span>{pts.length} 筆</span>
+                <span>{last.as_of}</span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+// ── 估值分位帶(2026-07-22)────────────────────────────────────────
+// ⚠ 樣本量誠實揭露:stock_pe_pb_daily 對多數個股是 2026-05 才開始收(約 50 個交易日),
+//   不是 3 年。view 窗口設 3 年讓資料累積後自動變準,但 UI 一律顯示實際樣本數與起始日。
+//   樣本 < MIN_SAMPLE 直接不畫分位帶,只顯示現值(L23 精神:資料不足就別假裝可評)。
+const MIN_SAMPLE = 30;
+
+function ValuationSection({ row }: { row: ValuationRow | null }) {
+  if (!row) return null;
+  const peNow = num(row.pe_now);
+  const pbNow = num(row.pb_now);
+  const dy = num(row.dividend_yield);
+  if (peNow == null && pbNow == null) return null;
+
+  return (
+    <section>
+      <h2 className="mb-1 text-lg font-semibold">估值位置</h2>
+      <p className="mb-3 text-xs text-zinc-500">
+        現值在自身歷史區間的相對位置。
+        <span className="text-zinc-400">這不是買賣訊號</span>
+        ——便宜可能是基本面轉壞，貴可能是成長被市場認可。
+      </p>
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+        <ValuationCard
+          title="本益比 PE"
+          now={peNow}
+          p20={num(row.pe_p20)}
+          p50={num(row.pe_p50)}
+          p80={num(row.pe_p80)}
+          n={row.pe_n}
+          since={row.pe_since}
+          pctile={num(row.pe_pctile)}
+        />
+        <ValuationCard
+          title="股價淨值比 PB"
+          now={pbNow}
+          p20={num(row.pb_p20)}
+          p50={num(row.pb_p50)}
+          p80={num(row.pb_p80)}
+          n={row.pb_n}
+          since={row.pb_since}
+          pctile={num(row.pb_pctile)}
+        />
+      </div>
+      {dy != null && dy > 0 && (
+        <p className="mt-2 text-xs text-zinc-500">
+          現金殖利率 <span className="tabular-nums text-zinc-300">{dy}%</span>
+          <span className="ml-1 text-zinc-600">
+            （{row.as_of ?? "—"}）
+          </span>
+        </p>
+      )}
+    </section>
+  );
+}
+
+function ValuationCard({
+  title,
+  now,
+  p20,
+  p50,
+  p80,
+  n,
+  since,
+  pctile,
+}: {
+  title: string;
+  now: number | null;
+  p20: number | null;
+  p50: number | null;
+  p80: number | null;
+  n: number | null;
+  since: string | null;
+  pctile: number | null;
+}) {
+  const hasBand =
+    now != null && p20 != null && p50 != null && p80 != null && (n ?? 0) >= MIN_SAMPLE;
+
+  return (
+    <div className="rounded-2xl border border-line bg-surface-1 p-3">
+      <div className="mb-2 flex items-baseline justify-between gap-2">
+        <span className="text-xs font-medium text-zinc-300">{title}</span>
+        <span className="text-base font-semibold tabular-nums text-zinc-100">
+          {now != null ? now.toFixed(2) : "—"}
+        </span>
+      </div>
+
+      {hasBand ? (
+        <>
+          <ValuationBar now={now} p20={p20} p50={p50} p80={p80} />
+          <div className="mt-1 flex justify-between text-[10px] tabular-nums text-zinc-600">
+            <span>低 {p20.toFixed(1)}</span>
+            <span>中位 {p50.toFixed(1)}</span>
+            <span>高 {p80.toFixed(1)}</span>
+          </div>
+          <p className="mt-2 text-[11px] text-zinc-500">
+            比樣本期內{" "}
+            <span className="tabular-nums text-zinc-300">
+              {pctile != null ? `${pctile}%` : "—"}
+            </span>{" "}
+            的交易日更貴
+          </p>
+        </>
+      ) : (
+        <p className="py-2 text-[11px] text-zinc-600">
+          樣本不足（{n ?? 0} 筆，需 ≥{MIN_SAMPLE}），不計算分位
+        </p>
+      )}
+
+      <p className="mt-1 text-[10px] text-zinc-600">
+        樣本 {n ?? 0} 個交易日{since ? `，自 ${since}` : ""}
+      </p>
     </div>
   );
 }

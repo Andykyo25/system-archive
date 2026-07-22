@@ -2192,3 +2192,20 @@ GitHub 報 6 個(4 high)。`npm audit fix` 修 3 個(@babel/core 任意檔案讀
 - [x] `unstable_cache` 300s(fetch_log 只在 cron 跑完才變,不增加 dashboard 連線壓力)
 - [x] 驗證:view 實跑 —— freshness **9/9 全綠**(margin 剛修好)、quota 2/2 綠、source 5 danger + 3 warn(正確反映現況);`npm run build` 清 .next 後全綠,`/health` 路由生成,12 條路由
 - [ ] Andy 視覺驗收
+
+---
+
+## Part 3 — Phase C-2:個股頁籌碼時序 + 估值位置(2026-07-22)
+
+> 籌碼 4 表原本只被壓成 `v_chip_factors` 布林燈號(過/不過),看不到「往哪走、走多久」;估值完全沒曝光。純呈現層(走 B),不進選股/回測/因子 → 免 [[L36]] OOS 閘。
+
+- [x] migration `20260722000003`:`v_symbol_chip_series`(近 120 天長格式,4 來源日期粒度不同故不用寬表)+ `v_symbol_valuation_band`(PE/PB p20/p50/p80 + 現值百分位)
+- [x] `ChipSparkline.tsx`:`Sparkline`(折線+面積)/`SparkBars`(有零軸,台股紅買超綠賣超)/`ValuationBar`(分位帶+現值指針)。**純 inline SVG,零 client JS、零 bundle 增量**(比照 EquityLadderChart,不引入第二套繪圖庫)
+- [x] 個股頁加「籌碼動向」(4 卡:三大法人淨買賣/融資餘額/借券賣出量/外資持股比)+「估值位置」(PE/PB 兩卡)
+- [x] 驗證:手算對照 **PASS**(2330 view `pe_pctile=36.7` = 手算 `18/49=36.7%`);`npm run build` 清 .next 後全綠
+
+**🔴 過程中抓到自己的 plan 前提錯誤([[L44]] 重演)**:plan 寫「`stock_pe_pb_daily` 有 2023-01 起 **3.5 年、167 檔**」—— 這是看 min/max 日期得到的**假象**。實測:2023-2025 **只有 19 檔**有資料,167 檔全量是 2026 起且只有 130 天,**2330 實際只有 49 筆(2026-05-12 起)**。
+**修正**:view 窗口保留 3 年(資料累積後自動變準),但 append `pe_since`/`pb_since` 欄位([[L37]] append-only,免 drop cascade),UI **一律顯示實際樣本數與起始日,不得宣稱 3 年**;樣本 <30 直接不畫分位帶只顯示現值([[L23]] 精神:資料不足別假裝可評)。
+**實際覆蓋**:149/167 檔(89%)樣本 ≥30 可顯示分位,18 檔標「樣本不足」;平均 124 天、最大 724。
+
+**單位處理(寧可不標也不標錯)**:法人淨買賣 FinMind 給股數 → /1000 換算張;融資餘額 FinMind 定義即為張;**借券量單位不明確故不標單位**。
