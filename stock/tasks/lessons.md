@@ -539,3 +539,25 @@ const price = toN(q.z) ?? toN(q.o);  // ❌
 2. 對「現況」的所有事實描述(UI 長怎樣、哪頁存在、nav 有什麼)以 **origin/main** 為準;本機樹只是工作副本
 3. 撞上 divergent 改版時:視覺/產品方向衝突**交 Andy 拍板**(這次:保留線上玻璃感、token 化之),機械衝突照「remote 結構 + 本次系統化層」語意合併,不盲目 --ours/--theirs
 **為什麼**:多 session 工作流(本機 + cloud)下,「我看到的 repo」≠「Andy 看到的產品」。基於過期樹的 audit 會對 Andy 輸出錯誤事實(比 code bug 更傷,同 [[L34]] 臆測系統行為);基於過期樹的實作會推翻別的 session 已交付、Andy 已在用的成果。一個 `git fetch` 成本 3 秒,省掉整輪 rebase 協商 — 與 [[L41]] Gate 0 同精神:**先確認靶長怎樣,再上膛**。
+
+---
+
+## 錯誤日誌自身是盲區(2026-07-22)
+
+### L54 — `catch (e) { String(e) }` 對 supabase-js 錯誤會產生 "[object Object]";錯誤序列化壞掉 = 沉默 drift 的幫兇
+**問題**:`fetch_log` 盤點發現 `etf_metadata_sync` 的 error 欄位是字面的 `[object Object]`,完全看不到真因。根因:`if (error) throw error` 拋的是 supabase-js 的 **PostgrestError plain object(不是 Error 實例)**,下游 `catch (e) { e instanceof Error ? e.message : String(e) }` 就落到 `String(e)` = `"[object Object]"`。機械 grep 發現**全系統 22 處 `throw error` + 19 檔同款序列化** = 系統性日誌盲區。
+**做法**:
+1. 寫入日誌/回報錯誤時,**序列化必須能吃 plain object**:先 `Error.message`,再取物件的 `message`/`code`/`details`/`hint`,最後才 `JSON.stringify` → `String`。單純 `String(e)` 只對 Error 與原始型別安全
+2. 拋錯時**主動包成 Error 並帶上下文**:`throw new Error(\`etf_metadata upsert: ${errMsg(error)}\`)`,別直接 `throw error` 把 library 的 plain object 丟出去
+3. 這類 helper 應抽到 `_shared/`,避免 N 份重複再 drift(同 [[L42]] 做法 3 單一事實來源)
+4. **稽核角度**:排查資料管線時,若看到 `[object Object]`、`undefined`、`null`、空字串這種「非訊息的訊息」,先懷疑序列化壞掉,不要當成「沒有錯誤資訊可得」
+**為什麼**:[[L42]]/[[L46]] 的沉默 drift 之所以難發現,不只因為沒人看 log,**還因為 log 本身是瞎的**。監控鏈上任何一環把錯誤吞成無資訊字串,等於整條觀測鏈斷掉 —— 你以為有 `fetch_log` 就有觀測性,實際上關鍵那一格是 `[object Object]`。**可觀測性要驗證「錯誤路徑」而不只是「成功路徑」**:寫完 EF 要問「這個 catch 真的觸發時,寫進 log 的字串長什麼樣?」
+
+### L55 — 手動 quota 分配會餓死排在後面的 cron;先到先得不是分配策略
+**問題**:11 個 EF 共用 FinMind 主 token 的 600 daily quota,純先到先得。主 token 7/19-21 連 3 天 600/600 用滿,而備援 `finmind_2` 只用 150-309/600 → **排在 cron 後段的 `finmind_margin`(09:05)連 5 天 quota_exhausted**,`stock_margin` 靜靜 stale 2 天,籌碼因子吃過期資料。系統「看起來在跑」(EF 有執行、有寫 fetch_log),只是每次都 skip。
+**做法**:
+1. **共用配額的排程群組要看「總量 vs 分配」兩層**:總量夠(1200)不代表不會餓死,先到先得會讓後段任務系統性挨餓
+2. 短期解:把後段任務手動指到閒置的配額池(本次沿用 lending 既有的 `token_key` body 參數 pattern,零新機制)
+3. 長期解:**自動 failover** —— `pick_finmind_quota()` RPC 回傳「目前還有餘額的 token」,EF 不再硬編碼配額來源。手動分配會隨新增 EF 再次失衡
+4. **`quota_exhausted` 這種 skip 要當失敗看待並告警**,不能因為「EF 正常回應」就視為健康 —— 它是資料停止流入的沉默形式
+**為什麼**:配額耗盡不會噴錯、不會讓 EF 崩潰,只會讓資料悄悄不再更新 —— 這正是 [[L42]]/[[L46]]/[[L54]] 同一家族的沉默失敗。institutional-grade 的標準是:**任何導致「資料不再更新」的狀態都必須可見**,不論它在技術上是不是 error。

@@ -2133,10 +2133,44 @@ Andy 定調「不縮成儀表板,要走在市場前面」(抓真實事件 + 升�
 - [x] 元件化:Perl 非貪婪配對替換 12 處表格殼 → `<TableShell>`、13 處 thead → `<THead>`;9 檔加 `@/app/_components/ui` import
 - [x] **對帳驗證**:替換數 226 = 基準 226 ✓;各 token 數量逐項相符(line-soft 21 / line-strong 24 / surface-1 63+4殼層 / sunken 22 / raised 7)✓;標籤配對 TableShell 12/12、THead 13/13 ✓;原始 class 殘留全 0 ✓;中文完整性 + 亂碼掃描 0 ✓
 - [x] `npm run build`(清 .next)全綠,11 條路由不變
-- [ ] push → Railway → Andy 視覺驗收
+- [x] push `c7703a2` → Railway 部署
+- [ ] Andy 視覺驗收(重點:表格邊框/底色應與改版前**無差異**、modal 底仍不透明、輸入框凹陷感still在)
 
 **語意色刻意不做(已實證非偷懶)**:`HoldingsIntelWidget.tsx` 同一個 `text-red-300` 在 L89「海外同業偏多」是台股紅=漲、L111「⛔ 已破停損」是警示紅=危險。機械替換會綁死兩種語意,未來調漲跌色相會連動改掉警示色。漲跌已有 `pctColor()` 統一(正確抽象層),警示用 Tailwind 原生 amber/red 本來就對。
 
 **刻意保留的元素級樣式**(非表面分層,token 化屬過度設計):badge/按鈕底色(`HoldingsAdvice` SIGNAL_STYLE、`page.tsx:127`、`rank:590`、`error.tsx:27`)、`BuyForm:249` tone map、`page.tsx:812` 表格 row。
 
 **附帶發現(未修,既有債)**:`npx eslint app` 有 6 個 `react-hooks/purity` error(server component 內 `Date.now()`)+ 2 warning。**證實為 pre-existing**(本輪完全沒碰的 `app/backtest/page.tsx` 也報同類錯)。React 19 新規則對 server component 誤報(SC 不 re-render);`next build` 不跑 eslint 故不影響部署。待獨立處理。
+
+---
+
+## 依賴漏洞清零(2026-07-22,commit `3f7778f`)
+
+GitHub 報 6 個(4 high)。`npm audit fix` 修 3 個(@babel/core 任意檔案讀取 / brace-expansion DoS / js-yaml DoS);sharp 0.34.5 → 0.35.3 用 `overrides` 升級(libvips CVE-2026-33327/33328/35590/35591)。
+**⚠ 關鍵判斷:不可用 `npm audit fix --force`** — 它會把 next 降到 **14.2.35**(現 16.x),整個專案炸掉。sharp 是 next 的 optionalDependency 且本專案 **零使用 `next/image`**(grep 確認)→ 升級零功能風險,overrides 是唯一正解。next 順帶 16.2.6 → 16.2.11(semver 內)。結果 **0 vulnerabilities**,build 全綠。
+
+---
+
+## Part 1 管線修復 — FinMind quota 再平衡 + 錯誤日誌修復(2026-07-22)
+
+> 起因:規劃 Phase C 盤點 `fetch_log`(15,051 筆)時發現**當下正在發生**的失敗。plan:`.claude/plans/sorted-honking-twilight.md`
+
+**發現(近 7 天 fetch_log)**:6 個 source 失敗 —— `finmind_margin` 0/5、`backfill_price` 1/6、`tpex` 4/10、`finmind_monthly_revenue` 0/1、`etf_metadata_sync` 0/1、`telegram_holdings_advice` 2/3。**L42/L46 沉默 drift 第三次重演**。
+
+**根因與處置**:
+
+| 問題 | 根因 | 處置 |
+|---|---|---|
+| margin / monthly_revenue quota_exhausted | 主 token 7/19-21 連 3 天 **600/600 用滿**,備援 `finmind_2` 僅 150-309/600 閒置;quota 先到先得,cron 排後面的餓死 | ✅ 兩 EF 加 `token_key` body 參數(**機械複製 lending 既有 pattern**,零新機制)+ migration `20260722000001` 改 cron 帶 `finmind_token_2` |
+| `etf_metadata_sync` 錯誤 = `[object Object]` | `throw error` 拋 PostgrestError **物件**(非 Error 實例),`String(e)` 序列化成 `[object Object]` → 日誌全瞎 | ✅ 加 `errMsg()` helper(吃 message/code/details/hint)+ `throw new Error(...)` |
+| `tpex` 間歇失敗 | 上游 `error reading a body from connection` | ⏸ [[L06]] 已知,有 dead-letter + reconcile,不動 |
+| `backfill_price` `6213: HTTP 400` | 聯茂在 FinMind 端異常 | ⏸ 主力 TWSE 正常(price_daily 有 6213 到 7/22),不影響完整性 |
+| `telegram_holdings_advice` stale 警示 | **這是正確防護行為**(偵測到 stale 就不推假資料) | ⏸ 非 bug |
+
+**驗證(實測非推論)**:手動 pg_net 觸發 margin 帶 token_2 → `fetch_log` **success=true / rows_written=1001**(昨天 false/756 就 exhausted);`stock_margin` max(trade_date) **7-20 → 7-21**(143 檔,已是最新可得);quota 正確記在 `finmind_2`(1 → 150),`finmind` 未動用(160)。三個 cron job 確認帶 token_2 且 active。
+
+**L49 再次驗證(誠實記錄)**:deploy 後 `get_edge_function` 拉回核對 —— `inferCategory` **執行路徑中文全對**(主動式/債券/高股息/市值型/主題/指數股票型 + 4 個正則),但**註解有 1 處形近誤植**:repo「錯誤欄位變**瞎**的」→ 線上「變**瞼**的」。在註解不影響執行,不為此重 deploy;但這是我**親自重現 L49**,證明複製環節的誤植風險真實存在,拉回核對是必要的最後防線。
+
+**遺留技術債**:
+- [ ] 其餘 **18 個 EF 同款 `String(e)` 序列化**(22 處 `throw error`)— 它們至今未觸發過,但一旦 DB 寫入失敗就會是瞎的日誌。宜統一抽 `_shared/errMsg.ts`
+- [ ] quota 目前是**手動分配**不是自動 failover。若 token_2 也吃緊,正解是 `pick_finmind_quota()` RPC 讓 EF 自動選有餘額的 token

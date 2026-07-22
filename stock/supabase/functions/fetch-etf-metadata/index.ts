@@ -23,6 +23,27 @@ interface EtfMeta {
   updated_at: string;
 }
 
+// 錯誤訊息序列化(2026-07-22 修)
+// 問題:supabase-js 的 PostgrestError 是 plain object 不是 Error 實例,
+//   `catch (e) { String(e) }` 會產生 "[object Object]" → fetch_log 錯誤欄位變瞎的,
+//   看不到真因。2026-07-18 的 etf_metadata_sync 失敗就是這樣被隱藏的。
+// 做法:先取 Error.message,再取物件的 message/code/details,最後才 fallback JSON/String。
+function errMsg(e: unknown): string {
+  if (e instanceof Error) return e.message;
+  if (e && typeof e === "object") {
+    const o = e as { message?: unknown; code?: unknown; details?: unknown; hint?: unknown };
+    if (typeof o.message === "string" && o.message) {
+      const parts = [o.message];
+      if (o.code) parts.push(`code=${String(o.code)}`);
+      if (typeof o.details === "string" && o.details) parts.push(o.details);
+      if (typeof o.hint === "string" && o.hint) parts.push(`hint=${o.hint}`);
+      return parts.join(" | ");
+    }
+    try { return JSON.stringify(e); } catch { /* circular 等 → 落到最後 */ }
+  }
+  return String(e);
+}
+
 function decodeJwtPayload(jwt: string): Record<string, unknown> {
   const parts = jwt.split(".");
   if (parts.length !== 3) throw new Error("invalid jwt shape");
@@ -150,11 +171,11 @@ Deno.serve(async (req: Request) => {
       const { error } = await supabase
         .from("etf_metadata")
         .upsert(rowsToUpsert, { onConflict: "symbol" });
-      if (error) throw error;
+      if (error) throw new Error(`etf_metadata upsert: ${errMsg(error)}`);
       written = rowsToUpsert.length;
     }
   } catch (e) {
-    errors.push(e instanceof Error ? e.message : String(e));
+    errors.push(errMsg(e));
   }
 
   // 1 個 API call

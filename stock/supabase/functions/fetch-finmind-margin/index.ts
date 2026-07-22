@@ -105,9 +105,20 @@ Deno.serve(async (req: Request) => {
   if (!SERVICE_ROLE) return Response.json({ error: "missing SUPABASE_SERVICE_ROLE_KEY env" }, { status: 500 });
   const supabase = createClient(Deno.env.get("SUPABASE_URL")!, SERVICE_ROLE);
 
-  const tokenRes = await supabase.rpc("read_finmind_token");
+  // body.token_key:預設 finmind_token(token_1,共用 daily quota 與其他 finmind_* EF);
+  //   傳 'finmind_token_2' → 用獨立 token_2(600 daily 獨立 quota)
+  //   對應 vault RPC + quota source 切換,fetch_log source 維持 'finmind_margin' 便聚合
+  //   2026-07-22:主 token 連 3 天 600/600 用滿(cron 09:05 排在 valuation/institutional 之後,
+  //   先到先得),margin 連 5 天 quota_exhausted → stock_margin stale 2 天。改由 cron 傳 token_2。
+  let bodyJson: { token_key?: string } = {};
+  try { bodyJson = await req.json(); } catch { /* no body OK */ }
+  const useTok2 = bodyJson.token_key === "finmind_token_2";
+  const rpcName = useTok2 ? "read_finmind_token_2" : "read_finmind_token";
+  const quotaSource = useTok2 ? "finmind_2" : "finmind";
+
+  const tokenRes = await supabase.rpc(rpcName);
   if (tokenRes.error || !tokenRes.data) {
-    return Response.json({ error: "missing finmind_token in vault", detail: tokenRes.error?.message }, { status: 500 });
+    return Response.json({ error: `missing ${useTok2 ? "finmind_token_2" : "finmind_token"} in vault`, detail: tokenRes.error?.message }, { status: 500 });
   }
   const TOKEN = tokenRes.data as string;
 
@@ -140,12 +151,12 @@ Deno.serve(async (req: Request) => {
   const startDate = isoDaysAgo(LOOKBACK_DAYS);
 
   await supabase.from("api_quota_state").upsert(
-    { source: "finmind", quota_date: today, used: 0, budget: FINMIND_DAILY_BUDGET },
+    { source: quotaSource, quota_date: today, used: 0, budget: FINMIND_DAILY_BUDGET },
     { onConflict: "source,quota_date", ignoreDuplicates: true },
   );
   const { data: quotaRow } = await supabase
     .from("api_quota_state").select("used, budget")
-    .eq("source", "finmind").eq("quota_date", today).single();
+    .eq("source", quotaSource).eq("quota_date", today).single();
   const usedSoFar = quotaRow?.used ?? 0;
   const budget = quotaRow?.budget ?? FINMIND_DAILY_BUDGET;
   const remaining = budget - usedSoFar;
@@ -182,7 +193,7 @@ Deno.serve(async (req: Request) => {
   }
 
   // B1:原子遞增(取代 read-modify-write,並行 EF 不互相覆蓋使 quota gate 失效)
-  await supabase.rpc("increment_quota", { p_source: "finmind", p_date: today, p_n: apiCalls });
+  await supabase.rpc("increment_quota", { p_source: quotaSource, p_date: today, p_n: apiCalls });
 
   await supabase.from("fetch_log").update({
     finished_at: new Date().toISOString(),
