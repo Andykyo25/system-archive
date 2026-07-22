@@ -1,20 +1,49 @@
 @import "tailwindcss";
 
+/*
+ * Design tokens(Phase A,2026-07-22;視覺以 2026-07-17 玻璃感改版為準 token 化)
+ * - 表面:surface-0(頁底實色)/ surface-1(卡片,zinc-900/50 玻璃)/ surface-2(巢狀、hover、skeleton)
+ * - line:1px 邊框統一色(= 舊 border-white/[0.06])
+ * - 語意色:up/down/flat = 台股紅漲綠跌(Format.ts pctColor 依賴)
+ *   訊號:ok/warn/danger(持股燈、資料健康)
+ * - @theme 會生成字面 utility(bg-surface-1、text-up、border-line …)
+ *   L24:JSX 內一律寫完整字面 class,禁止動態組裝
+ * - 卡片慣例:rounded-2xl border border-line bg-surface-1 backdrop-blur(見 ui.tsx)
+ */
+@theme {
+  --font-sans:
+    var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", Roboto, "Noto Sans TC", "Microsoft JhengHei", sans-serif;
+
+  /* surfaces(玻璃感:半透明疊在漸層底上) */
+  --color-surface-0: #09090b;
+  --color-surface-1: rgba(24, 24, 27, 0.5);
+  --color-surface-2: rgba(255, 255, 255, 0.05);
+  --color-line: rgba(255, 255, 255, 0.06);
+
+  /* 台股漲跌 */
+  --color-up: #f87171;
+  --color-down: #4ade80;
+  --color-flat: #a1a1aa;
+
+  /* 訊號燈 */
+  --color-ok: #34d399;
+  --color-warn: #fbbf24;
+  --color-danger: #ef4444;
+
+  /* accent(維持 blue 系) */
+  --color-accent: #3b82f6;
+}
+
 html,
 body {
   height: 100%;
 }
 
 body {
-  font-family:
-    ui-sans-serif,
-    system-ui,
-    -apple-system,
-    "Segoe UI",
-    Roboto,
-    "Noto Sans TC",
-    "Microsoft JhengHei",
-    sans-serif;
+  font-family: var(--font-sans);
+  /* 全站數字等寬:dashboard 數字對齊的基礎 */
+  font-variant-numeric: tabular-nums;
   /* 柔和深色底:近黑 + 兩道極淡的品牌色光暈(藍/翠),取代死平 zinc-950 */
   background:
     radial-gradient(1100px 560px at 85% -10%, rgba(59, 130, 246, 0.08), transparent 60%),

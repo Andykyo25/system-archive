@@ -527,3 +527,15 @@ const price = toN(q.z) ?? toN(q.o);  // ❌
 2. 誠實記錄反面:若目標函數是「風險調整報酬 / 睡得著」而非絕對報酬,atr2-t10(sharpe 1.348 vs 1.232、MDD 14.8 vs 25.7、報酬 −7.7pp)是已知可選配置 — 判定不採是因為系統閘以 alpha 優先,不是它「壞」
 3. 錨點迴歸非 byte-exact 時先 diff 結構(bench/期數/交易數)再判:結構全同 + 只有數值微變 + 有除權息 cron 事證 → 資料底床演進,基準改用**同底床 anchor**,不跨底床比較(L39 的資料演進 case law)
 **為什麼**:L43 說「參數失敗換形式化」— 這輪證明形式化(波動正規化)也救不了,因為敗因再上一層:**是策略結構(輪動+動能+右尾集中)與「盤中觸發式出場」根本互斥**,不是停損參數或形式的問題。連續三案(fixed%/ATR/等回檔)在同一機制上敗,足以把整條線關閉 — 這比找到有效停損更有價值:省掉未來所有同型嘗試。
+
+---
+
+## UI Phase A 撞 stale checkout(2026-07-22)
+
+### L53 — 多 session 共用 repo:動工前必 `git fetch` 比對 origin,盤點/audit 一律以 origin/main 為準,不能信本機樹
+**問題**:UI Phase A 全程(盤點 → plan → 實作 → commit)基於本機 checkout,push 才發現**落後 origin/main 13 個 commits**(cloud session 7/17 已做過另一輪 UI 玻璃感改版 + 砍 ETF 頁 + 新增 /swing/MorningPanel/BuyForm 等)。後果:① 給 Andy 的 UI 盤點含錯誤事實(「/performance 無導覽入口」— remote 早加了;「ETF 在導覽」— remote 早砍了;「背景死平」— remote 早加漸層)② Phase A 視覺方向(實色面板)與線上已部署 5 天的玻璃感直接衝突,需 Andy 額外拍板 + rebase 逐檔語意合併(取 remote 結構 + 我的 token 層)。
+**做法**:
+1. **任何盤點/audit/plan 動工前,先 `git fetch` + `git status -sb`(或 `git log HEAD..origin/main --oneline`)確認本機不落後**;落後就先看 remote 增量再開工。此 repo 有 cloud session 並行 push main,本機樹過期是常態不是例外
+2. 對「現況」的所有事實描述(UI 長怎樣、哪頁存在、nav 有什麼)以 **origin/main** 為準;本機樹只是工作副本
+3. 撞上 divergent 改版時:視覺/產品方向衝突**交 Andy 拍板**(這次:保留線上玻璃感、token 化之),機械衝突照「remote 結構 + 本次系統化層」語意合併,不盲目 --ours/--theirs
+**為什麼**:多 session 工作流(本機 + cloud)下,「我看到的 repo」≠「Andy 看到的產品」。基於過期樹的 audit 會對 Andy 輸出錯誤事實(比 code bug 更傷,同 [[L34]] 臆測系統行為);基於過期樹的實作會推翻別的 session 已交付、Andy 已在用的成果。一個 `git fetch` 成本 3 秒,省掉整輪 rebase 協商 — 與 [[L41]] Gate 0 同精神:**先確認靶長怎樣,再上膛**。

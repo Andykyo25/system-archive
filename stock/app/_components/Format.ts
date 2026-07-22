@@ -22,10 +22,10 @@ export function fmtPct(n: string | number | null | undefined): string {
 }
 
 export function pctColor(n: string | number | null | undefined): string {
-  if (n == null) return "text-zinc-400";
+  if (n == null) return "text-flat";
   const v = Number(n);
-  if (!Number.isFinite(v) || v === 0) return "text-zinc-400";
-  return v > 0 ? "text-red-400" : "text-green-400";
+  if (!Number.isFinite(v) || v === 0) return "text-flat";
+  return v > 0 ? "text-up" : "text-down";
 }
 
 // 事件日曆標籤(stock_events.event_type → 顯示名;BuyForm + MorningPanel 共用)

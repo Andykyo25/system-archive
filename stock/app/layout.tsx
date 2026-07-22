@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { GeistSans } from "geist/font/sans";
 import "./globals.css";
 import { Sidebar } from "./_components/Sidebar";
 import { TopBar } from "./_components/TopBar";
@@ -14,8 +15,12 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="zh-TW" className="h-full antialiased">
-      <body className="min-h-full text-zinc-100">
+    <html
+      lang="zh-TW"
+      className={`h-full antialiased ${GeistSans.variable}`}
+    >
+      {/* bg 由 globals.css body 漸層負責,body 不掛 bg utility */}
+      <body className="min-h-full font-sans text-zinc-100">
         <div className="flex min-h-screen">
           <Sidebar />
           <div className="flex min-w-0 flex-1 flex-col">

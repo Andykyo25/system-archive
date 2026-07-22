@@ -2,18 +2,52 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import {
+  LayoutDashboard,
+  Briefcase,
+  TrendingUp,
+  Waves,
+  Star,
+  FlaskConical,
+  Settings,
+  type LucideIcon,
+} from "lucide-react";
 
-// 左側固定 sidebar。2026-07-17 改版:更簡潔 — 移除項目副標與底部說明,active 用柔和 pill。
+// 左側固定 sidebar。
+// 2026-07-17 改版:更簡潔(無副標/底部說明),active 用柔和 pill,玻璃感。
+// 2026-07-22 Phase A:三組分區(投資組合/研究/系統)+ lucide icons 換 emoji + token 化。
 // 響應式:< 768px 收摺成 icons only(64px)。
-const navItems = [
-  { href: "/", label: "Dashboard", icon: "📊" },
-  { href: "/holdings", label: "持股", icon: "💼" },
-  { href: "/swing", label: "波段", icon: "🌊" },
-  { href: "/rank", label: "排名", icon: "⭐" },
-  { href: "/performance", label: "績效", icon: "📈" },
-  { href: "/backtest", label: "Backtest", icon: "🧪" },
-  { href: "/settings", label: "設定", icon: "⚙️" },
+// Phase C 新頁(交易行為/Paper-track/警示/資料健康)屆時再加入對應組。
+interface NavItem {
+  href: string;
+  label: string;
+  icon: LucideIcon;
+}
+
+const navGroups: { label: string; items: NavItem[] }[] = [
+  {
+    label: "投資組合",
+    items: [
+      { href: "/", label: "Dashboard", icon: LayoutDashboard },
+      { href: "/holdings", label: "持股", icon: Briefcase },
+      { href: "/performance", label: "績效", icon: TrendingUp },
+    ],
+  },
+  {
+    label: "研究",
+    items: [
+      { href: "/swing", label: "波段", icon: Waves },
+      { href: "/rank", label: "排名", icon: Star },
+      { href: "/backtest", label: "Backtest", icon: FlaskConical },
+    ],
+  },
+  {
+    label: "系統",
+    items: [{ href: "/settings", label: "設定", icon: Settings }],
+  },
 ];
+
+const navItems: NavItem[] = navGroups.flatMap((g) => g.items);
 
 function isActive(path: string, href: string): boolean {
   if (href === "/") return path === "/";
@@ -25,7 +59,7 @@ export function Sidebar() {
 
   return (
     <aside
-      className="sticky top-0 flex h-screen w-16 shrink-0 flex-col border-r border-white/[0.06] bg-zinc-950/50 backdrop-blur md:w-52"
+      className="sticky top-0 flex h-screen w-16 shrink-0 flex-col border-r border-line bg-surface-0/50 backdrop-blur md:w-52"
       aria-label="主要導覽"
     >
       <div className="px-3 py-5 md:px-4">
@@ -40,35 +74,41 @@ export function Sidebar() {
       </div>
 
       <nav className="flex-1 overflow-y-auto px-2 py-2 md:px-3">
-        <ul className="space-y-1">
-          {navItems.map((item) => {
-            const active = isActive(path, item.href);
-            return (
-              <li key={item.href}>
-                <Link
-                  href={item.href}
-                  title={item.label}
-                  aria-current={active ? "page" : undefined}
-                  className={`flex items-center justify-center gap-3 rounded-xl px-2 py-2.5 text-sm transition-colors md:justify-start md:px-3 ${
-                    active
-                      ? "bg-blue-500/10 font-medium text-blue-300 ring-1 ring-inset ring-blue-500/20"
-                      : "text-zinc-400 hover:bg-white/[0.04] hover:text-zinc-100"
-                  }`}
-                >
-                  <span
-                    aria-hidden="true"
-                    className={`grid h-6 w-6 shrink-0 place-items-center text-base ${
-                      active ? "" : "opacity-75"
-                    }`}
-                  >
-                    {item.icon}
-                  </span>
-                  <span className="hidden md:block">{item.label}</span>
-                </Link>
-              </li>
-            );
-          })}
-        </ul>
+        {navGroups.map((group) => (
+          <div key={group.label} className="mb-4 last:mb-0">
+            <p className="mb-1 hidden px-3 text-[10px] font-medium uppercase tracking-wider text-zinc-600 md:block">
+              {group.label}
+            </p>
+            <ul className="space-y-1">
+              {group.items.map((item) => {
+                const active = isActive(path, item.href);
+                const Icon = item.icon;
+                return (
+                  <li key={item.href}>
+                    <Link
+                      href={item.href}
+                      title={item.label}
+                      aria-current={active ? "page" : undefined}
+                      className={`flex items-center justify-center gap-3 rounded-xl px-2 py-2.5 text-sm transition-colors md:justify-start md:px-3 ${
+                        active
+                          ? "bg-accent/10 font-medium text-blue-300 ring-1 ring-inset ring-accent/20"
+                          : "text-zinc-400 hover:bg-surface-2 hover:text-zinc-100"
+                      }`}
+                    >
+                      <Icon
+                        aria-hidden="true"
+                        size={18}
+                        strokeWidth={active ? 2.2 : 1.8}
+                        className="shrink-0"
+                      />
+                      <span className="hidden md:block">{item.label}</span>
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        ))}
       </nav>
     </aside>
   );

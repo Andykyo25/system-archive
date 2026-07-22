@@ -2097,3 +2097,20 @@ Andy 定調「不縮成儀表板,要走在市場前面」(抓真實事件 + 升�
 - 到價提醒:actions +addPriceAlert/cancelPriceAlert(防重沿用舊 pattern:同 symbol+condition 先停用再插);AlertDialog(SellDialog pattern,快捷停損/加碼價自 v_holdings_advice、自訂價 vs 現價自動判方向可手切、該檔 active 列表可取消);ActiveAlertsSection 收全部 enabled(含非持股遺留)— A3 半拆債結案。⏰ 按鈕與賣出鈕同 cell,有 active 顯數字 badge
 - 驗證:v_holdings_signals 7 欄 / v_entry_quality 2 欄 information_schema 全存在;alert_rules 現況 enabled=0(1 筆舊測試已停用,無遺留噪音);TS 通讀(型別/imports/字面 class)+ grep orphan 零殘留;本機無 node/npm(同 6/30),build 交 Railway
 - 待 Andy:Railway 部署後看視覺;下一塊 = ② ATR sizing + 集中度警示(拍板規畫順序)
+---
+
+## UI 大改 Phase A — Design Tokens + 基礎元件 + Layout 殼(2026-07-22)
+
+> Andy 拍板 A→B→C 三期(A=tokens+元件+殼、B=既有頁遷移、C=新資料視圖)。plan:`.claude/plans/sorted-honking-twilight.md`
+> ⚠ **Rebase 記錄**:本機樹落後 origin 13 commits(7/17 已有另一輪玻璃感 UI 改版 + 砍 ETF + 新增 /swing 等)。Andy 拍板「**視覺以線上玻璃感為準**」,Phase A 改為把玻璃語言 token 化,結構照收 remote(nav 含波段、無 ETF)。教訓入 lessons L53。
+
+- [x] `npm install geist lucide-react`(字體檔在套件內,build 零外網需求,不破 L50)
+- [x] `app/globals.css`:`@theme` tokens(surface-0/1/2、line、up/down/flat、ok/warn/danger、accent、font-sans;**值 = 7/17 玻璃感**:line=white/6%、surface-1=zinc-900/50)+ 全站 tabular-nums;保留 remote 漸層底/細捲軸/selection
+- [x] `app/layout.tsx`:GeistSans variable + font-sans(bg 續由 body 漸層負責,照 remote)
+- [x] `app/_components/ui.tsx` 新檔:Card / StatTile / Badge / SignalLight / SectionHeader / TableShell(卡片 = rounded-2xl border-line bg-surface-1 backdrop-blur,對齊 MorningPanel 語言;server-safe,tone→class 完整字面 Record,L24)
+- [x] `app/_components/Sidebar.tsx`:三組分區(投資組合:Dashboard/持股/績效|研究:波段/排名/Backtest|系統:設定)+ lucide icons 換 emoji;保留 remote 玻璃 pill/漸層 logo/無副標簡潔化
+- [x] `app/_components/TopBar.tsx` / `Skeleton.tsx`:token 化(TopBar 取 remote 版無狀態燈;Skeleton 取 remote rounded-2xl)
+- [x] `app/_components/Format.ts`:pctColor 改回傳 text-up/text-down/text-flat(語意不變;EVENT_LABEL/concentrationClass 照收 remote)
+- [x] 刪 `app/_components/TabNav.tsx`(remote 也無引用,兩邊皆死碼)
+- [ ] `npm run build` + grep 驗證
+- [ ] push → Railway 部署 → Andy 視覺驗收
