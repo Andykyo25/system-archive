@@ -190,7 +190,7 @@ export function HoldingsIntelWidget({
           return (
             <div
               key={h.symbol}
-              className="rounded-2xl border border-white/[0.06] bg-zinc-900/60 px-4 py-3"
+              className="rounded-2xl border border-line bg-surface-1 px-4 py-3"
             >
               <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
                 <span className="font-mono text-blue-400">{h.symbol}</span>
@@ -224,7 +224,7 @@ export function HoldingsIntelWidget({
                   </span>
                 )}
               </p>
-              <p className={`mt-1 rounded bg-zinc-950/60 px-2 py-1 text-xs ${advice.cls}`}>
+              <p className={`mt-1 rounded bg-surface-raised px-2 py-1 text-xs ${advice.cls}`}>
                 <span className="mr-1 text-[10px] uppercase tracking-wide text-zinc-500">
                   今日建議
                 </span>

@@ -1,3 +1,4 @@
+import { TableShell, THead } from "@/app/_components/ui";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { fmtPct } from "@/app/_components/Format";
@@ -88,7 +89,7 @@ export default async function BacktestComparePage({
 
   return (
     <div className="space-y-6">
-      <header className="rounded-2xl border border-white/[0.06] bg-zinc-900/60 p-4">
+      <header className="rounded-2xl border border-line bg-surface-1 p-4">
         <Link href="/backtest" className="text-xs text-zinc-400 hover:text-zinc-200">
           ← 回 Backtest 列表
         </Link>
@@ -118,7 +119,7 @@ function EmptyState({
       <Link href="/backtest" className="text-xs text-zinc-400 hover:text-zinc-200">
         ← 回 Backtest 列表
       </Link>
-      <div className="rounded-2xl border border-white/[0.06] bg-zinc-900/60 p-8 text-center">
+      <div className="rounded-2xl border border-line bg-surface-1 p-8 text-center">
         <p className="text-zinc-400">
           {reason === "no_ids"
             ? "未指定要對比的 run"
@@ -138,9 +139,9 @@ function SummaryTable({ runs }: { runs: ColoredRun[] }) {
   return (
     <section>
       <h2 className="mb-2 text-lg font-semibold">Summary 對比</h2>
-      <div className="overflow-x-auto rounded-2xl border border-white/[0.06] bg-zinc-900/60">
+      <TableShell>
         <table className="w-full text-sm">
-          <thead className="border-b border-white/[0.06] text-left text-[11px] uppercase tracking-wider text-zinc-500">
+          <THead>
             <tr>
               <th className="px-3 py-2"></th>
               <th className="px-3 py-2">名稱</th>
@@ -151,12 +152,12 @@ function SummaryTable({ runs }: { runs: ColoredRun[] }) {
               <th className="px-3 py-2 text-right">最大回撤</th>
               <th className="px-3 py-2 text-right">勝率</th>
             </tr>
-          </thead>
+          </THead>
           <tbody>
             {runs.map((r) => {
               const s = r.summary ?? {};
               return (
-                <tr key={r.id} className="border-t border-white/[0.04]">
+                <tr key={r.id} className="border-t border-line-soft">
                   <td className="px-3 py-2">
                     <span
                       className="inline-block h-3 w-3 rounded-sm"
@@ -210,7 +211,7 @@ function SummaryTable({ runs }: { runs: ColoredRun[] }) {
             })}
             {/* Benchmark row(取第一個 run 的 benchmark) */}
             {runs[0]?.summary?.benchmark_return_pct != null && (
-              <tr className="border-t border-white/[0.04] bg-zinc-950/60">
+              <tr className="border-t border-line-soft bg-surface-raised">
                 <td className="px-3 py-2">
                   <span className="inline-block h-3 w-3 rounded-sm bg-zinc-500" />
                 </td>
@@ -232,7 +233,7 @@ function SummaryTable({ runs }: { runs: ColoredRun[] }) {
             )}
           </tbody>
         </table>
-      </div>
+      </TableShell>
     </section>
   );
 }
@@ -297,7 +298,7 @@ function EquityOverlay({ runs }: { runs: ColoredRun[] }) {
   return (
     <section>
       <h2 className="mb-2 text-lg font-semibold">資產曲線疊圖</h2>
-      <div className="rounded-2xl border border-white/[0.06] bg-zinc-900/60 p-4">
+      <div className="rounded-2xl border border-line bg-surface-1 p-4">
         <svg width="100%" viewBox={`0 0 ${W} ${H}`} className="text-xs">
           {/* y baseline = 1.0(本金) */}
           <line

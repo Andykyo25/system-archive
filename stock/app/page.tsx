@@ -1,3 +1,4 @@
+import { TableShell, THead } from "@/app/_components/ui";
 import { Fragment } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
@@ -532,7 +533,7 @@ function EntrySignalWidget({
       </div>
 
       {rows.length === 0 ? (
-        <div className="rounded-2xl border border-white/[0.06] bg-zinc-900/60 p-6 text-center text-sm text-zinc-500">
+        <div className="rounded-2xl border border-line bg-surface-1 p-6 text-center text-sm text-zinc-500">
           <p>目前沒有進場訊號</p>
           <p className="mt-1 text-xs text-zinc-600">
             factor 資料累積中(籌碼 / 動能 / 基本面對齊條件)。
@@ -540,9 +541,9 @@ function EntrySignalWidget({
           </p>
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-2xl border border-white/[0.06] bg-zinc-900/60">
+        <TableShell>
           <table className="w-full text-sm">
-            <thead className="border-b border-white/[0.06] text-left text-[11px] uppercase tracking-wider text-zinc-500">
+            <THead>
               <tr>
                 <th className="px-3 py-2 text-right">#</th>
                 <th className="px-3 py-2">股號</th>
@@ -553,12 +554,12 @@ function EntrySignalWidget({
                 <th className="px-3 py-2 text-right">動能</th>
                 <th className="px-3 py-2 text-right">籌碼</th>
               </tr>
-            </thead>
+            </THead>
             <tbody>
               {rows.map((s) => {
                 const strong = s.signal_strength === "strong";
                 return (
-                  <tr key={s.symbol} className="border-t border-white/[0.04]">
+                  <tr key={s.symbol} className="border-t border-line-soft">
                     <td className="px-3 py-2 text-right tabular-nums text-zinc-500">
                       {s.expected_rank}
                     </td>
@@ -619,7 +620,7 @@ function EntrySignalWidget({
               })}
             </tbody>
           </table>
-        </div>
+        </TableShell>
       )}
     </section>
   );
@@ -635,7 +636,7 @@ function fmtScore(n: string | number | null | undefined): string {
 function SummaryCards({ summary }: { summary: PortfolioSummary | null }) {
   if (!summary || Number(summary.positions) === 0) {
     return (
-      <div className="rounded-2xl border border-white/[0.06] bg-zinc-900/60 p-8 text-center">
+      <div className="rounded-2xl border border-line bg-surface-1 p-8 text-center">
         <p className="text-zinc-400">還沒有真實持股</p>
         <p className="mt-2 text-sm text-zinc-500">到「持股」tab 加一筆</p>
       </div>
@@ -677,7 +678,7 @@ function Stat({
   color?: string;
 }) {
   return (
-    <div className="rounded-2xl border border-white/[0.06] bg-zinc-900/60 p-4">
+    <div className="rounded-2xl border border-line bg-surface-1 p-4">
       <div className="text-xs text-zinc-400">{label}</div>
       <div className={`mt-1 text-2xl font-semibold tabular-nums ${color}`}>
         {value}
@@ -703,9 +704,9 @@ function HoldingsAnalysis({
   return (
     <section>
       <h2 className="mb-2 text-lg font-semibold">真實持股</h2>
-      <div className="overflow-x-auto rounded-2xl border border-white/[0.06] bg-zinc-900/60">
+      <TableShell>
         <table className="w-full text-sm">
-          <thead className="border-b border-white/[0.06] text-left text-[11px] uppercase tracking-wider text-zinc-500">
+          <THead>
             <tr>
               <th className="px-3 py-2">股號</th>
               <th className="px-3 py-2 text-center" title="上=基本面 6 條規則;下=19 因子綜合排名(⭐=進場訊號)">分 / 綜合</th>
@@ -721,7 +722,7 @@ function HoldingsAnalysis({
               <th className="px-3 py-2 text-right">PE</th>
               <th className="px-3 py-2 text-right">PB</th>
             </tr>
-          </thead>
+          </THead>
           <tbody>
             {rows.map((h) => {
               const fcf = fmtFcf(h.fcf_ttm);
@@ -749,7 +750,7 @@ function HoldingsAnalysis({
                   : "";
               return (
                 <Fragment key={h.symbol}>
-                <tr className="border-t border-white/[0.04]">
+                <tr className="border-t border-line-soft">
                   <td className="px-3 py-2 font-mono">
                     <Link href={`/stocks/${h.symbol}`} className="text-blue-400 hover:text-blue-300 hover:underline">
                       {h.symbol}
@@ -824,7 +825,7 @@ function HoldingsAnalysis({
             })}
           </tbody>
         </table>
-      </div>
+      </TableShell>
     </section>
   );
 }

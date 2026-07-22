@@ -2112,5 +2112,31 @@ Andy 定調「不縮成儀表板,要走在市場前面」(抓真實事件 + 升�
 - [x] `app/_components/TopBar.tsx` / `Skeleton.tsx`:token 化(TopBar 取 remote 版無狀態燈;Skeleton 取 remote rounded-2xl)
 - [x] `app/_components/Format.ts`:pctColor 改回傳 text-up/text-down/text-flat(語意不變;EVENT_LABEL/concentrationClass 照收 remote)
 - [x] 刪 `app/_components/TabNav.tsx`(remote 也無引用,兩邊皆死碼)
-- [ ] `npm run build` + grep 驗證
-- [ ] push → Railway 部署 → Andy 視覺驗收
+- [x] `npm run build` + grep 驗證(清 stale .next 後全綠;/swing 在、/etf 無、零 conflict marker 殘留)
+- [x] push `16583de` → Railway 部署
+- [ ] Andy 視覺驗收(第一眼重點:Sidebar 分組+lucide icons、字體/數字對齊、卡片質感不變)
+
+**Review(2026-07-22,Phase A 完成)**:實作中撞 stale checkout(落後 origin 13 commits,7/17 已有玻璃感改版)→ Andy 拍板視覺以線上為準,rebase 語意合併:remote 結構(nav 含波段/無 ETF、無狀態燈 TopBar、漸層底)+ 本次系統化層(@theme tokens、ui.tsx 六元件、geist、lucide、tabular-nums、TabNav 刪除)。教訓 L53。
+
+---
+
+## UI 大改 Phase B — 表面色 token 化 + 表格元件化(2026-07-22)
+
+> Andy 拍板範圍:表面色 + 表格元件化,**語意色不動**。plan:`.claude/plans/sorted-honking-twilight.md`
+
+**盤點**(grep 精確統計):表面色 226 處 / 表格殼 12 + thead 13 / 語意色 138 處。
+
+- [x] `globals.css` token 擴充:`surface-raised`(zinc-950/60 表格強調 row)、`surface-sunken`(zinc-950/80 輸入框凹陷)、`surface-dialog`(**#18181b 實色** — modal 底不可半透明否則透出背景)、`line-soft`(白 4% row 分隔)、`line-strong`(白 10% 輸入框框);`surface-1` 由 /50 調 /60 對齊 62 處主流
+- [x] `ui.tsx`:新增 `THead`(divide "b"/"y" 兩分支各寫完整字面 class,L24);`Card`/`TableShell` 移除內建 `backdrop-blur` 改 opt-in(13 處表格實際都沒 blur)
+- [x] **機械替換 226 處**:PowerShell `.Replace()` 字面替換(非 regex,零誤傷)+ UTF-8 no BOM 寫回(L51 中文毀損教訓)。8 個映射、23 檔
+- [x] 手改 3 處 dialog 底 → `bg-surface-dialog`(AlertDialog/DayTradeDialog/SellDialog)
+- [x] 元件化:Perl 非貪婪配對替換 12 處表格殼 → `<TableShell>`、13 處 thead → `<THead>`;9 檔加 `@/app/_components/ui` import
+- [x] **對帳驗證**:替換數 226 = 基準 226 ✓;各 token 數量逐項相符(line-soft 21 / line-strong 24 / surface-1 63+4殼層 / sunken 22 / raised 7)✓;標籤配對 TableShell 12/12、THead 13/13 ✓;原始 class 殘留全 0 ✓;中文完整性 + 亂碼掃描 0 ✓
+- [x] `npm run build`(清 .next)全綠,11 條路由不變
+- [ ] push → Railway → Andy 視覺驗收
+
+**語意色刻意不做(已實證非偷懶)**:`HoldingsIntelWidget.tsx` 同一個 `text-red-300` 在 L89「海外同業偏多」是台股紅=漲、L111「⛔ 已破停損」是警示紅=危險。機械替換會綁死兩種語意,未來調漲跌色相會連動改掉警示色。漲跌已有 `pctColor()` 統一(正確抽象層),警示用 Tailwind 原生 amber/red 本來就對。
+
+**刻意保留的元素級樣式**(非表面分層,token 化屬過度設計):badge/按鈕底色(`HoldingsAdvice` SIGNAL_STYLE、`page.tsx:127`、`rank:590`、`error.tsx:27`)、`BuyForm:249` tone map、`page.tsx:812` 表格 row。
+
+**附帶發現(未修,既有債)**:`npx eslint app` 有 6 個 `react-hooks/purity` error(server component 內 `Date.now()`)+ 2 warning。**證實為 pre-existing**(本輪完全沒碰的 `app/backtest/page.tsx` 也報同類錯)。React 19 新規則對 server component 誤報(SC 不 re-render);`next build` 不跑 eslint 故不影響部署。待獨立處理。

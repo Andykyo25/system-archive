@@ -1,3 +1,4 @@
+import { TableShell, THead } from "@/app/_components/ui";
 import { createClient } from "@/lib/supabase/server";
 import { unwrap } from "@/lib/db";
 import { BuyForm } from "./BuyForm";
@@ -352,7 +353,7 @@ function Card({
   sub?: string;
 }) {
   return (
-    <div className="rounded-2xl border border-white/[0.06] bg-zinc-900/60 p-4">
+    <div className="rounded-2xl border border-line bg-surface-1 p-4">
       <div className="text-xs text-zinc-400">{label}</div>
       <div className={`mt-1 text-2xl font-semibold tabular-nums ${color}`}>
         {value}
@@ -395,13 +396,13 @@ function CurrentHoldingsSection({
     <section>
       <h2 className="mb-3 text-lg font-semibold">持有中 ({rows.length})</h2>
       {rows.length === 0 ? (
-        <p className="rounded-2xl border border-white/[0.06] bg-zinc-900/60 p-6 text-center text-sm text-zinc-500">
+        <p className="rounded-2xl border border-line bg-surface-1 p-6 text-center text-sm text-zinc-500">
           沒有持股
         </p>
       ) : (
-        <div className="overflow-x-auto rounded-2xl border border-white/[0.06] bg-zinc-900/60">
+        <TableShell>
           <table className="w-full text-sm">
-            <thead className="border-b border-white/[0.06] text-left text-[11px] uppercase tracking-wider text-zinc-500">
+            <THead>
               <tr>
                 <th className="px-3 py-2">股號</th>
                 <th className="px-3 py-2 text-right">股數</th>
@@ -418,7 +419,7 @@ function CurrentHoldingsSection({
                 <th className="px-3 py-2 text-right">%</th>
                 <th className="px-3 py-2 text-right"></th>
               </tr>
-            </thead>
+            </THead>
             <tbody>
               {rows.map((h) => {
                 const taxRate = isEtfSymbol(h.symbol)
@@ -427,7 +428,7 @@ function CurrentHoldingsSection({
                 const currentPrice =
                   h.current_price == null ? null : Number(h.current_price);
                 return (
-                  <tr key={h.symbol} className="border-t border-white/[0.04]">
+                  <tr key={h.symbol} className="border-t border-line-soft">
                     <td className="px-3 py-2 font-mono">
                       {h.symbol}
                       {isEtfSymbol(h.symbol) && (
@@ -502,7 +503,7 @@ function CurrentHoldingsSection({
               })}
             </tbody>
           </table>
-        </div>
+        </TableShell>
       )}
     </section>
   );
@@ -523,11 +524,11 @@ function ActiveAlertsSection({
           盤中每 10 分檢查,觸價 TG 推播後自動停用
         </span>
       </h2>
-      <div className="rounded-2xl border border-white/[0.06] bg-zinc-900/60">
+      <div className="rounded-2xl border border-line bg-surface-1">
         {rows.map((a) => (
           <div
             key={a.id}
-            className="flex flex-wrap items-center justify-between gap-2 border-t border-white/[0.04] px-4 py-2 text-sm first:border-t-0"
+            className="flex flex-wrap items-center justify-between gap-2 border-t border-line-soft px-4 py-2 text-sm first:border-t-0"
           >
             <div className="flex flex-wrap items-baseline gap-x-3">
               <span className="font-mono text-blue-400">{a.symbol}</span>
@@ -542,7 +543,7 @@ function ActiveAlertsSection({
             </div>
             <form action={cancelPriceAlert}>
               <input type="hidden" name="id" value={a.id} />
-              <button className="rounded-md border border-white/10 px-2.5 py-1 text-xs text-zinc-400 hover:bg-zinc-800 hover:text-red-300">
+              <button className="rounded-md border border-line-strong px-2.5 py-1 text-xs text-zinc-400 hover:bg-zinc-800 hover:text-red-300">
                 取消
               </button>
             </form>
@@ -666,9 +667,9 @@ function TradeBehaviorSection({ rows }: { rows: TradeBehaviorRow[] }) {
           sub="續抱 ±3% 判定"
         />
       </div>
-      <div className="overflow-x-auto rounded-2xl border border-white/[0.06] bg-zinc-900/60">
+      <TableShell>
         <table className="w-full text-sm">
-          <thead className="border-b border-white/[0.06] text-left text-[11px] uppercase tracking-wider text-zinc-500">
+          <THead>
             <tr>
               <th className="px-3 py-2">賣出日</th>
               <th className="px-3 py-2">股號</th>
@@ -696,13 +697,13 @@ function TradeBehaviorSection({ rows }: { rows: TradeBehaviorRow[] }) {
               </th>
               <th className="px-3 py-2 text-center">判定</th>
             </tr>
-          </thead>
+          </THead>
           <tbody>
             {rows.map((r) => {
               const fwd20 = num(r.fwd_20d_pct);
               const fwdMax = num(r.fwd_max20_pct);
               return (
-                <tr key={r.txn_id} className="border-t border-white/[0.04]">
+                <tr key={r.txn_id} className="border-t border-line-soft">
                   <td className="px-3 py-2 text-zinc-400">{r.sell_date}</td>
                   <td className="px-3 py-2 font-mono">{r.symbol}</td>
                   <td
@@ -736,7 +737,7 @@ function TradeBehaviorSection({ rows }: { rows: TradeBehaviorRow[] }) {
             })}
           </tbody>
         </table>
-      </div>
+      </TableShell>
     </section>
   );
 }
@@ -772,13 +773,13 @@ function RealizedSection({ rows }: { rows: RealizedRow[] }) {
         已實現損益歷史 ({rows.length})
       </h2>
       {rows.length === 0 ? (
-        <p className="rounded-2xl border border-white/[0.06] bg-zinc-900/60 p-6 text-center text-sm text-zinc-500">
+        <p className="rounded-2xl border border-line bg-surface-1 p-6 text-center text-sm text-zinc-500">
           還沒有賣出紀錄
         </p>
       ) : (
-        <div className="overflow-x-auto rounded-2xl border border-white/[0.06] bg-zinc-900/60">
+        <TableShell>
           <table className="w-full text-sm">
-            <thead className="border-b border-white/[0.06] text-left text-[11px] uppercase tracking-wider text-zinc-500">
+            <THead>
               <tr>
                 <th className="px-3 py-2">賣出日</th>
                 <th className="px-3 py-2">股號</th>
@@ -791,10 +792,10 @@ function RealizedSection({ rows }: { rows: RealizedRow[] }) {
                 <th className="px-3 py-2 text-right">%</th>
                 <th className="px-3 py-2">備註</th>
               </tr>
-            </thead>
+            </THead>
             <tbody>
               {rows.map((r) => (
-                <tr key={r.txn_id} className="border-t border-white/[0.04]">
+                <tr key={r.txn_id} className="border-t border-line-soft">
                   <td className="px-3 py-2 text-zinc-400">{r.sell_date}</td>
                   <td className="px-3 py-2 font-mono">
                     {r.symbol}
@@ -836,7 +837,7 @@ function RealizedSection({ rows }: { rows: RealizedRow[] }) {
               ))}
             </tbody>
           </table>
-        </div>
+        </TableShell>
       )}
     </section>
   );
@@ -845,7 +846,7 @@ function RealizedSection({ rows }: { rows: RealizedRow[] }) {
 function TransactionLogSection({ rows }: { rows: Transaction[] }) {
   return (
     <section>
-      <details open className="rounded-2xl border border-white/[0.06] bg-zinc-900/60">
+      <details open className="rounded-2xl border border-line bg-surface-1">
         <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-zinc-200">
           全部交易紀錄 ({rows.length})
           <span className="ml-2 text-xs font-normal text-zinc-500">
@@ -857,7 +858,7 @@ function TransactionLogSection({ rows }: { rows: Transaction[] }) {
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="border-y border-white/[0.06] text-left text-[11px] uppercase tracking-wider text-zinc-500">
+              <THead divide="y">
                 <tr>
                   <th className="px-3 py-2">日期</th>
                   <th className="px-3 py-2">類型</th>
@@ -869,10 +870,10 @@ function TransactionLogSection({ rows }: { rows: Transaction[] }) {
                   <th className="px-3 py-2">備註</th>
                   <th className="px-3 py-2"></th>
                 </tr>
-              </thead>
+              </THead>
               <tbody>
                 {rows.map((t) => (
-                  <tr key={t.id} className="border-t border-white/[0.04]">
+                  <tr key={t.id} className="border-t border-line-soft">
                     <td className="px-3 py-2 text-zinc-400">{t.txn_date}</td>
                     <td className="px-3 py-2">
                       <span
@@ -913,7 +914,7 @@ function TransactionLogSection({ rows }: { rows: Transaction[] }) {
             </table>
           </div>
         )}
-        <p className="border-t border-white/[0.04] px-4 py-2 text-xs text-zinc-500">
+        <p className="border-t border-line-soft px-4 py-2 text-xs text-zinc-500">
           顯示最近 200 筆。刪除單筆會影響後續 SELL 的成本計算,謹慎使用。
         </p>
       </details>

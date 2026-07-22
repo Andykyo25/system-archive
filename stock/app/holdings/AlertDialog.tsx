@@ -116,7 +116,7 @@ export function AlertDialog({
           onClick={close}
         >
           <div
-            className="w-full max-w-md rounded-2xl border border-white/10 bg-zinc-900 p-5"
+            className="w-full max-w-md rounded-2xl border border-line-strong bg-surface-dialog p-5"
             onClick={(e) => e.stopPropagation()}
           >
             <h3 className="mb-1 text-lg font-semibold">
@@ -128,7 +128,7 @@ export function AlertDialog({
             </p>
 
             {alerts.length > 0 && (
-              <div className="mb-4 rounded-xl border border-white/[0.06] bg-zinc-950/80 p-3">
+              <div className="mb-4 rounded-xl border border-line bg-surface-sunken p-3">
                 <p className="mb-1 text-xs text-zinc-500">已掛提醒</p>
                 {alerts.map((a) => (
                   <div
@@ -182,7 +182,7 @@ export function AlertDialog({
                   value={priceStr}
                   onChange={(e) => setPriceStr(e.target.value)}
                   placeholder="輸入價格或點上方快捷"
-                  className="w-full rounded-xl border border-white/10 bg-zinc-950/80 px-3 py-2 text-sm text-zinc-100"
+                  className="w-full rounded-xl border border-line-strong bg-surface-sunken px-3 py-2 text-sm text-zinc-100"
                 />
               </div>
               <div className="flex items-center gap-3 text-xs">
@@ -215,7 +215,7 @@ export function AlertDialog({
                   value={note}
                   onChange={(e) => setNote(e.target.value)}
                   placeholder="例:停損提醒、回檔接"
-                  className="w-full rounded-xl border border-white/10 bg-zinc-950/80 px-3 py-2 text-sm text-zinc-100"
+                  className="w-full rounded-xl border border-line-strong bg-surface-sunken px-3 py-2 text-sm text-zinc-100"
                 />
               </div>
             </div>
@@ -230,7 +230,7 @@ export function AlertDialog({
               <button
                 onClick={close}
                 disabled={pending}
-                className="rounded-xl border border-white/10 px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800"
+                className="rounded-xl border border-line-strong px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800"
               >
                 關閉
               </button>
@@ -253,7 +253,7 @@ function QuickBtn({ label, onClick }: { label: string; onClick: () => void }) {
   return (
     <button
       onClick={onClick}
-      className="rounded-md border border-white/10 bg-white/[0.06] px-2.5 py-1 text-xs text-zinc-200 hover:bg-zinc-700"
+      className="rounded-md border border-line-strong bg-white/[0.06] px-2.5 py-1 text-xs text-zinc-200 hover:bg-zinc-700"
     >
       {label}
     </button>

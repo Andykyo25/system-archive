@@ -24,7 +24,7 @@ export default function GlobalError({
       )}
       <button
         onClick={reset}
-        className="rounded-md border border-white/10 bg-zinc-900 px-4 py-2 text-sm text-zinc-200 hover:bg-zinc-800"
+        className="rounded-md border border-line-strong bg-zinc-900 px-4 py-2 text-sm text-zinc-200 hover:bg-zinc-800"
       >
         重試
       </button>

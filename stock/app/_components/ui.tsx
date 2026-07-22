@@ -1,13 +1,14 @@
 import type { ReactNode } from "react";
 
-// Phase A 基礎元件(2026-07-22,視覺對齊 07-17 玻璃感改版)
+// Phase A/B 基礎元件(2026-07-22,視覺對齊 07-17 玻璃感改版)
 // - 全部 server-safe,零 client JS
-// - 卡片慣例:rounded-2xl border-line bg-surface-1 backdrop-blur(= MorningPanel 既有語言)
-//   控制項 rounded-lg / nav pill rounded-xl
+// - 卡片慣例:rounded-2xl border-line bg-surface-1(控制項 rounded-lg / nav pill rounded-xl)
+//   backdrop-blur 不內建、改 opt-in(全站 13 處表格殼實際都沒有 blur;
+//   要玻璃模糊的傳 className="backdrop-blur",如 MorningPanel)
 // - tone → class 一律完整字面字串 Record(L24:Tailwind v4 JIT 掃不到動態組裝)
-// - Phase B 逐頁把手刻卡片換成這裡的元件;Phase A 只在 layout 殼使用
+// - Phase B 已套用:TableShell / THead(13 處表格);Card/StatTile 等待 Phase C 新視圖採用
 
-/** 標準卡片:surface-1 玻璃 + line 邊框 + rounded-2xl */
+/** 標準卡片:surface-1 + line 邊框 + rounded-2xl */
 export function Card({
   title,
   subtitle,
@@ -25,7 +26,7 @@ export function Card({
 }) {
   return (
     <section
-      className={`rounded-2xl border border-line bg-surface-1 backdrop-blur ${padded ? "p-4" : ""} ${className}`}
+      className={`rounded-2xl border border-line bg-surface-1 ${padded ? "p-4" : ""} ${className}`}
     >
       {(title != null || action != null) && (
         <header
@@ -71,7 +72,7 @@ export function StatTile({
 }) {
   return (
     <div
-      className={`rounded-2xl border border-line bg-surface-1 p-4 backdrop-blur ${className}`}
+      className={`rounded-2xl border border-line bg-surface-1 p-4 ${className}`}
     >
       <p className="text-xs text-zinc-500">{label}</p>
       <p
@@ -166,7 +167,7 @@ export function SectionHeader({
 
 /**
  * 表格外殼:統一 overflow 捲動 + 卡片外框。
- * th/td 樣式仍由各頁自理(各表高度客製,Phase B 逐表遷移)。
+ * th/td 樣式仍由各頁自理(各表欄位高度客製)。
  * 放進 flex column 時外層記得 min-w-0(L30)。
  */
 export function TableShell({
@@ -178,9 +179,34 @@ export function TableShell({
 }) {
   return (
     <div
-      className={`overflow-x-auto rounded-2xl border border-line bg-surface-1 backdrop-blur ${className}`}
+      className={`overflow-x-auto rounded-2xl border border-line bg-surface-1 ${className}`}
     >
       {children}
     </div>
+  );
+}
+
+/**
+ * 表格 thead 統一樣式(全站 13 處原本各自手刻同一串 class)。
+ * divide:"b" = 只有底線(12 處);"y" = 上下都有(holdings 已實現歷史摺疊表)。
+ * L24:兩個分支各寫完整字面字串,不做 `border-${divide}` 拼接。
+ */
+export function THead({
+  divide = "b",
+  children,
+}: {
+  divide?: "b" | "y";
+  children: ReactNode;
+}) {
+  return (
+    <thead
+      className={
+        divide === "y"
+          ? "border-y border-line text-left text-[11px] uppercase tracking-wider text-zinc-500"
+          : "border-b border-line text-left text-[11px] uppercase tracking-wider text-zinc-500"
+      }
+    >
+      {children}
+    </thead>
   );
 }

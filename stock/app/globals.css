@@ -1,25 +1,46 @@
 @import "tailwindcss";
 
 /*
- * Design tokens(Phase A,2026-07-22;視覺以 2026-07-17 玻璃感改版為準 token 化)
- * - 表面:surface-0(頁底實色)/ surface-1(卡片,zinc-900/50 玻璃)/ surface-2(巢狀、hover、skeleton)
- * - line:1px 邊框統一色(= 舊 border-white/[0.06])
- * - 語意色:up/down/flat = 台股紅漲綠跌(Format.ts pctColor 依賴)
- *   訊號:ok/warn/danger(持股燈、資料健康)
- * - @theme 會生成字面 utility(bg-surface-1、text-up、border-line …)
- *   L24:JSX 內一律寫完整字面 class,禁止動態組裝
- * - 卡片慣例:rounded-2xl border border-line bg-surface-1 backdrop-blur(見 ui.tsx)
+ * Design tokens(Phase A/B,2026-07-22;視覺以 2026-07-17 玻璃感改版為準 token 化)
+ *
+ * 表面分層(由上而下的視覺高度):
+ *   surface-dialog  modal/浮層底 — **實色不透明**(半透明會透出背景,modal 必須擋住)
+ *   surface-1       卡片、表格殼(= 舊 bg-zinc-900/60,全站主流 62 處)
+ *   surface-2       巢狀區塊、hover、skeleton
+ *   surface-raised  表格內強調 row(benchmark/選取,= 舊 bg-zinc-950/60)
+ *   surface-0       頁底、卡內區塊底(= 舊 bg-zinc-950)
+ *   surface-sunken  輸入框凹陷感(比卡片更暗,= 舊 bg-zinc-950/80)
+ *
+ * 邊框三級:
+ *   line-strong  輸入框/浮層邊框(白 10%)
+ *   line         主邊框:卡片、表格外框、thead 底線(白 6%)
+ *   line-soft    表格 row 分隔(白 4%,比主邊框更淡避免密集表格過吵)
+ *
+ * 語意色:up/down/flat = 台股紅漲綠跌(Format.ts pctColor 依賴)
+ *        ok/warn/danger = 訊號燈、資料健康
+ *   ⚠ Phase B 刻意**不**把散裝 text-red/green 全換成 up/down —
+ *     同一個 text-red-300 在 HoldingsIntelWidget 同時是「台股漲」(L89)與「警示危險」(L111),
+ *     機械替換會把兩種語意綁死。漲跌一律走 pctColor() helper,警示用 Tailwind 原生。
+ *
+ * L24:@theme 生成字面 utility,JSX 內一律寫完整 class,禁止動態組裝
  */
 @theme {
   --font-sans:
     var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system,
     "Segoe UI", Roboto, "Noto Sans TC", "Microsoft JhengHei", sans-serif;
 
-  /* surfaces(玻璃感:半透明疊在漸層底上) */
+  /* surfaces(玻璃感:半透明疊在漸層底上;dialog 例外為實色) */
   --color-surface-0: #09090b;
-  --color-surface-1: rgba(24, 24, 27, 0.5);
+  --color-surface-1: rgba(24, 24, 27, 0.6);
   --color-surface-2: rgba(255, 255, 255, 0.05);
+  --color-surface-raised: rgba(9, 9, 11, 0.6);
+  --color-surface-sunken: rgba(9, 9, 11, 0.8);
+  --color-surface-dialog: #18181b;
+
+  /* 邊框三級 */
   --color-line: rgba(255, 255, 255, 0.06);
+  --color-line-soft: rgba(255, 255, 255, 0.04);
+  --color-line-strong: rgba(255, 255, 255, 0.1);
 
   /* 台股漲跌 */
   --color-up: #f87171;

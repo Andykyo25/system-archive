@@ -1,3 +1,4 @@
+import { TableShell, THead } from "@/app/_components/ui";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { fmtMoney, fmtPct, pctColor } from "@/app/_components/Format";
@@ -339,7 +340,7 @@ export default async function RankPage({
 
   return (
     <div className="space-y-6">
-      <header className="rounded-2xl border border-white/[0.06] bg-zinc-900/60 p-4">
+      <header className="rounded-2xl border border-line bg-surface-1 p-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h1 className="text-xl font-semibold">
@@ -425,7 +426,7 @@ function FocusToggle({
   const tabIdle = "text-zinc-400 hover:text-zinc-200";
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <div className="inline-flex rounded-xl border border-white/[0.06] bg-zinc-950/60 p-1">
+      <div className="inline-flex rounded-xl border border-line bg-surface-raised p-1">
         <Link
           href={buildRankHref({ ignoreBudget, focus: 5 })}
           className={`${tabBase} ${focus === 5 ? tabActiveFocus : tabIdle}`}
@@ -469,7 +470,7 @@ function BudgetHeader({
   // 沒設預算 → toggle 沒意義,維持原訊息
   if (!hasBudget) {
     return (
-      <p className="mt-2 rounded border border-white/[0.06] bg-zinc-950/80 px-3 py-2 text-xs text-zinc-400">
+      <p className="mt-2 rounded border border-line bg-surface-sunken px-3 py-2 text-xs text-zinc-400">
         未設預算 → 顯示全部 ({allCount} 檔)。設預算可在{" "}
         <Link href="/settings" className="text-blue-400 hover:underline">
           /settings
@@ -489,7 +490,7 @@ function BudgetHeader({
 
   return (
     <div className="mt-2 flex flex-wrap items-center gap-2">
-      <div className="inline-flex rounded-xl border border-white/[0.06] bg-zinc-950/60 p-1">
+      <div className="inline-flex rounded-xl border border-line bg-surface-raised p-1">
         <Link
           href={buildRankHref({ focus: focus === 5 ? 5 : focus === 30 ? 30 : undefined })}
           className={`${tabBase} ${!ignoreBudget ? tabActiveBudget : tabIdle}`}
@@ -533,7 +534,7 @@ function EmptyState({
   if (hasBudget && !ignoreBudget) {
     const wan = (budget / 10000).toFixed(1);
     return (
-      <div className="rounded-2xl border border-white/[0.06] bg-zinc-900/60 p-8 text-center">
+      <div className="rounded-2xl border border-line bg-surface-1 p-8 text-center">
         <p className="text-zinc-400">
           {focus === 5 ? "精選 Top 5" : `Top ${focus}`} 中沒有預算 {wan} 萬內的標的
         </p>
@@ -549,7 +550,7 @@ function EmptyState({
   }
   // 沒設預算 或 按了忽略 → 真的沒任何排名資料
   return (
-    <div className="rounded-2xl border border-white/[0.06] bg-zinc-900/60 p-8 text-center">
+    <div className="rounded-2xl border border-line bg-surface-1 p-8 text-center">
       <p className="text-zinc-400">尚無排名資料</p>
       <p className="mt-2 text-sm text-zinc-500">
         確認 stock_universe 已 seed,且 price_daily 有近 60 日資料(M9 動能因子需要 60d MA)
@@ -586,7 +587,7 @@ function RankTable({
             <Link
               key={r.symbol}
               href={`/stocks/${r.symbol}`}
-              className={`block rounded-xl border border-white/[0.06] px-3 py-2.5 ${
+              className={`block rounded-xl border border-line px-3 py-2.5 ${
                 isEntry ? "bg-yellow-950/15" : "bg-zinc-900"
               }`}
             >
@@ -648,9 +649,9 @@ function RankTable({
           );
         })}
       </div>
-      <div className="hidden overflow-x-auto rounded-2xl border border-white/[0.06] bg-zinc-900/60 md:block">
+      <TableShell className="hidden md:block">
         <table className="w-full text-sm">
-          <thead className="border-b border-white/[0.06] text-left text-[11px] uppercase tracking-wider text-zinc-500">
+          <THead>
             <tr>
               <th className="px-3 py-2 text-right">#</th>
               <th className="px-3 py-2">股號</th>
@@ -678,7 +679,7 @@ function RankTable({
               <th className="px-3 py-2 text-right">距 60d 高</th>
               <th className="px-3 py-2 text-center">訊號</th>
             </tr>
-          </thead>
+          </THead>
           <tbody>
             {rows.map((r) => {
               const sig = signalMap.get(r.symbol);
@@ -687,7 +688,7 @@ function RankTable({
               return (
                 <tr
                   key={r.symbol}
-                  className={`border-t border-white/[0.04] ${isEntry ? "bg-yellow-950/15" : ""}`}
+                  className={`border-t border-line-soft ${isEntry ? "bg-yellow-950/15" : ""}`}
                 >
                   <td className="px-3 py-2 text-right tabular-nums text-zinc-500">
                     {r.expected_rank}
@@ -779,7 +780,7 @@ function RankTable({
             })}
           </tbody>
         </table>
-      </div>
+      </TableShell>
     </section>
   );
 }
@@ -852,7 +853,7 @@ function PortfolioSummaryCard({
   fwdBench: number | null;
 }) {
   return (
-    <section className="rounded-2xl border border-white/[0.06] bg-zinc-900/60 p-4">
+    <section className="rounded-2xl border border-line bg-surface-1 p-4">
       <h2 className="text-sm font-semibold text-zinc-200">
         前向追蹤(凍結名單再往前看,零前視)
         <span className="ml-2 text-xs font-normal text-zinc-500">5-16 批</span>
@@ -930,7 +931,7 @@ function toMaybeNeg(n: string | number | null | undefined): string | number | nu
 
 function Legend() {
   return (
-    <div className="rounded-xl border border-white/[0.06] bg-zinc-950/60 p-4 text-xs text-zinc-400">
+    <div className="rounded-xl border border-line bg-surface-raised p-4 text-xs text-zinc-400">
       <div className="mb-1 font-semibold text-zinc-300">因子說明(共 19 條)</div>
       <ul className="grid grid-cols-1 gap-1 md:grid-cols-2">
         <li>

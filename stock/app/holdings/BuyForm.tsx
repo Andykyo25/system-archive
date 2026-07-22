@@ -15,7 +15,7 @@ import { concentrationClass, EVENT_LABEL, fmtMoney } from "../_components/Format
 // 但沒出現在下單記錄路徑上。
 
 const inputCls =
-  "rounded-xl border border-white/10 bg-zinc-950/80 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-500 focus:border-blue-500 focus:outline-none";
+  "rounded-xl border border-line-strong bg-surface-sunken px-3 py-2 text-sm text-zinc-100 placeholder-zinc-500 focus:border-blue-500 focus:outline-none";
 const btnCls =
   "rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700";
 
@@ -194,7 +194,7 @@ function SizingBox({ z }: { z: BuySizing }) {
     lotValuePct != null ? ((z.existingValue + (z.lotValue ?? 0)) / z.capital) * 100 : null;
   const overBudget = z.suggestedLots === 0;
   return (
-    <div className="rounded border border-white/[0.08] bg-zinc-900/60 px-3 py-2 text-xs leading-relaxed text-zinc-300">
+    <div className="rounded border border-line bg-surface-1 px-3 py-2 text-xs leading-relaxed text-zinc-300">
       <p>
         📐 <b>部位管理</b>:ATR14 {z.atr14.toFixed(1)}({z.atrPct.toFixed(1)}%)
         · 停損距 {z.kMultiple}×ATR = {z.stopDistance.toFixed(1)} · 風險預算{" "}
@@ -246,7 +246,7 @@ const TONE_CLS: Record<string, string> = {
   red: "border-red-900/50 bg-red-950/25 text-red-200/90",
   green: "border-green-900/50 bg-green-950/20 text-green-200/90",
   sky: "border-sky-900/50 bg-sky-950/20 text-sky-200/90",
-  zinc: "border-zinc-700/60 bg-zinc-900/60 text-zinc-300",
+  zinc: "border-zinc-700/60 bg-surface-1 text-zinc-300",
 };
 
 function WarnBox({

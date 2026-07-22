@@ -1,5 +1,6 @@
 "use client";
 
+import { TableShell, THead } from "@/app/_components/ui";
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -123,9 +124,9 @@ export function RunsTableClient({ runs }: { runs: BacktestRun[] }) {
           對比選定 ({selected.size}) →
         </button>
       </div>
-      <div className="overflow-x-auto rounded-2xl border border-white/[0.06] bg-zinc-900/60">
+      <TableShell>
         <table className="w-full text-sm">
-          <thead className="border-b border-white/[0.06] text-left text-[11px] uppercase tracking-wider text-zinc-500">
+          <THead>
             <tr>
               <th className="w-10 px-3 py-2 text-center">☐</th>
               <th className="px-3 py-2">名稱</th>
@@ -139,7 +140,7 @@ export function RunsTableClient({ runs }: { runs: BacktestRun[] }) {
               <th className="px-3 py-2">建立時間</th>
               <th className="px-3 py-2"></th>
             </tr>
-          </thead>
+          </THead>
           <tbody>
             {runs.map((r) => (
               <RunRow
@@ -151,7 +152,7 @@ export function RunsTableClient({ runs }: { runs: BacktestRun[] }) {
             ))}
           </tbody>
         </table>
-      </div>
+      </TableShell>
     </div>
   );
 }
@@ -187,7 +188,7 @@ function RunRow({
     );
   return (
     <tr
-      className={`border-t border-white/[0.04] ${checked ? "bg-emerald-950/20" : ""}`}
+      className={`border-t border-line-soft ${checked ? "bg-emerald-950/20" : ""}`}
     >
       <td className="px-3 py-2 text-center">
         {canSelect ? (

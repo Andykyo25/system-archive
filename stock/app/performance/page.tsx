@@ -1,3 +1,4 @@
+import { TableShell, THead } from "@/app/_components/ui";
 import { createClient } from "@/lib/supabase/server";
 import { unwrap } from "@/lib/db";
 import { fmtMoney } from "../_components/Format";
@@ -55,26 +56,26 @@ export default async function PerformancePage() {
 
       {/* Summary 卡 */}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <div className="rounded-2xl border border-white/[0.06] bg-zinc-900/60 p-4">
+        <div className="rounded-2xl border border-line bg-surface-1 p-4">
           <div className="text-xs text-zinc-500">初始本金</div>
           <div className="mt-1 text-lg font-semibold text-zinc-200 tabular-nums">
             {fmtMoney(initialCapital)}
           </div>
         </div>
-        <div className="rounded-2xl border border-white/[0.06] bg-zinc-900/60 p-4">
+        <div className="rounded-2xl border border-line bg-surface-1 p-4">
           <div className="text-xs text-zinc-500">目前權益</div>
           <div className="mt-1 text-lg font-semibold text-amber-400 tabular-nums">
             {fmtMoney(finalEquity)}
           </div>
         </div>
-        <div className="rounded-2xl border border-white/[0.06] bg-zinc-900/60 p-4">
+        <div className="rounded-2xl border border-line bg-surface-1 p-4">
           <div className="text-xs text-zinc-500">總報酬</div>
           <div className="mt-1 text-lg font-semibold text-rose-400 tabular-nums">
             {totalRet >= 0 ? "+" : ""}
             {totalRet.toFixed(1)}%
           </div>
         </div>
-        <div className="rounded-2xl border border-white/[0.06] bg-zinc-900/60 p-4">
+        <div className="rounded-2xl border border-line bg-surface-1 p-4">
           <div className="text-xs text-zinc-500">
             累計已實現 · 平倉 {Number(summary?.count_closed ?? 0)} 檔
           </div>
@@ -93,9 +94,9 @@ export default async function PerformancePage() {
         <h2 className="mb-2 text-sm font-semibold text-zinc-300">
           交易事件明細
         </h2>
-        <div className="overflow-x-auto rounded-2xl border border-white/[0.06] bg-zinc-900/60">
+        <TableShell>
           <table className="w-full text-sm">
-            <thead className="border-b border-white/[0.06] text-left text-[11px] uppercase tracking-wider text-zinc-500">
+            <THead>
               <tr>
                 <th className="px-3 py-2">日期</th>
                 <th className="px-3 py-2">標的</th>
@@ -105,7 +106,7 @@ export default async function PerformancePage() {
                 <th className="px-3 py-2 text-right">本筆增減</th>
                 <th className="px-3 py-2 text-right">帳戶權益</th>
               </tr>
-            </thead>
+            </THead>
             <tbody>
               {points.map((p, idx) => {
                 const isBuy = p.event_type === "BUY";
@@ -114,7 +115,7 @@ export default async function PerformancePage() {
                 return (
                   <tr
                     key={idx}
-                    className="border-t border-white/[0.04]/60 text-zinc-300"
+                    className="border-t border-line-soft/60 text-zinc-300"
                   >
                     <td className="px-3 py-2 tabular-nums text-zinc-400">
                       {p.event_date}
@@ -170,7 +171,7 @@ export default async function PerformancePage() {
               )}
             </tbody>
           </table>
-        </div>
+        </TableShell>
       </div>
 
       <p className="text-xs text-zinc-600">

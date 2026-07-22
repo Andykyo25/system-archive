@@ -32,7 +32,7 @@ interface Props {
 export function FactorRadar({ axes, size = 320 }: Props) {
   if (axes.length === 0) {
     return (
-      <div className="rounded-2xl border border-white/[0.06] bg-zinc-900/60 p-6 text-sm text-zinc-500">
+      <div className="rounded-2xl border border-line bg-surface-1 p-6 text-sm text-zinc-500">
         無因子資料
       </div>
     );

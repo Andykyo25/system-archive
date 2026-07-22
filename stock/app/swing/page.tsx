@@ -1,3 +1,4 @@
+import { TableShell, THead } from "@/app/_components/ui";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { unwrap } from "@/lib/db";
@@ -88,7 +89,7 @@ export default async function SwingPage() {
 
   return (
     <div className="space-y-6">
-      <header className="rounded-2xl border border-white/[0.06] bg-zinc-900/60 p-4">
+      <header className="rounded-2xl border border-line bg-surface-1 p-4">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <h1 className="text-xl font-semibold">波段掃描 ({rows.length})</h1>
           {rz && regimeRet != null && (
@@ -109,13 +110,13 @@ export default async function SwingPage() {
       </header>
 
       {rows.length === 0 ? (
-        <p className="rounded-2xl border border-white/[0.06] bg-zinc-900/60 p-8 text-center text-sm text-zinc-500">
+        <p className="rounded-2xl border border-line bg-surface-1 p-8 text-center text-sm text-zinc-500">
           目前沒有符合條件的候選(強勢股都不在回檔區)
         </p>
       ) : (
-        <div className="overflow-x-auto rounded-2xl border border-white/[0.06] bg-zinc-900/60">
+        <TableShell>
           <table className="w-full text-sm">
-            <thead className="border-b border-white/[0.06] text-left text-[11px] uppercase tracking-wider text-zinc-500">
+            <THead>
               <tr>
                 <th className="px-3 py-2">股號</th>
                 <th className="px-3 py-2">名稱</th>
@@ -132,14 +133,14 @@ export default async function SwingPage() {
                 <th className="px-3 py-2 text-right" title="19 因子綜合排名(質篩參考)">綜合#</th>
                 <th className="px-3 py-2">事件</th>
               </tr>
-            </thead>
+            </THead>
             <tbody>
               {rows.map((r) => {
                 const dev = n(r.dev_ma20_pct);
                 const deepPullback = dev != null && dev < -5;
                 const evs = eventsMap[r.symbol] ?? [];
                 return (
-                  <tr key={r.symbol} className="border-t border-white/[0.04]">
+                  <tr key={r.symbol} className="border-t border-line-soft">
                     <td className="px-3 py-2 font-mono">
                       <Link
                         href={`/stocks/${r.symbol}`}
@@ -208,7 +209,7 @@ export default async function SwingPage() {
               })}
             </tbody>
           </table>
-        </div>
+        </TableShell>
       )}
     </div>
   );

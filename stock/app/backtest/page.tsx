@@ -40,7 +40,7 @@ interface BacktestRun {
 }
 
 const inputCls =
-  "rounded-xl border border-white/10 bg-zinc-950/80 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-500 focus:border-blue-500 focus:outline-none";
+  "rounded-xl border border-line-strong bg-surface-sunken px-3 py-2 text-sm text-zinc-100 placeholder-zinc-500 focus:border-blue-500 focus:outline-none";
 const btnCls =
   "rounded-xl bg-blue-600 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:opacity-50";
 
@@ -60,7 +60,7 @@ export default async function BacktestPage() {
 
   return (
     <div className="space-y-8">
-      <header className="rounded-2xl border border-white/[0.06] bg-zinc-900/60 p-4">
+      <header className="rounded-2xl border border-line bg-surface-1 p-4">
         <h1 className="text-xl font-semibold">Backtest 回測</h1>
         <p className="mt-2 text-xs text-zinc-500">
           Walk-forward 多因子回測:每 N 個交易日重新 rank,取 top-K 等權持有,vs 0050 同期。
@@ -72,7 +72,7 @@ export default async function BacktestPage() {
         <h2 className="mb-3 text-lg font-semibold">新增回測</h2>
         <form
           action={createBacktestRun}
-          className="grid grid-cols-1 gap-3 rounded-2xl border border-white/[0.06] bg-zinc-900/60 p-4 md:grid-cols-[1fr_140px_140px_100px_100px_100px_auto]"
+          className="grid grid-cols-1 gap-3 rounded-2xl border border-line bg-surface-1 p-4 md:grid-cols-[1fr_140px_140px_100px_100px_100px_auto]"
         >
           <div>
             <label className="mb-1 block text-xs text-zinc-400">名稱</label>
@@ -165,7 +165,7 @@ export default async function BacktestPage() {
 
 function EmptyState() {
   return (
-    <div className="rounded-2xl border border-white/[0.06] bg-zinc-900/60 p-8 text-center">
+    <div className="rounded-2xl border border-line bg-surface-1 p-8 text-center">
       <p className="text-zinc-400">尚無回測紀錄</p>
       <p className="mt-2 text-sm text-zinc-500">
         填上面的表單跑一次。資料不足時會 graceful 失敗,可在 row 看 reason。
