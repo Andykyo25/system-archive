@@ -134,44 +134,23 @@ export default async function RankPage({
   const sp = await searchParams;
 
   // ?board=momentum → 短線動能榜。早期分流:不跑下面那批重查詢(v_rank_with_cost 等)
+  // 主軸 = 最新交易日(Andy「20 日太長,今天大漲的題材才是進場關鍵」)。
+  // name/industry 已在 v_symbol_momentum 內 join,不用前端再 map。
   if (sp.board === "momentum") {
     const [heatRes, momRes] = await Promise.all([
-      sb.from("v_industry_heat").select("*").order("avg_ret_20d", { ascending: false }),
       sb
-        .from("v_stock_rank")
-        .select(
-          "symbol, ret_5d_pct, ret_20d_pct, ret_60d_pct, rsi14, off_high_60d_pct, expected_rank, latest_close",
-        )
-        .not("ret_20d_pct", "is", null)
-        .order("ret_20d_pct", { ascending: false })
+        .from("v_industry_heat")
+        .select("*")
+        .order("avg_today_pct", { ascending: false, nullsFirst: false }),
+      sb
+        .from("v_symbol_momentum")
+        .select("*")
+        .not("latest_day_pct", "is", null)
+        .order("latest_day_pct", { ascending: false })
         .limit(40),
     ]);
     const heat = (heatRes.data as HeatRow[] | null) ?? [];
-    const momRaw =
-      (momRes.data as Omit<MomentumRow, "name" | "industry">[] | null) ?? [];
-
-    // 名稱 / 題材對照(分開查:v_stock_rank 沒有這兩欄)
-    const syms = momRaw.map((r) => r.symbol);
-    const [namesRes, indRes] = await Promise.all([
-      sb.from("stock_names").select("symbol, name").in("symbol", syms),
-      sb.from("industry_stocks").select("symbol, industry").in("symbol", syms),
-    ]);
-    const nameMap = new Map(
-      ((namesRes.data as { symbol: string; name: string | null }[] | null) ?? []).map(
-        (r) => [r.symbol, r.name],
-      ),
-    );
-    const indMap = new Map(
-      ((indRes.data as { symbol: string; industry: string }[] | null) ?? []).map((r) => [
-        r.symbol,
-        r.industry,
-      ]),
-    );
-    const momRows: MomentumRow[] = momRaw.map((r) => ({
-      ...r,
-      name: nameMap.get(r.symbol) ?? null,
-      industry: indMap.get(r.symbol) ?? null,
-    }));
+    const momRows = (momRes.data as MomentumRow[] | null) ?? [];
 
     return (
       <div className="space-y-4">
