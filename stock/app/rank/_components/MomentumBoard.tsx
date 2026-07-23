@@ -40,14 +40,31 @@ export interface MomentumRow {
   name: string | null;
   industry: string | null;
   latest_day_pct: number | string | null;
-  last_date: string | null;
+  today_as_of: string | null;
+  price_source: string | null;
+  current_price: number | string | null;
   ret_5d_pct: number | string | null;
   ret_20d_pct: number | string | null;
   ret_60d_pct: number | string | null;
   rsi14: number | string | null;
   off_high_60d_pct: number | string | null;
   expected_rank: number | null;
-  latest_close: number | string | null;
+}
+
+// 盤中即時(twse_mis*)vs 今日收盤(twse_today)的時效標示
+function freshness(source: string | null, asOf: string | null): string {
+  if (!asOf) return "";
+  const t = new Date(asOf).getTime();
+  const hhmm = Number.isFinite(t)
+    ? new Date(asOf).toLocaleTimeString("zh-TW", {
+        hour: "2-digit",
+        minute: "2-digit",
+        timeZone: "Asia/Taipei",
+      })
+    : "";
+  if (source === "twse_mis" || source === "twse_mis_mid") return `盤中即時 ${hhmm}`;
+  if (source === "twse_today") return "今日收盤";
+  return hhmm;
 }
 
 function n(v: number | string | null | undefined): number | null {
@@ -90,15 +107,23 @@ function pattern(
 }
 
 export function MomentumBoard({ heat, rows }: { heat: HeatRow[]; rows: MomentumRow[] }) {
-  const asOf = rows.find((r) => r.last_date)?.last_date ?? null;
+  const lead = rows.find((r) => r.today_as_of) ?? null;
+  const fresh = lead ? freshness(lead.price_source, lead.today_as_of) : "";
 
   return (
     <div className="space-y-6">
       <header className="rounded-2xl border border-line bg-surface-1 p-4">
-        <h1 className="text-xl font-semibold">短線動能</h1>
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h1 className="text-xl font-semibold">短線動能</h1>
+          {fresh && (
+            <span className="rounded-lg border border-line bg-surface-2 px-2 py-0.5 text-[11px] text-zinc-400">
+              {fresh}
+            </span>
+          )}
+        </div>
         <p className="mt-1 text-xs text-zinc-500">
-          以<span className="text-zinc-300">最新交易日</span>
-          漲跌排序{asOf ? `（${asOf}）` : ""}，純價格、
+          以<span className="text-zinc-300">今日漲跌</span>排序（盤中取即時報價、盤後取當日收盤），
+          純價格、
           <span className="text-zinc-300">不含基本面／籌碼因子，也沒有回測驗證</span>。
           這是「<span className="text-zinc-300">現在在漲</span>」的清單，不是「會繼續漲」的清單。
         </p>
@@ -112,7 +137,7 @@ export function MomentumBoard({ heat, rows }: { heat: HeatRow[]; rows: MomentumR
       {/* ── 題材熱度(今日) ── */}
       <section>
         <h2 className="mb-1 text-base font-semibold text-zinc-100">
-          題材熱度 · 最新交易日
+          題材熱度 · 今日
         </h2>
         <p className="mb-2 text-xs text-zinc-500">
           資金今天輪到哪。<span className="text-zinc-400">上漲家數</span>與
@@ -204,7 +229,7 @@ export function MomentumBoard({ heat, rows }: { heat: HeatRow[]; rows: MomentumR
       {/* ── 個股動能(今日) ── */}
       <section>
         <h2 className="mb-1 text-base font-semibold text-zinc-100">
-          個股動能 · 最新交易日漲最多
+          個股動能 · 今日漲最多
         </h2>
         <p className="mb-2 text-xs text-zinc-500">
           今天漲最多的 40 檔。<span className="text-zinc-400">型態</span>欄用今日／5日／20日組合
@@ -259,7 +284,7 @@ export function MomentumBoard({ heat, rows }: { heat: HeatRow[]; rows: MomentumR
                         {r.industry ?? "—"}
                       </td>
                       <td className="px-3 py-2 text-right tabular-nums text-zinc-300">
-                        {n(r.latest_close)?.toLocaleString("zh-TW") ?? "—"}
+                        {n(r.current_price)?.toLocaleString("zh-TW") ?? "—"}
                       </td>
                       <td className={`px-3 py-2 text-right font-semibold tabular-nums ${pctColor(r.latest_day_pct)}`}>
                         {isLimit ? "🔴 " : ""}
@@ -293,7 +318,7 @@ export function MomentumBoard({ heat, rows }: { heat: HeatRow[]; rows: MomentumR
       </section>
 
       <p className="text-xs text-zinc-600">
-        「最新交易日」= price_daily 各股最近兩筆收盤的日變化（盤後 = 今天收盤，非盤中即時）。
+        「今日」= 現價 vs 前一交易日收盤（盤中取即時報價、盤後取當日收盤）。
         <span className="text-zinc-500">
           「距高點」越小越接近波段頂；RSI ≥80 標橘代表短線過熱，是追價風險提醒不是賣訊。
         </span>

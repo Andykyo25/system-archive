@@ -142,10 +142,13 @@ export default async function RankPage({
         .from("v_industry_heat")
         .select("*")
         .order("avg_today_pct", { ascending: false, nullsFirst: false }),
+      // 排除只有舊價的股票(price_source=twse_yesterday):它們不在即時收料範圍,
+      // today_pct 會是舊日的日變化而非今天 → 混進榜裡會被當成「今天漲停」誤導。
       sb
         .from("v_symbol_momentum")
         .select("*")
         .not("latest_day_pct", "is", null)
+        .neq("price_source", "twse_yesterday")
         .order("latest_day_pct", { ascending: false })
         .limit(40),
     ]);
