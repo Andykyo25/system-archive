@@ -1,78 +1,66 @@
-# 業務出團表系統 v11 — 5 大功能擴充
+# 業務出團表 v12 — 合約截圖強制上傳 + 移除網卡
 
-## 設計確認(已 check in)
-- [x] DB:`category` 欄位由 user 自行 migrate
-- [x] 進度條:**純展示**,不影響任何勾選操作(見 lessons L1)
-- [x] 批次 toolbar:底部 sticky 浮動
-- [x] 行事曆:**週視圖**
+計畫已 check in（plan mode 核准）：合約完成與否改看 `contractImage`（Storage 路徑）是否有值，不再用 boolean 勾選;網卡欄位全移除。DB 舊欄位 `contractUploaded` / `simCard` 保留不刪。
 
 ## 任務清單
 
-### Phase 1:訂單進度條(純前端)
-- [x] 1.1 `calcProgress(row)` + `progressDotsHTML(row)`
-- [x] 1.2 表格新增「進度」欄(客人後),5 個小圓點 + `n/5`
-- [x] 1.3 手機卡片加水平 progress bar
-- [x] 1.4 hover tooltip(`✓ 訂金 / ○ 合約...` 形式)
-- [x] 1.5 點圓點不觸發任何操作,純展示(符合 lessons L1)
+### Phase 1:Supabase migration
+- [x] 1.1 `sales_records` 加 `"contractImage" text`
+- [x] 1.2 建 private bucket `contracts`（10MB、image/*）
+- [x] 1.3 storage.objects 4 條 policy（insert/select/update/delete，限本人資料夾）
+- [x] 1.4 SQL 驗證欄位 / bucket / policy + get_advisors
 
-### Phase 2:Inline edit V 標記
-- [x] 2.1 `toggleField(id, field)` 函式
-- [x] 2.2 9 個 V 欄位 td 加 onclick + `.toggleable-cell` hover 樣式
-- [x] 2.3 Optimistic UI:本地先改 → 重 render → API → 失敗回滾 + toast
-- [x] 2.4 編輯中禁用 inline toggle(`editId` 有值時擋下並提示)
+### Phase 2:表單
+- [x] 2.1 移除 f_contractUploaded、f_simCard
+- [x] 2.2 備註前加「合約截圖」file input + 查看/移除現有截圖 UI
+- [x] 2.3 saveRecord:先上傳再存檔、失敗中止、換圖刪舊檔
+- [x] 2.4 editRecord / resetForm / duplicateRecord 帶入與清空截圖狀態
 
-### Phase 3:批次操作
-- [x] 3.1 表頭全選 checkbox,每列 checkbox + `.row-selected` 高亮
-- [x] 3.2 `selectedIds` Set + `syncSelectAllState()` 處理 indeterminate
-- [x] 3.3 底部 sticky toolbar,slideUp 動畫
-- [x] 3.4 標記 V / 取消 V 雙下拉,各 7 項
-- [x] 3.5 批次刪除(supabase `.in()`)
-- [x] 3.6 取消選取按鈕 + 切 Tab/篩選時自動清空
+### Phase 3:表格 / 手機卡片
+- [x] 3.1 表頭 合約上傳→合約截圖、刪網卡欄、colspan 23→22
+- [x] 3.2 儲存格:有圖「查看」（signed URL）/ 無圖「上傳」（就地上傳）
+- [x] 3.3 手機卡片加 查看/上傳合約 按鈕
+- [x] 3.4 編輯模式中禁用就地上傳（同 toggleField 守門）
 
-### Phase 4:行程分類欄位 + 顏色標籤
-- [x] 4.1 DB column 由 user 自行 migrate
-- [x] 4.2 表單加 input + `<datalist>`(預選 7 項可自填)
-- [x] 4.3 `categoryColor()` 用簡單 hash → 固定 HSL
-- [x] 4.4 表格 + 手機卡片在行程名前加 badge
-- [~] 4.5 chips 分類篩選(本次未做,留待後續)
-- [x] 4.6 CSV 匯出加「分類」欄
-- [~] 4.7 不加進 TOGGLEABLE_COLS(badge 內嵌在「行程」欄)
+### Phase 4:邏輯接點
+- [x] 4.1 PROGRESS_STEPS 改 check function
+- [x] 4.2 fetchNotifications 改 contractImage.is.null
+- [x] 4.3 批次 toolbar 移除合約上傳兩項
+- [x] 4.4 TOGGLEABLE_COLS / FIELD_LABELS / FORM_FIELD_IDS 清理 + hiddenCols 過期 key 清理
+- [x] 4.5 exportToCSV 改欄位
+- [x] 4.6 deleteRecord / batchDelete 一併刪 Storage 檔
 
-### Phase 5:週視圖行事曆
-- [x] 5.1 控制列加「列表 / 週曆」切換 btn-group
-- [x] 5.2 週導航(◀ 上週 / 本週 / 下週 ▶)
-- [x] 5.3 7 天 CSS grid,each cell:日期 header + events
-- [x] 5.4 事件色塊用 categoryColor(預設藍)
-- [x] 5.5 點色塊 → `editRecord()` 開表單編輯
-- [x] 5.6 手機版自動單欄堆疊(`@media max-width:992px`)
-- [x] 5.7 視圖切換不重 fetch,view 偏好存 localStorage
-- [x] 5.8 額外:今日格高亮、週末底色、過去日期淡化
+### Phase 6:舊勾選 grandfather（使用者追加,2026-07-27）
+- [x] 6.1 `contractDone(r)` 統一判定:有截圖 或 舊勾選(contractUploaded=true)即完成
+- [x] 6.2 套用到 進度條 / 通知(query + client) / CSV / 表格儲存格 / 手機卡片
+- [x] 6.3 表格儲存格三態:查看(有圖) / 綠V(舊勾選,tooltip 註明) / 上傳(皆無)
+- [x] 6.4 驗證:135 筆舊V 顯示綠V、128 筆顯示上傳鈕(合計263)、通知剩真正未辦的 2 筆
+
+### Phase 5:驗證
+- [x] 5.1 JS 語法檢查（無 node，改由瀏覽器實際載入驗證，console 零錯誤）
+- [x] 5.2 Browser pane 預覽:263 筆實資料渲染、表頭 22 欄、批次選單無合約項、通知徽章含「合約截圖未上傳」
+- [x] 5.3 Storage 端對端:上傳 → signed URL fetch 200 → 刪除,全通過（RLS 生效,路徑落在本人資料夾）
+- [ ] 5.4 使用者實測:表單/表格實際上傳一張截圖、點「查看」、手機寬度操作
 
 ## Review
 
-### 改動規模
-| 指標 | 變化 |
+### 改動摘要
+| 項目 | 內容 |
 |---|---|
-| 檔案行數 | 940 → **1369**(+429) |
-| 新 function 數 | +14(含 startOfWeek, calcProgress, toggleField, batch×2, switchView, renderWeekView 等) |
-| 新狀態變數 | `selectedIds`, `currentView`, `weekStart` |
-| 新 CSS 類 | progress-mini / m-progress / toggleable-cell / batch-toolbar / row-selected / category-badge / week-* |
-| DB 改動 | `sales_records.category text`(user 自跑) |
+| DB | `sales_records."contractImage" text`（migration: `contract_image_storage`）|
+| Storage | private bucket `contracts`（10MB、image/*）+ 4 條 per-user policy |
+| 舊欄位 | `contractUploaded` / `simCard` DB 保留、前端全移除引用 |
+| 前端 | 表單 file input（備註前）、表格/手機卡片 查看+就地上傳、進度條/通知/CSV/批次全改接 contractImage |
 
 ### 設計關鍵決策
-- **進度條純展示**:遵守 lessons L1,不卡業務原本的自由勾選
-- **Optimistic UI**:inline edit / 批次 update 都先改本地再打 API,失敗回滾
-- **批次後重抓**:刪除走 `loadData()` 確保資料正確;標記走樂觀更新
-- **切 Tab/篩選時清空 selection**:避免選了看不到的困惑
-- **categoryColor 用 hash**:同分類永遠同色,不存 DB
-- **週視圖切換偏好持久化**:`localStorage.currentView`
-- **body class 切換視圖**:用 CSS `.view-week .table-container { display:none }` 而非 JS 操作 inline style,更乾淨且不破壞 @media
+- **完成判定 `contractDone()`**:有截圖,或 v12 上線(2026-07-27)前的舊勾選(grandfather)。上線後 UI 已無法再寫 contractUploaded,故不需比日期,`contractUploaded === true` 必為舊資料——新紀錄自然只認截圖
+- **Private bucket + signed URL**:合約含個資,不開 public;查看走 1hr signed URL,先開視窗再導向避免 popup blocker
+- **Storage RLS 與資料表同構**:路徑第一層 = `auth.uid()`,各業務只碰得到自己的檔案
+- **就地上傳**:表格/手機卡片無圖時直接選檔上傳,不用進編輯表單（降低業務上傳門檻）
+- **孤兒檔防護**:存檔失敗刪新檔、換圖/刪紀錄/批次刪除都 best-effort 清 Storage 舊檔
+- **hiddenCols 過期 key 開機清理**:避免 localStorage 殘留造成 colspan 算錯
 
 ### 風險 / 後續觀察
-- **Realtime 衝突**:其他人改資料時 setupRealtime 會觸發 loadData → applyFilters。在 inline edit 過程中可能與 optimistic 結果競爭。`editId` 已擋住 form 編輯,但 inline 不擋。實測若有問題再加 lock。
-- **批次選取跨頁面行為**:目前切 Tab 自動清空。如使用者想「跨月份批次操作」要再設計。
-- **週視圖事件密集**:單日太多團時 `max-height:380px` 會出現 scroll。可能要做「更多 +N」收合。
-- **未做的細項**:分類 chips 篩選、TOGGLEABLE_COLS 整合分類欄。等使用者反饋再補。
-
-### 已 lessons 化
-- L1:狀態指示器 ≠ 流程鎖(進度條設計原則)
+- ~~舊資料勾過 V 的近期出團會出現「合約截圖未上傳」提醒~~ → 已依使用者指示改為 grandfather(Phase 6)
+- Supabase advisors 既有 WARN:Auth 未開啟外洩密碼保護（與本次無關,可在 Dashboard → Auth 開啟）
+- iPhone HEIC:accept="image/*" 下 Safari 通常自動轉 JPEG;若有業務回報上傳後無法檢視再處理

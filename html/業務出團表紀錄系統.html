@@ -309,7 +309,6 @@
                         <div class="col-6 col-md-2"><label class="form-label fw-bold">合約狀態</label>
                             <select class="form-select" id="f_contract"><option value="">未簽約</option><option value="線上">線上</option><option value="紙本">紙本</option><option value="PDF">PDF</option></select>
                         </div>
-                        <div class="col-4 col-md-1"><label class="form-label small fw-bold">合約上傳</label><select class="form-select form-select-sm" id="f_contractUploaded"><option value="">-</option><option value="V">V</option></select></div>
                         <div class="col-4 col-md-1"><label class="form-label small fw-bold">寄紙本</label><select class="form-select form-select-sm" id="f_paperSent"><option value="">-</option><option value="V">V</option></select></div>
                         <div class="col-4 col-md-2"><label class="form-label small fw-bold text-danger">行前通知</label><select class="form-select form-select-sm border-danger-subtle" id="f_preTripNotify"><option value="">-</option><option value="V">V</option></select></div>
 
@@ -319,7 +318,15 @@
 
                         <div class="col-4 col-md-1"><label class="form-label fw-bold">名單</label><select class="form-select form-select-sm" id="f_list"><option value="">-</option><option value="V">V</option></select></div>
                         <div class="col-4 col-md-1"><label class="form-label fw-bold">分房</label><select class="form-select form-select-sm" id="f_room"><option value="">-</option><option value="V">V</option></select></div>
-                        <div class="col-4 col-md-1"><label class="form-label fw-bold">網卡</label><select class="form-select form-select-sm" id="f_simCard"><option value="">-</option><option value="V">V</option></select></div>
+                        <div class="col-12 col-md-3"><label class="form-label fw-bold text-success">合約截圖</label>
+                            <input type="file" class="form-control" id="f_contractImage" accept="image/*">
+                            <input type="hidden" id="f_contractImageCurrent" value="">
+                            <div id="contractImageInfo" class="small mt-1" style="display:none;">
+                                <a href="#" class="text-success fw-bold" onclick="viewContract(document.getElementById('f_contractImageCurrent').value);return false;"><i class="fas fa-image"></i> 查看目前截圖</a>
+                                <a href="#" class="text-danger ms-2" onclick="removeContractImage();return false;"><i class="fas fa-times"></i> 移除</a>
+                                <span class="text-muted">（選新檔會取代）</span>
+                            </div>
+                        </div>
                         <div class="col-12 col-md-3"><label class="form-label fw-bold">備註</label><input type="text" class="form-control" id="f_note" placeholder="備註事項..."></div>
                     </div>
                     <div class="mt-3 text-center">
@@ -371,7 +378,7 @@
                     <th onclick="sortData('actRev')">實際業績 <i class="fas fa-sort sort-icon" id="sort-actRev"></i></th>
                     <th>開票日</th>
                     <th class="col-contract">合約</th>
-                    <th class="col-contractUploaded">合約上傳</th>
+                    <th class="col-contractImage">合約截圖</th>
                     <th class="col-paperSent">寄紙本</th>
                     <th>訂金</th>
                     <th>尾款</th>
@@ -379,7 +386,6 @@
                     <th class="th-highlight col-billSent">繳帳單</th>
                     <th>名單</th>
                     <th class="col-room">分房</th>
-                    <th class="col-simCard">網卡</th>
                     <th class="col-note">備註</th>
                 </tr>
             </thead>
@@ -406,7 +412,6 @@
             <li><a class="dropdown-item" href="#" onclick="batchUpdate('preTripNotify',true);return false;">行前通知 ✓</a></li>
             <li><a class="dropdown-item" href="#" onclick="batchUpdate('list',true);return false;">名單 ✓</a></li>
             <li><a class="dropdown-item" href="#" onclick="batchUpdate('paperSent',true);return false;">寄紙本 ✓</a></li>
-            <li><a class="dropdown-item" href="#" onclick="batchUpdate('contractUploaded',true);return false;">合約上傳 ✓</a></li>
             <li><a class="dropdown-item" href="#" onclick="batchUpdate('billSent',true);return false;">繳帳單 ✓</a></li>
         </ul>
     </div>
@@ -418,7 +423,6 @@
             <li><a class="dropdown-item" href="#" onclick="batchUpdate('preTripNotify',false);return false;">取消行前通知</a></li>
             <li><a class="dropdown-item" href="#" onclick="batchUpdate('list',false);return false;">取消名單</a></li>
             <li><a class="dropdown-item" href="#" onclick="batchUpdate('paperSent',false);return false;">取消寄紙本</a></li>
-            <li><a class="dropdown-item" href="#" onclick="batchUpdate('contractUploaded',false);return false;">取消合約上傳</a></li>
             <li><a class="dropdown-item" href="#" onclick="batchUpdate('billSent',false);return false;">取消繳帳單</a></li>
         </ul>
     </div>
@@ -428,6 +432,9 @@
         <button class="btn btn-sm btn-link text-secondary" onclick="clearSelection()"><i class="fas fa-times"></i> 取消選取</button>
     </div>
 </div>
+
+<!-- 表格 / 手機卡片「就地上傳合約截圖」共用的隱藏 file input -->
+<input type="file" id="inlineContractFile" accept="image/*" style="display:none" onchange="handleInlineContractUpload(this)">
 
 <!-- 通知 Modal -->
 <div class="modal fade" id="notificationModal" tabindex="-1">
@@ -464,27 +471,26 @@ const TOGGLEABLE_COLS = [
     { key: 'tourFee',          label: '團費' },
     { key: 'estRev',           label: '預估業績' },
     { key: 'contract',         label: '合約狀態' },
-    { key: 'contractUploaded', label: '合約上傳' },
+    { key: 'contractImage',    label: '合約截圖' },
     { key: 'paperSent',        label: '寄紙本' },
     { key: 'billSent',         label: '繳帳單' },
     { key: 'room',             label: '分房' },
-    { key: 'simCard',          label: '網卡' },
     { key: 'note',             label: '備註' },
 ];
 
 // boolean 欄位中文 label(toast / confirm 顯示用)
 const FIELD_LABELS = {
     deposit:'訂金', balance:'尾款', preTripNotify:'行前通知', list:'名單',
-    paperSent:'寄紙本', contractUploaded:'合約上傳', billSent:'繳帳單',
-    room:'分房', simCard:'網卡',
+    paperSent:'寄紙本', billSent:'繳帳單', room:'分房',
 };
 
 // 草稿需要儲存的表單欄位 IDs
+// 合約截圖為 file input:不能進草稿也不能直接帶值,由 editRecord / saveRecord 個別處理
 const FORM_FIELD_IDS = [
     'f_date','f_tour','f_name','f_pax','f_bookingId',
     'f_tourFee','f_estRev','f_actRev','f_ticketingDate',
-    'f_contract','f_contractUploaded','f_paperSent','f_preTripNotify',
-    'f_deposit','f_balance','f_billSent','f_list','f_room','f_simCard','f_note'
+    'f_contract','f_paperSent','f_preTripNotify',
+    'f_deposit','f_balance','f_billSent','f_list','f_room','f_note'
 ];
 
 // ── 狀態變數 ──────────────────────────────────
@@ -539,16 +545,20 @@ function categoryBadge(name) {
 }
 
 // ── 進度條(純展示,不鎖定操作)──
-// 5 milestone:訂金 → 合約上傳 → 尾款 → 名單 → 行前通知
+// 「合約」完成判定:有截圖,或 v12 上線(2026-07-27)前的舊勾選(grandfather)。
+// 上線後表單/批次/點格子已無法再寫 contractUploaded,故 contractUploaded=true 必為舊資料,不需另比日期。
+function contractDone(r) { return !!r.contractImage || r.contractUploaded === true; }
+
+// 5 milestone:訂金 → 合約截圖 → 尾款 → 名單 → 行前通知
 const PROGRESS_STEPS = [
-    { key:'deposit',          label:'訂金'     },
-    { key:'contractUploaded', label:'合約'     },
-    { key:'balance',          label:'尾款'     },
-    { key:'list',             label:'名單'     },
-    { key:'preTripNotify',    label:'行前通知' },
+    { key:'deposit',       label:'訂金'     },
+    { key:'contractImage', label:'合約',    check: contractDone },
+    { key:'balance',       label:'尾款'     },
+    { key:'list',          label:'名單'     },
+    { key:'preTripNotify', label:'行前通知' },
 ];
 function calcProgress(row) {
-    const steps = PROGRESS_STEPS.map(s => ({ ...s, done: row[s.key] === true }));
+    const steps = PROGRESS_STEPS.map(s => ({ ...s, done: s.check ? s.check(row) : row[s.key] === true }));
     return { done: steps.filter(s=>s.done).length, total: steps.length, steps };
 }
 function progressDotsHTML(row) {
@@ -592,7 +602,13 @@ window.onload = async function() {
     });
 };
 
-function showLogin() { document.getElementById('login-container').style.display='flex'; document.getElementById('app-container').style.display='none'; }
+function showLogin() {
+    document.getElementById('login-container').style.display='flex';
+    document.getElementById('app-container').style.display='none';
+    // 登出回到登入頁:清掉上次殘留的密碼與錯誤訊息
+    document.getElementById('login-password').value = '';
+    document.getElementById('login-error').textContent = '';
+}
 function showApp(email) {
     document.getElementById('login-container').style.display='none';
     document.getElementById('app-container').style.display='block';
@@ -606,28 +622,43 @@ function showApp(email) {
 async function handleLogin() {
     const btn = document.getElementById('login-btn');
     btn.disabled = true; btn.textContent = '驗證中...';
-    const { error } = await sb.auth.signInWithPassword({
-        email: document.getElementById('login-email').value,
-        password: document.getElementById('login-password').value
-    });
-    if (error) { document.getElementById('login-error').textContent='登入失敗：'+error.message; btn.disabled=false; btn.textContent='登入'; }
+    try {
+        const { error } = await sb.auth.signInWithPassword({
+            email: document.getElementById('login-email').value,
+            password: document.getElementById('login-password').value
+        });
+        if (error) document.getElementById('login-error').textContent = '登入失敗：' + error.message;
+    } catch (e) {
+        document.getElementById('login-error').textContent = '登入失敗：' + (e.message || e);
+    } finally {
+        // 成功時也要還原:登入卡片只是被隱藏,登出後重新顯示,按鈕不能殘留「驗證中」disabled 狀態
+        btn.disabled = false; btn.textContent = '登入';
+    }
 }
 async function handleLogout() { if(confirm('確定登出？')) await sb.auth.signOut(); }
 
+let appInited = false;
 function initApp() {
-    // 表單 input 事件 → 自動存草稿
-    document.getElementById('recordForm').addEventListener('input', () => {
-        if (!document.getElementById('editId').value) saveDraft();
-    });
+    // 登出→再登入會重複觸發 SIGNED_IN:listener 與 realtime channel 只能掛一次,資料則每次重抓
+    if (!appInited) {
+        appInited = true;
+        // 表單 input 事件 → 自動存草稿
+        document.getElementById('recordForm').addEventListener('input', () => {
+            if (!document.getElementById('editId').value) saveDraft();
+        });
+        setupRealtime();
+    }
     loadData().then(() => restoreDraft());
     fetchNotifications();
-    setupRealtime();
 }
 
 // ══════════════════════════════════════════════
 //  欄位顯示開關
 // ══════════════════════════════════════════════
 function initColToggle() {
+    // 清掉 localStorage 殘留的已移除欄位 key(contractUploaded / simCard),避免 colspan 與選單算錯
+    hiddenCols = new Set([...hiddenCols].filter(k => TOGGLEABLE_COLS.some(c => c.key === k)));
+    localStorage.setItem('hiddenCols', JSON.stringify([...hiddenCols]));
     const menu = document.getElementById('colToggleMenu');
     menu.innerHTML = TOGGLEABLE_COLS.map(col => `
         <div class="col-toggle-item">
@@ -765,7 +796,7 @@ function renderAll() {
     renderCustomerAnalysis();
 
     if (!currentData.length) {
-        const visibleCols = 23 - hiddenCols.size;  // 23 = 表頭總欄數(含 checkbox + 進度欄)
+        const visibleCols = 22 - hiddenCols.size;  // 22 = 表頭總欄數(含 checkbox + 進度欄)
         tbody.innerHTML  = `<tr><td colspan="${visibleCols}" class="text-center p-5 text-muted">此月份無資料或查無結果</td></tr>`;
         mCards.innerHTML = '<div class="text-center p-5 text-muted">無資料</div>';
         return;
@@ -797,7 +828,7 @@ function renderAll() {
             <td class="fw-bold text-success">${money(row.actRev)}</td>
             <td class="text-danger small fw-bold">${e(row.ticketingDate)}</td>
             <td class="col-contract">${e(row.contract)}</td>
-            <td class="col-contractUploaded toggleable-cell" onclick="toggleField('${e(row.id)}','contractUploaded')" title="點擊切換"><span class="${statusV(row.contractUploaded)}">${boolStr(row.contractUploaded)}</span></td>
+            <td class="col-contractImage">${contractCellHTML(row)}</td>
             <td class="col-paperSent toggleable-cell" onclick="toggleField('${e(row.id)}','paperSent')" title="點擊切換"><span class="${statusV(row.paperSent)}">${boolStr(row.paperSent)}</span></td>
             <td class="toggleable-cell" onclick="toggleField('${e(row.id)}','deposit')" title="點擊切換"><span class="${statusV(row.deposit)}">${boolStr(row.deposit)}</span></td>
             <td class="toggleable-cell" onclick="toggleField('${e(row.id)}','balance')" title="點擊切換"><span class="${statusV(row.balance)}">${boolStr(row.balance)}</span></td>
@@ -805,7 +836,6 @@ function renderAll() {
             <td class="col-billSent toggleable-cell" onclick="toggleField('${e(row.id)}','billSent')" title="點擊切換"><span class="${statusV(row.billSent)}">${boolStr(row.billSent)}</span></td>
             <td class="toggleable-cell" onclick="toggleField('${e(row.id)}','list')" title="點擊切換"><span class="${statusV(row.list)}">${boolStr(row.list)}</span></td>
             <td class="col-room toggleable-cell" onclick="toggleField('${e(row.id)}','room')" title="點擊切換"><span class="${statusV(row.room)}">${boolStr(row.room)}</span></td>
-            <td class="col-simCard toggleable-cell" onclick="toggleField('${e(row.id)}','simCard')" title="點擊切換"><span class="${statusV(row.simCard)}">${boolStr(row.simCard)}</span></td>
             <td class="col-note text-muted text-truncate" style="max-width:120px;" title="${e(row.note)}">${e(row.note)}</td>
         </tr>`);
 
@@ -837,6 +867,9 @@ function renderAll() {
                 ${row.preTripNotify===true?'<span class="badge bg-danger-subtle text-danger border border-danger">行前V</span>':''}
             </div>
             <div class="text-end mt-2 d-flex justify-content-end gap-1">
+                ${row.contractImage
+                    ? `<button class="btn btn-sm btn-outline-success" onclick="viewContract('${e(row.contractImage)}')"><i class="fas fa-image"></i> 合約</button>`
+                    : (contractDone(row) ? '' : `<button class="btn btn-sm btn-outline-secondary" onclick="promptContractUpload('${e(row.id)}')"><i class="fas fa-upload"></i> 合約</button>`)}
                 <button class="btn btn-sm btn-outline-danger"  onclick="deleteRecord('${e(row.id)}','${e(row.name)}')"><i class="fas fa-trash"></i></button>
                 <button class="btn btn-sm btn-outline-success" onclick="duplicateRecord('${e(row.id)}')"><i class="fas fa-copy"></i></button>
                 <button class="btn btn-sm btn-primary"         onclick="editRecord('${e(row.id)}')"><i class="fas fa-edit"></i> 編輯</button>
@@ -920,12 +953,14 @@ async function batchDelete() {
     if (!confirm(`⚠️ 確定要刪除 ${ids.length} 筆紀錄?此操作不可復原。`)) return;
 
     updateSync(true, '刪除中...');
+    const imgPaths = allData.filter(r => selectedIds.has(String(r.id))).map(r => r.contractImage).filter(Boolean);
     const { error } = await sb.from(TABLE_NAME).delete().in('id', ids);
     if (error) {
         showToast(`❌ 批次刪除失敗:${error.message}`, 'error');
         updateSync(false, '失敗');
         return;
     }
+    removeContractFiles(imgPaths);   // 一併清 Storage 檔
     showToast(`🗑️ 已刪除 ${ids.length} 筆紀錄`, 'info');
     clearSelection(false);
     await loadData();
@@ -947,7 +982,6 @@ async function saveRecord() {
         tourFee: Number(getV('f_tourFee'))||0, estRev: Number(getV('f_estRev'))||0,
         actRev: Number(getV('f_actRev'))||0, ticketingDate: getV('f_ticketingDate')||null,
         contract: getV('f_contract'),
-        contractUploaded: getV('f_contractUploaded') === 'V',
         paperSent:        getV('f_paperSent')        === 'V',
         preTripNotify:    getV('f_preTripNotify')    === 'V',
         deposit:          getV('f_deposit')          === 'V',
@@ -955,7 +989,6 @@ async function saveRecord() {
         billSent:         getV('f_billSent')         === 'V',
         list:             getV('f_list')             === 'V',
         room:             getV('f_room')             === 'V',
-        simCard:          getV('f_simCard')          === 'V',
         note: getV('f_note')
     };
 
@@ -965,6 +998,25 @@ async function saveRecord() {
         if (!ok) { btn.disabled=false; return; }
     }
 
+    // ── 合約截圖:有選新檔就先上傳,成功才存檔;沿用 / 移除走 f_contractImageCurrent ──
+    const file = document.getElementById('f_contractImage').files[0];
+    let contractPath = getV('f_contractImageCurrent') || null;
+    let uploadedNew  = null;
+    if (file) {
+        updateSync(true, '上傳截圖中...');
+        try {
+            uploadedNew  = await uploadContractFile(file);
+            contractPath = uploadedNew;
+            updateSync(false);
+        } catch (err) {
+            updateSync(false, '上傳失敗');
+            showToast('❌ 合約截圖上傳失敗:' + (err.message || err), 'error');
+            btn.disabled = false;
+            return;
+        }
+    }
+    record.contractImage = contractPath;
+
     const editId = getV('editId');
     const { error } = editId
         ? await sb.from(TABLE_NAME).update(record).eq('id', editId)
@@ -972,6 +1024,8 @@ async function saveRecord() {
 
     if (!error) {
         showToast(editId ? '✅ 紀錄已更新！' : '✅ 新增成功！');
+        // 換圖 / 移除截圖:存檔成功後才清 Storage 舊檔(best-effort)
+        if (_editingOriginalImage && _editingOriginalImage !== contractPath) removeContractFiles(_editingOriginalImage);
         clearDraft();
         resetForm();
         // 儲存後自動收合表單
@@ -979,6 +1033,8 @@ async function saveRecord() {
         await loadData();
         fetchNotifications();
     } else {
+        // 存檔失敗但新檔已上傳 → 清掉避免孤兒檔
+        if (uploadedNew) removeContractFiles(uploadedNew);
         showToast('❌ 儲存失敗：'+error.message, 'error');
     }
     btn.disabled = false;
@@ -997,6 +1053,10 @@ function editRecord(id) {
         if (typeof val === 'boolean') { el.value = val ? 'V' : ''; }
         else { el.value = val != null ? val : ''; }
     });
+    // 合約截圖:file input 無法帶值,改帶「目前路徑」+ 查看/移除 UI
+    document.getElementById('f_contractImage').value = '';
+    _editingOriginalImage = row.contractImage || '';
+    setContractImageUI(row.contractImage);
     document.getElementById('submitBtn').textContent = '更新紀錄';
     document.getElementById('submitBtn').classList.replace('btn-primary','btn-warning');
     document.querySelector('#formBody').classList.add('show');
@@ -1020,8 +1080,10 @@ function duplicateRecord(id) {
 
 async function deleteRecord(id, name) {
     if (!confirm(`確定刪除「${name}」的紀錄？`)) return;
+    const imgPath = allData.find(r => String(r.id) === String(id))?.contractImage;
     const { error } = await sb.from(TABLE_NAME).delete().eq('id', id);
     if (!error) {
+        removeContractFiles(imgPath);   // 一併清 Storage 檔,避免孤兒檔
         showToast(`🗑️ 已刪除「${name}」的紀錄`, 'info');
         await loadData(); fetchNotifications();
     } else {
@@ -1060,6 +1122,107 @@ async function toggleField(id, field) {
 }
 
 // ══════════════════════════════════════════════
+//  合約截圖（Supabase Storage:private bucket + signed URL）
+// ══════════════════════════════════════════════
+const CONTRACT_BUCKET = 'contracts';
+let _editingOriginalImage = '';   // 編輯中紀錄原本的截圖路徑(換圖 / 移除後用來清舊檔)
+let _pendingUploadId = null;      // 就地上傳的目標紀錄 id
+
+// 上傳到 Storage:路徑第一層 = user id,對應 storage RLS(各業務只碰得到自己的檔案)
+async function uploadContractFile(file) {
+    const { data: { session } } = await sb.auth.getSession();
+    if (!session) throw new Error('尚未登入');
+    const ext  = (file.name.split('.').pop() || '').toLowerCase().replace(/[^a-z0-9]/g, '') || 'png';
+    const path = `${session.user.id}/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`;
+    const { error } = await sb.storage.from(CONTRACT_BUCKET).upload(path, file, { contentType: file.type || 'image/png' });
+    if (error) throw error;
+    return path;
+}
+
+// best-effort 刪檔(單一路徑或陣列),失敗只記 log 不影響主流程
+async function removeContractFiles(paths) {
+    const list = (Array.isArray(paths) ? paths : [paths]).filter(Boolean);
+    if (!list.length) return;
+    try {
+        const { error } = await sb.storage.from(CONTRACT_BUCKET).remove(list);
+        if (error) console.warn('刪除合約截圖失敗:', error);
+    } catch (e) { console.warn('刪除合約截圖失敗:', e); }
+}
+
+// 查看:先同步開空白視窗再導向 signed URL,避免 await 後 window.open 被 popup blocker 擋
+async function viewContract(path) {
+    if (!path) return;
+    const win = window.open('about:blank');
+    const { data, error } = await sb.storage.from(CONTRACT_BUCKET).createSignedUrl(path, 3600);
+    if (error || !data?.signedUrl) {
+        if (win) win.close();
+        showToast('❌ 無法開啟截圖:' + (error?.message || '取得連結失敗'), 'error');
+        return;
+    }
+    if (win) win.location = data.signedUrl;
+    else window.open(data.signedUrl, '_blank');
+}
+
+// 表格「合約截圖」儲存格:有圖 → 查看;無圖但舊勾選 → V;都沒有 → 就地上傳
+function contractCellHTML(row) {
+    const e = escapeHtml;
+    if (row.contractImage) return `<button class="btn btn-sm btn-outline-success p-1 px-2" title="查看合約截圖" onclick="viewContract('${e(row.contractImage)}')"><i class="fas fa-image"></i> 查看</button>`;
+    if (row.contractUploaded === true) return `<span class="status-v" title="舊制勾選(無截圖),可從編輯補上傳">V</span>`;
+    return `<button class="btn btn-sm btn-outline-secondary p-1 px-2" title="上傳合約截圖" onclick="promptContractUpload('${e(row.id)}')"><i class="fas fa-upload"></i></button>`;
+}
+
+function promptContractUpload(id) {
+    // 編輯中禁用就地上傳,避免與表單衝突(同 toggleField 守門)
+    if (document.getElementById('editId').value) {
+        showToast('⚠️ 編輯模式中,請先儲存或取消編輯', 'warn');
+        return;
+    }
+    _pendingUploadId = id;
+    const input = document.getElementById('inlineContractFile');
+    input.value = '';
+    input.click();
+}
+
+async function handleInlineContractUpload(input) {
+    const file = input.files && input.files[0];
+    const id   = _pendingUploadId;
+    _pendingUploadId = null;
+    if (!file || !id) return;
+    const row = allData.find(r => String(r.id) === String(id));
+    if (!row) return;
+    updateSync(true, '上傳截圖中...');
+    try {
+        const path = await uploadContractFile(file);
+        const { error } = await sb.from(TABLE_NAME).update({ contractImage: path }).eq('id', id);
+        if (error) { removeContractFiles(path); throw error; }
+        const old = row.contractImage;
+        row.contractImage = path;
+        applyFilters();
+        updateSync(false);
+        showToast('✅ 合約截圖已上傳');
+        if (old && old !== path) removeContractFiles(old);
+        fetchNotifications();
+    } catch (err) {
+        updateSync(false, '上傳失敗');
+        showToast('❌ 合約截圖上傳失敗:' + (err.message || err), 'error');
+    } finally {
+        input.value = '';
+    }
+}
+
+// 表單內「目前截圖」UI 狀態
+function setContractImageUI(path) {
+    document.getElementById('f_contractImageCurrent').value = path || '';
+    document.getElementById('contractImageInfo').style.display = path ? 'block' : 'none';
+}
+
+// 表單的「移除」:先清表單狀態,按儲存才真正生效(舊檔於存檔成功後刪)
+function removeContractImage() {
+    setContractImageUI('');
+    showToast('🗑️ 已標記移除截圖,儲存後生效', 'info');
+}
+
+// ══════════════════════════════════════════════
 //  表單草稿（sessionStorage）
 // ══════════════════════════════════════════════
 function saveDraft() {
@@ -1084,6 +1247,8 @@ function clearDraft() { sessionStorage.removeItem('formDraft'); }
 function resetForm() {
     document.getElementById('recordForm').reset();
     document.getElementById('editId').value = '';
+    _editingOriginalImage = '';
+    setContractImageUI('');
     document.getElementById('submitBtn').textContent = '儲存紀錄';
     document.getElementById('submitBtn').classList.replace('btn-warning','btn-primary');
     clearDraft();
@@ -1099,8 +1264,8 @@ async function fetchNotifications() {
     const d3Str = d3.toISOString().split('T')[0];
 
     const { data, error } = await sb.from(TABLE_NAME)
-        .select('name,tour,date,ticketingDate,deposit,balance,preTripNotify,list,contractUploaded')
-        .or(`and(date.gte.${todayStr},date.lte.${d3Str},or(deposit.is.false,balance.is.false,preTripNotify.is.false,contractUploaded.is.false)),and(ticketingDate.gte.${todayStr},ticketingDate.lte.${d3Str},list.is.false)`);
+        .select('name,tour,date,ticketingDate,deposit,balance,preTripNotify,list,contractImage,contractUploaded')
+        .or(`and(date.gte.${todayStr},date.lte.${d3Str},or(deposit.is.false,balance.is.false,preTripNotify.is.false,and(contractImage.is.null,contractUploaded.not.is.true))),and(ticketingDate.gte.${todayStr},ticketingDate.lte.${d3Str},list.is.false)`);
     if (error) { console.error('待辦讀取失敗:', error); return; }
 
     const list = document.getElementById('notifList');
@@ -1118,7 +1283,7 @@ async function fetchNotifications() {
                 if (!row.deposit)                    issues.push('未收訂金');
                 if (!row.balance)                    issues.push('未收尾款');
                 if (!row.preTripNotify)              issues.push('未發行前通知');
-                if (!row.contractUploaded)           issues.push('合約尚未上傳');
+                if (!contractDone(row))              issues.push('合約截圖未上傳');
             }
         }
         if (tickDate) {
@@ -1341,14 +1506,14 @@ function renderWeekView() {
 
 function exportToCSV() {
     const esc = v => `"${String(v==null?'':v).replace(/"/g,'""')}"`;
-    const headers = ['出發日期','分類','行程','客人代表','人數','訂編','團費','預估業績','實際業績','開票日','合約狀態','合約上傳','寄紙本','行前通知','訂金','尾款','繳帳單','名單','分房','網卡','備註'];
+    const headers = ['出發日期','分類','行程','客人代表','人數','訂編','團費','預估業績','實際業績','開票日','合約狀態','合約截圖','寄紙本','行前通知','訂金','尾款','繳帳單','名單','分房','備註'];
     const rows = currentData.map(r=>[
         esc(r.date),esc(r.category),esc(r.tour),esc(r.name),esc(r.pax),
         esc(r.bookingId),esc(r.tourFee),esc(r.estRev),esc(r.actRev),
         esc(r.ticketingDate),esc(r.contract),
-        boolStr(r.contractUploaded),boolStr(r.paperSent),boolStr(r.preTripNotify),
+        boolStr(contractDone(r)),boolStr(r.paperSent),boolStr(r.preTripNotify),
         boolStr(r.deposit),boolStr(r.balance),boolStr(r.billSent),
-        boolStr(r.list),boolStr(r.room),boolStr(r.simCard),esc(r.note)
+        boolStr(r.list),boolStr(r.room),esc(r.note)
     ].join(','));
     const csv  = '\uFEFF'+[headers.map(esc).join(','),...rows].join('\r\n');
     const link = document.createElement('a');
