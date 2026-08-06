@@ -78,6 +78,6 @@
 - [x] SQL 模擬驗證:今日出發預警/開票預警皆 0 筆,誤報消失
 - [x] 本地原始碼同步(原檔停在最早的單人 `'V'` 字串版,與線上差 10 個版本)
 - [x] `line-notify/` 從 `AI/` 上層搬進本 repo,commit `3ccb929` 已推送
-- [ ] 明早 09:00(cron `0 1 * * *` UTC)實際推播確認
+- [x] 實機推播驗證:經 pg_net 手動觸發 EF,回 200 `{depCount:0, tickCount:0, notified:2, failed:0}`,兩位收件人收到「今日無待辦事項」
 
 **教訓**:合約完成判定現在有**兩份實作**(前端 html + Edge Function)。往後動這條規則,兩邊都要改;其他同狀況欄位(deposit/balance/preTripNotify/list)同理。
