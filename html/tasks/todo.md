@@ -64,3 +64,20 @@
 - ~~舊資料勾過 V 的近期出團會出現「合約截圖未上傳」提醒~~ → 已依使用者指示改為 grandfather(Phase 6)
 - Supabase advisors 既有 WARN:Auth 未開啟外洩密碼保護（與本次無關,可在 Dashboard → Auth 開啟）
 - iPhone HEIC:accept="image/*" 下 Safari 通常自動轉 JPEG;若有業務回報上傳後無法檢視再處理
+
+---
+
+## 補丁:LINE 通知誤報「合約尚未上傳」(2026-08-06)
+
+**症狀**:業務收到 LINE 每日提醒,張文馨/HKG6HB0809A8張家界八日(出發 2026-08-09)已上傳截圖,仍被標「❌ 合約尚未上傳」。
+
+**根因**:v12 改截圖制時只同步了前端,**Supabase Edge Function `line-notify` 漏改** — 仍只判斷 `!contractUploaded`,完全沒讀 `contractImage`。前端 `contractDone()` 與頁內通知查詢都已正確,唯獨 EF 是另一份獨立程式碼,不在 html 檔內,當時沒被掃到。
+
+- [x] EF 判定改為 `contractDone(r) = !!r.contractImage || r.contractUploaded === true`(與前端同規則)
+- [x] 部署 Supabase `travel record` → line-notify **v11 → v12**(verify_jwt 維持 false,pg_cron 觸發不受影響)
+- [x] SQL 模擬驗證:今日出發預警/開票預警皆 0 筆,誤報消失
+- [x] 本地原始碼同步(原檔停在最早的單人 `'V'` 字串版,與線上差 10 個版本)
+- [x] `line-notify/` 從 `AI/` 上層搬進本 repo,commit `3ccb929` 已推送
+- [ ] 明早 09:00(cron `0 1 * * *` UTC)實際推播確認
+
+**教訓**:合約完成判定現在有**兩份實作**(前端 html + Edge Function)。往後動這條規則,兩邊都要改;其他同狀況欄位(deposit/balance/preTripNotify/list)同理。
