@@ -1,0 +1,25 @@
+-- stock_industry 資料灌入方式(2026-08-06 首次灌入 3132 檔)
+--
+-- 產業別近乎靜態(公司換產業別是罕見事件),不值得為它養一個每日 EF。
+-- 灌入用 pg_net 直接打 FinMind(免 token、單 call 拿全市場 4300 檔),
+-- 資料不經過應用層:
+--
+--   select net.http_get(
+--     url := 'https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockInfo',
+--     timeout_milliseconds := 120000);
+--
+--   with resp as (select (content::jsonb) as j from net._http_response where id = <request_id>)
+--   insert into public.stock_industry (symbol, stock_name, industry_category, stock_type)
+--   select distinct on (r->>'stock_id')
+--          r->>'stock_id', r->>'stock_name', r->>'industry_category', r->>'type'
+--   from resp, jsonb_array_elements(j->'data') r
+--   where (r->>'stock_id') is not null
+--   order by (r->>'stock_id'), (r->>'date') desc nulls last
+--   on conflict (symbol) do update
+--     set stock_name = excluded.stock_name,
+--         industry_category = excluded.industry_category,
+--         stock_type = excluded.stock_type,
+--         updated_at = now();
+--
+-- 每季重跑一次即可。新上市櫃股票在重跑前不會有產業別 →
+-- v_breakout_scan 的 `industry_category is not null` 會讓它們暫時不進榜(寧可漏,不可錯分類)。
