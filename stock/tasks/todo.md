@@ -2537,3 +2537,30 @@ Andy 問「保留 paper_picks / swing snapshot 對系統有什麼好處」→ �
 
 - [ ] `v_data_health` 加 scan_picks 監控(連續 5 個交易日無新增 = cron 可能死了)。
       與 tpex 修復任務的「檔數腰斬檢查」一起做較省(同一個 view 要改)
+
+### 監控盲區 + 上櫃收料根治(2026-08-06)
+
+- [x] `v_data_health` v3:新增 **coverage** 類別(檔數腰斬偵測)+ `scan_picks` 新鮮度
+      coverage 補的正是 freshness 的盲區:**日期有更新但檔數腰斬**。
+      口徑:最新交易日檔數 vs 近 20 日中位,<80% warn、<60% danger。
+      實測 1968 檔 vs 中位 1962 = ok
+- [x] cron `backfill-market-history-daily` 06:45 UTC 每日補最近 5 天
+      **不在 fetch-daily-prices 加重試**:重試只降低單次失敗率,連續失敗照樣留洞,
+      且失敗後無機制回頭補。改用「每天無條件補最近 5 天」的收斂式設計 ——
+      任何單日失敗最多存活到隔天,不需偵測失敗、不需判斷該不該補。
+      EF 寫入是 ignoreDuplicates,重跑對既有資料零影響
+- [x] 8/04 上櫃缺料已由 backfill 補回(1962 檔 = 中位水準)
+
+**排程順序(UTC)**:06:30 收前一交易日 → **06:45 補洞** → 07:00 凍結前向樣本
+(凍結必須在資料完整之後,否則凍到殘缺池子 = [[L60]] 重演)
+
+**新監控立刻照出 3 個既有 bug(不在本次範圍,待 Andy 定奪)**
+| 來源 | 狀態 | 錯誤 |
+|---|---|---|
+| `etf_metadata_sync` | 0/1 | `ON CONFLICT DO UPDATE command cannot affect row a second time` —— 同批 payload 有重複 key |
+| `reselect_industry_stocks` | 0/1 | `duplicate key ... industry_stocks_industry_symbol_key` |
+| `backfill_price` | 1/6 | `2408: HTTP 400`(南亞科在 FinMind 端點抓不到,連續多日) |
+
+另 `tpex` 5/10、`twse_mis_intraday` 1496/1500(99.7%,偶發 502,可忽略)。
+`backfill_market_history` 9/12 的失敗是 TPEx HTTP 520(2026-06-08~12),
+**該區間資料事後已補齊**(69 個完整交易日),屬暫時性錯誤已自癒。
