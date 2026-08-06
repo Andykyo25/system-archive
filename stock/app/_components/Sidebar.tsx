@@ -7,6 +7,7 @@ import {
   Briefcase,
   TrendingUp,
   Waves,
+  Crosshair,
   Star,
   FlaskConical,
   Activity,
@@ -37,6 +38,7 @@ const navGroups: { label: string; items: NavItem[] }[] = [
   {
     label: "研究",
     items: [
+      { href: "/scan", label: "起漲掃描", icon: Crosshair },
       { href: "/swing", label: "波段", icon: Waves },
       { href: "/rank", label: "排名", icon: Star },
       { href: "/backtest", label: "Backtest", icon: FlaskConical },
