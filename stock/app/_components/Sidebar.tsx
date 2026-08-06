@@ -39,8 +39,6 @@ const navGroups: { label: string; items: NavItem[] }[] = [
     label: "研究",
     items: [
       { href: "/scan", label: "起漲掃描", icon: Crosshair },
-      { href: "/swing", label: "波段", icon: Waves },
-      { href: "/rank", label: "排名", icon: Star },
       { href: "/backtest", label: "Backtest", icon: FlaskConical },
     ],
   },
@@ -53,7 +51,17 @@ const navGroups: { label: string; items: NavItem[] }[] = [
   },
 ];
 
-const navItems: NavItem[] = navGroups.flatMap((g) => g.items);
+// 側欄不再顯示,但路由保留可直接打網址(2026-08-06 Andy「三頁太多,融合」):
+//   /swing 等回檔進場,與 /scan 追突破方向相反,兩者並列只會互相干擾判斷
+//   /rank  19 因子中長期選股,就是 Andy 說的「已經漲完的排行」
+// 底層資料照舊累積(paper_picks 前向追蹤 / swing_scan_snapshot)——那是唯一在跑的
+// 實盤驗證樣本,砍掉要重等半年。列在這裡是為了 pageTitleFromPath 仍能正確顯示標題。
+const hiddenItems: NavItem[] = [
+  { href: "/swing", label: "波段", icon: Waves },
+  { href: "/rank", label: "排名", icon: Star },
+];
+
+const navItems: NavItem[] = [...navGroups.flatMap((g) => g.items), ...hiddenItems];
 
 function isActive(path: string, href: string): boolean {
   if (href === "/") return path === "/";
