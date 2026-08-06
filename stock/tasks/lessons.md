@@ -655,3 +655,33 @@ memory `stock_current_state` 的定調(不宣稱穩定 alpha)靠的就是這種�
 兩者都不會報錯、都會產出看起來合理的數字、都會讓結論反向。而且這次的假象是
 **正向**的(+1.58 看起來像找到 edge),比負向假象更危險 —— 人不會去質疑好消息。
 與 [[L57]] 合起來看:一個回測結論要能信,樣本必須「夠長、跨 regime、且每日母體一致」。
+
+---
+
+## 兩個 EF 因同一個外部資料特性靜默停更(2026-08-06)
+
+### L61 — 外部 API 的「一個 id 回多筆」要當預設假設;它會讓 upsert/insert 整批炸掉而且沒人發現
+**問題**:新加的 `v_data_health` coverage 監控一上線,立刻照出兩個 EF 近 7 天 **0/1 成功**:
+- `etf_metadata_sync`:`ON CONFLICT DO UPDATE command cannot affect row a second time`
+- `reselect_industry_stocks`:`duplicate key ... industry_stocks_industry_symbol_key`
+
+根因是**同一個**:FinMind `TaiwanStockInfo` 同一 `stock_id` 會回多筆(不同 date),
+實測 4300 列裡只有 3132 個相異 stock_id。兩個 EF 都直接把它餵進 upsert/insert:
+- upsert 的 payload 內有重複 key → Postgres 在**同一個 command** 內無法對同一列 update 兩次 → 整批失敗
+- insert 撞 unique constraint → 該產業整批失敗,且重複還會佔用 top10 名額讓實際檔數不足
+
+**兩者都是靜默的**:ETF 名單與產業成分股已經停更數週,沒有任何人察覺 ——
+直到監控補上才浮出來。
+**做法**:
+1. **任何「外部 API → upsert/insert」的路徑,預設假設 id 會重複**,落地前先去重。
+   我自己灌 `stock_industry` 時就用 `distinct on (stock_id) ... order by date desc` 處理過
+   同一個坑,卻沒想到既有 EF 也踩著 —— **自己剛繞過的坑要回頭看誰還在裡面**
+2. 去重要放在**最上游**:本次修 `reselect-industry-stocks` 時,只在 insert 前去重能擋掉
+   崩潰,但 top10 仍會因重複佔額而不足 10 檔;改在 `ranking.sort` 之後、取 top10 之前
+   去重才是根治
+3. 「EF 有 per-symbol try/catch」不等於「不會整批失敗」——
+   `fetch-finmind-backfill` 確實有逐檔容錯(本次一度誤判它沒有),但 upsert 是**整批一個
+   command**,一顆老鼠屎就全毀。逐項容錯與批次寫入是兩個不同層次的韌性
+**為什麼**:這是 [[L42]]/[[L46]]/[[L55]]/[[L60]] 沉默 drift 的第五次重演,但這次的意義不同:
+**它是被新監控主動抓到的,不是靠 Andy 肉眼發現**。coverage 檢查上線第一分鐘就回收成本。
+監控的價值不在於它報的那一項,而在於它讓「系統看起來在跑但其實沒有」變成可觀測。

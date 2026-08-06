@@ -167,12 +167,17 @@ Deno.serve(async (req: Request) => {
     }
 
     if (rowsToUpsert.length > 0) {
+      // TaiwanStockInfo 同一 stock_id 會回多筆(不同 date),payload 內出現重複 key 時
+      // ON CONFLICT DO UPDATE 會報 "command cannot affect row a second time" → 整批失敗。
+      // 實測 2026-08-06:此 EF 近 7 天 0/1 成功,就是這個原因(靜默停更,無人察覺)。
+      // 以 symbol 去重、保留最後一筆(Map 後寫入者勝)。
+      const deduped = [...new Map(rowsToUpsert.map((r) => [r.symbol, r])).values()];
       // upsert with onConflict symbol,source='auto' 會被覆蓋,source='manual' 已過濾
       const { error } = await supabase
         .from("etf_metadata")
-        .upsert(rowsToUpsert, { onConflict: "symbol" });
+        .upsert(deduped, { onConflict: "symbol" });
       if (error) throw new Error(`etf_metadata upsert: ${errMsg(error)}`);
-      written = rowsToUpsert.length;
+      written = deduped.length;
     }
   } catch (e) {
     errors.push(errMsg(e));

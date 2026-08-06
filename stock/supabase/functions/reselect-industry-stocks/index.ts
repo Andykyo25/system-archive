@@ -183,7 +183,19 @@ Deno.serve(async (req: Request) => {
         ranking.push({ symbol: c.stock_id, name: c.stock_name, avg: sum / days });
       }
       ranking.sort((a, b) => b.avg - a.avg);
-      const top10 = ranking.slice(0, 10);
+      // TaiwanStockInfo 同一 stock_id 會回多筆(不同 date),重複會一路帶到這裡:
+      //   ① insert 撞 industry_stocks_industry_symbol_key → 該產業整批失敗
+      //      (實測 2026-08-06:此 EF 近 7 天 0/1 成功,產業成分股靜默停更)
+      //   ② 重複佔用名額 → top10 實際不足 10 檔
+      // 故在取 top10 之前去重;已排序,保留第一次出現(= 成交值最高那筆)。
+      const seenSym = new Set<string>();
+      const uniqRanking: typeof ranking = [];
+      for (const r of ranking) {
+        if (seenSym.has(r.symbol)) continue;
+        seenSym.add(r.symbol);
+        uniqRanking.push(r);
+      }
+      const top10 = uniqRanking.slice(0, 10);
 
       // 3. B3:先算 top10 toInsert(不動 DB),非空才 delete+insert。
       //    原本無條件先 delete 再 insert → 若候選空 / price_daily 近 30 天無資料
