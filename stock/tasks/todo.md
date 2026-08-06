@@ -2506,3 +2506,34 @@ Wilder 遞迴需更長 warm-up 才穩定。與 `v_stock_rank.rsi14`(Wilder,205 �
 是**不同 universe 的不同指標**,不可互相對照。
 
 - [ ] Railway 部署後 Andy 視覺驗收
+
+### /scan 前向凍結 scan_picks(2026-08-06)
+
+Andy 問「保留 paper_picks / swing snapshot 對系統有什麼好處」→ 查完實際狀態後,
+發現兩者價值差很多,且真正該補的是 **/scan 自己沒有前向紀錄**。
+
+**查證結果**
+- `paper_picks`:3 批(05-16 / 06-13 / 07-18),2 批已結算 —— alpha **+1.13 / −0.17**,
+  勝率各 60%,合計約**打平大盤**。與 memory 推估的 [−9,+8] 中位打平吻合。
+  價值明確:**結構上不可能有前視偏誤**(選完凍結,entry_px 寫死),
+  而系統被 M9.3 的 +24.19 假 alpha 騙過一次,根因正是前視
+- `swing_scan_snapshot`:14 天 48 列,且**表結構根本沒有後續報酬欄位**
+  (只有 scan_date/symbol/close/ret_60d/dev_ma20)→ 它不是「在驗證」,只是「在存底」。
+  加上 /swing 方向已判定不對,邊際價值很小。**上一則把兩者並列講是誇大**
+
+**新增(補 /scan 的前向缺口)**
+- [x] `scan_picks` 表:每日凍結 score_total >= 80 的標的(兩組都收,用 passes_all 區分,
+      日後可分別回答「五條件嚴格版」與「高分寬鬆版」哪個好)
+- [x] `v_scan_track` view:對 TAIEX 報酬指數算 5/10/20 日超額,entry = 訊號日次一交易日收盤
+- [x] cron `freeze-scan-picks-daily` 07:00 UTC(= 15:00 台北,前一交易日 twse/tpex 都已入庫)
+- [x] 首批凍結:2026-08-05 共 12 檔(3 檔全過,分數 80-94)
+- [x] 計算驗證:插臨時歷史列實測 entry_px/ret_5d/excess_5d 與手算一致,驗完刪除(未污染真前向樣本)
+
+**設計取捨:只凍結「當時選了誰」,不回填報酬**。paper_picks 需要 settle 流程回填 exit_px;
+本表改由 view 即時 join price_daily 算。理由:① 少一個會靜默壞掉的回填 cron([[L42]]/[[L46]])
+② 報酬永遠反映最新資料 ③ **凍結的是選股決策(唯一會被回溯竄改的部分)**,價格是客觀事實無須凍結。
+
+⚠️ 這張表要 **6 個月以上**才能回答任何問題。在那之前 v_scan_track 的數字沒有意義。
+
+- [ ] `v_data_health` 加 scan_picks 監控(連續 5 個交易日無新增 = cron 可能死了)。
+      與 tpex 修復任務的「檔數腰斬檢查」一起做較省(同一個 view 要改)
