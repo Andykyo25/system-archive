@@ -2564,3 +2564,123 @@ Andy 問「保留 paper_picks / swing snapshot 對系統有什麼好處」→ �
 另 `tpex` 5/10、`twse_mis_intraday` 1496/1500(99.7%,偶發 502,可忽略)。
 `backfill_market_history` 9/12 的失敗是 TPEx HTTP 520(2026-06-08~12),
 **該區間資料事後已補齊**(69 個完整交易日),屬暫時性錯誤已自癒。
+
+---
+
+## 資料健康 10 紅字:3 個根因(2026-08-11)
+
+Andy 丟 /health 截圖。10 項 danger 不是 10 個故障,收斂成 3 個根因 + 1 個未定案。
+**最嚴重那項被截在畫面外**:`收盤價涵蓋檔數 524(近 20 日中位 1974)` —— 8/10 全市場
+只收到 524 檔,而且全部來自 FinMind fallback,twse/tpex 各 0 檔。
+
+### 診斷(查證紀錄)
+
+| 根因 | 證據 | 波及的畫面項目 |
+|---|---|---|
+| **A. FinMind 配額結構性打滿** | 兩顆 token 8/7 起天天 600/600。每個 EF 都對 `v_fetch_universe` 594 檔逐檔打 1 call → **單一 EF 吃光一天配額**。引爆點 8/6:industry_stocks 去重修好後名單長回來,universe 547→594,越過 600 懸崖(8/5 之前 547/600 是擦線活著) | finmind_fundamentals / finmind_margin / finmind_valuation / backfill_corporate_action,以及 freshness 的法人/融資/借券/PE 落後 |
+| **B. TPEx 上游不穩 + TWSE openapi 結構性 T+1** | 實測(2026-08-11):TWSE `STOCK_DAY_ALL` 回的是 1150807,**永遠落後一個交易日**;TPEx openapi **現在是好的**(10,298 列、4.0 MB、Date=1150810)。8/10 兩次 tpex 都死在讀 body(`error reading a body from connection` / `Unterminated string in JSON at position 511406`)= 4MB 回應被截斷 | coverage 524 檔 / tpex / events_tpex_prepost / backfill_market_history(HTTP 520) |
+| **C. 補洞 cron 視窗算錯** | `start_date = current_date - 7` + `max_days = 5`,EF 從 start 往後數 5 個工作日就停 → 8/10 那次補的是 **8/3–8/7**,`next_start` 停在 8/10 就結束。註解寫「補最近 5 天」,實際是「7 天前起算的 5 天」 | coverage(當天的洞當天補不到);07:00 freeze 凍到 524 檔殘缺池 = [[L60]] 重演 |
+
+**監控盲區(附帶發現)**:`finmind_institutional` / `finmind_lending` 在建 fetch_log **之前**
+就 `return quota_exhausted` → 監控上不是變紅,是**整列消失**。靠 freshness 的
+「法人買賣超落後 5 天」才露餡。
+
+**未定案**:`backfill_price` 每天 62+ 檔 HTTP 400。實測 FinMind 正常參數 200、亂 token
+回 400 `Token is illegal.`;但 token_2 在 8/9 monthly_revenue 明確成功寫 4636 列 →
+**不是 token 壞掉**。`callFinmind` 只 `throw new Error(HTTP ${status})` 把 response body
+丟掉了,`msg` 看不到,無法定案。→ P2 補 body 後再看。
+順帶:該 cron 應只送 1 檔持股(2408),但錯誤列表是從 3236 起的全 universe →
+那天 `jsonb_agg(v_holdings_current)` 回空陣列,EF 走了「沒給 symbols 就打全 universe」
+的 fallback,誤觸一次就是 594 calls。
+
+### 本輪範圍(Andy 選 P0+P1;P2 監控留下一輪)
+
+- [x] **P0-1 補洞視窗** `start_date := current_date - 5`(+max_days 5 → 任何星期幾都剛好涵蓋到 current_date,實算最大 5 個工作日)
+      → verify:觸發後 EF 回傳 `per_day` 含當日;`select trade_date,count(*) group by 1` 最新交易日回到中位水準
+- [x] **P0-2 tpex body 韌性** `res.text()` + 長度入錯誤訊息 + 失敗重試 1 次
+      → verify:失敗時錯誤訊息變成 `invalid JSON (N bytes)` 可辨識截斷;成功時 rows_written > 0
+- [x] **P0-3 freeze 前置閘** 當日檔數 < 近 20 日中位 80% 就不凍(與 v_data_health coverage 同口徑)
+      → verify:拿今天(524 vs 1974 = 27%)實跑 command,應 0 insert
+- [x] **P1-4 fallback 只補洞** 已有當日資料的 symbol 直接跳過,不打 API
+      → verify:健康日 api_calls << 594;殘缺日仍全打(不退化)
+- [x] **P1-5 lending 換回 token1** margin+lending 同日同 token 各 594 必撞;P1-4 之後 token1 幾乎全空
+
+**依賴順序**:P1-4 必須在 P0-1/P0-2 之後才安全 —— 免費源(tpex 當日 + MI_INDEX 當日)
+先能覆蓋當日,fallback 才可以退回「只補剩下的洞」。
+
+### Review(code 已寫完,**尚未套上 prod**)
+
+| 檔案 | 動作 |
+|---|---|
+| `supabase/migrations/20260811000001_fix_gap_backfill_window.sql` | 新增 — start_date d-7 → d-5 |
+| `supabase/migrations/20260811000002_freeze_scan_picks_coverage_gate.sql` | 新增 — freeze 包 do block + coverage 閘 |
+| `supabase/migrations/20260811000003_lending_back_to_token1.sql` | 新增 — lending body 拿掉 token_key |
+| `supabase/functions/fetch-daily-prices/index.ts` | `fetchJson()` 取代 inline `res.json()`(+2 行 call site) |
+| `supabase/functions/fetch-finmind-fallback/index.ts` | 迴圈開頭跳過當日已覆蓋的 symbol + 回傳 `already_covered` |
+
+**已驗證**
+- P0-1 視窗數學:模擬 7 個星期幾 × 兩種 start。`d-7` 在週一到週五**一次都碰不到當日**
+  (永遠停在前一個交易日);`d-5` 每天都走得到 current_date,且工作日數 ≤ 5 → max_days 不必加大
+- P0-3 閘門口徑:拿今天的真實資料實跑 → `latest_n=524, median_n=1974, would_skip=true`。
+  **昨天那次髒凍結會被這道閘擋下來**
+- P1-4 的省量前提:確認本專案沒有設 `pgrst.db_max_rows`,`existing` 查詢(~4000 列)不會被截,
+  否則 existingKeys 不全會退化成「照樣打滿」(fail-safe 方向,不會漏資料)
+
+**未驗證(環境限制,要誠實記著)**
+- 兩支 EF 沒有 type-check:本機沒有 deno,也沒有 node/npx。只做了人工複查。
+  部署後第一件事是看 fetch_log 是不是有正常的成功列,而不是靠「應該沒問題」
+
+**Rollback**:三個 migration 各自檔頭都寫了單行回退法(重跑同名 `cron.schedule`);
+兩支 EF 用 `git revert` 後重新 deploy 即可,寫入語意沒動(仍是 ignoreDuplicates 冪等)。
+
+**依賴順序(部署時要照這個順序)**:
+1. EF `fetch-daily-prices`(P0-2)→ 2. migration 0001(P0-1)→ 3. migration 0002(P0-3)
+→ 4. EF `fetch-finmind-fallback`(P1-4)→ 5. migration 0003(P1-5)
+理由:4 依賴 1+2(免費源要先蓋得住當日),5 依賴 4(token_1 要先空出來)。
+
+### 部署紀錄(2026-08-10 16:2x UTC 全數套上 prod)
+
+| # | 動作 | 結果 |
+|---|---|---|
+| 1 | deploy `fetch-daily-prices` | v8 → **v9**,verify_jwt 保持 true |
+| 2 | migration `fix_gap_backfill_window` | ok |
+| 3 | migration `freeze_scan_picks_coverage_gate` | ok |
+| 4 | deploy `fetch-finmind-fallback` | v6 → **v7**,verify_jwt 保持 true |
+| 5 | migration `lending_back_to_token1` | ok |
+
+部署前先 `get_edge_function` 比對過兩支 prod 原始碼 = repo baseline,**無 drift**
+(memory 有記這專案 DB/repo 版本容易不對齊,所以先比對再蓋)。
+
+**實測驗證**
+
+- **P0-1 有效**:手動觸發新視窗 → 8/10 從 524 檔 → **1458 檔**(新進 934 筆 twse)。
+  舊視窗永遠碰不到 8/10,新視窗一次就補到
+- **P0-2 有效**:手動觸發 `fetch-daily-prices`(v9)→ tpex **written=991、無錯誤**。
+  ⚠️ 只是一次成功,不等於重試邏輯被驗過 —— 我 curl 時該端點本來就是好的。
+  真正的證據要等下次上游抖動時,錯誤訊息出現 `invalid JSON (N bytes)`
+- **P0-3 有效**:直接執行 cron 的 do block → `picks_0810 = 0`,閘門擋下。
+  順帶查到:8/10 **本來就沒被髒凍結**(07:00 那時 v_breakout_scan 最新還是 8/07,
+  已凍過 → on conflict do nothing)。純屬走運,不是設計保護。今天 07:00 那次才是
+  真的會凍到 524 檔殘缺池的時機 —— 閘門剛好趕上
+- **合計**:8/10 **524 → 2308 檔**(twse 934 + tpex 991 + finmind 383),
+  高於近 20 日中位 1974,與 8/07 的 2293 同級。**coverage 那項已從 danger 消失**
+
+**/health 現況:danger 10 → 9**
+- 消掉:coverage(最嚴重那項)
+- 降級:tpex danger → warn(7/11,最近一次成功)
+- 新增:`backfill_market_history` warn → danger —— 我手動那次跑失敗了,
+  原因是 backfill 用的 tpex 端點(`www.tpex.org.tw/www/zh-tw/afterTrading/otc`)
+  4 天全 HTTP 520。**注意這與 fetch-daily-prices 用的 openapi 端點是不同支**,
+  後者同一時間是好的。→ 下一輪可考慮讓 backfill 也改打 openapi
+- 未動:5 個 FinMind 相關 + market_chips。配額類要等 UTC 換日、明天 07:30 新版
+  fallback 跑過才知道
+
+**⚠️ P1-4 的省量還沒被證實(誠實記著)**
+
+fallback 排 07:30 UTC = 15:30 台北。但實測 tpex openapi 在 06:30 UTC 那輪拿到的
+還是**前一日**(rows_skipped 全中),當日資料要到 14:00 UTC 那輪才進得來。
+也就是說 07:30 時當日多半仍是空的 → 新版一樣會打滿 594。**不退化,但也沒省到。**
+
+- [ ] 明天看 `fetch-finmind-fallback` 回傳的 `already_covered` / `api_calls` 實數再決定
+- [ ] 若確認沒省到:把 `fetch-finmind-fallback-postclose` 從 07:30 移到 14:30 UTC
+      (排在 14:00 收盤收料之後),當日資料先由免費源蓋滿,fallback 才真的只補殘洞

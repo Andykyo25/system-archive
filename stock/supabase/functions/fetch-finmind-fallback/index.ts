@@ -185,7 +185,19 @@ Deno.serve(async (req: Request) => {
   let apiCalls = 0;
   const errors: string[] = [];
 
+  // 只補洞:當日已有資料的 symbol 直接跳過,不打 API。
+  //
+  // 2026-08-11:594 檔 universe × 1 call = 594,單一個 EF 就吃光 token 一天的 600,
+  // 排在後面的 valuation/margin/lending/institutional 全部 quota_exhausted。
+  // 本 EF 跑在 06:30 收料 + 06:45 補洞之後,免費源(tpex 當日 / MI_INDEX 當日)覆蓋得到的
+  // 就不該再花 quota —— 免費源健康時 api_calls 趨近 0,免費源掛掉時自動打滿,不退化。
+  // 已知殘留成本:國定假日全市場都沒有當日資料 → 仍會掃滿(與修改前相同,無新增風險)。
+  let alreadyCovered = 0;
   for (const symbol of targetSymbols) {
+    if (existingKeys.has(`${symbol}|${today}`)) {
+      alreadyCovered++;
+      continue;
+    }
     if (apiCalls >= remaining) {
       errors.push(`quota exhausted at symbol ${symbol}`);
       break;
@@ -226,6 +238,7 @@ Deno.serve(async (req: Request) => {
 
   return Response.json({
     target_symbols: targetSymbols.size,
+    already_covered: alreadyCovered,
     api_calls: apiCalls,
     written,
     skipped,

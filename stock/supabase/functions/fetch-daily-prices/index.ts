@@ -64,6 +64,33 @@ function parseTPEX(json: unknown): PriceRow[] {
   });
 }
 
+// 上游大回應(tpex 現為 4.0 MB / 10298 列)會偶發截斷 —— 2026-08-10 兩次都死在讀 body:
+//   06:30 `error reading a body from connection`
+//   14:00 `Unterminated string in JSON at position 511406`
+// 而同一時間直接打端點是好的(實測有當日 10298 列)。改成先收 text 再 parse:
+//   ① 錯誤訊息帶 byte 數,「截斷」與「格式壞掉」分得開
+//   ② 讀 body 失敗可以重試(res.json() 失敗後 body 已消耗,無從重試)
+// 重試只補單次抖動;連續失敗仍靠 06:45 的 backfill-market-history 收斂。
+async function fetchJson(url: string): Promise<unknown> {
+  let lastErr = new Error("unreachable");
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      const res = await fetch(url, { headers: { Accept: "application/json" } });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const body = await res.text();
+      try {
+        return JSON.parse(body);
+      } catch {
+        throw new Error(`invalid JSON (${body.length} bytes)`);
+      }
+    } catch (e) {
+      lastErr = e instanceof Error ? e : new Error(String(e));
+      if (attempt < 2) await new Promise((r) => setTimeout(r, 2000));
+    }
+  }
+  throw lastErr;
+}
+
 async function fetchSource(
   // deno-lint-ignore no-explicit-any
   supabase: any,
@@ -78,9 +105,7 @@ async function fetchSource(
   const logId = logRow.id;
 
   try {
-    const res = await fetch(url, { headers: { Accept: "application/json" } });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const json = await res.json();
+    const json = await fetchJson(url);
     const allRows = parser(json);
     // B 工程 v8(2026-07-03):全市場寫入 — focus 池照舊 + 全部 4 碼普通股/ETF
     // (雷達層,零 quota;權證等 5-6 碼仍排除)。90 日滾動清理見 cleanup_market_prices。
