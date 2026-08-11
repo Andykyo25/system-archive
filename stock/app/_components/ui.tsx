@@ -26,7 +26,7 @@ export function Card({
 }) {
   return (
     <section
-      className={`rounded-2xl border border-line bg-surface-1 ${padded ? "p-4" : ""} ${className}`}
+      className={`surface-card rounded-2xl ${padded ? "p-4" : ""} ${className}`}
     >
       {(title != null || action != null) && (
         <header
@@ -72,7 +72,7 @@ export function StatTile({
 }) {
   return (
     <div
-      className={`rounded-2xl border border-line bg-surface-1 p-4 ${className}`}
+      className={`surface-card rounded-2xl p-4 ${className}`}
     >
       <p className="text-xs text-zinc-500">{label}</p>
       <p

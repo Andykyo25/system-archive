@@ -30,17 +30,17 @@
     "Segoe UI", Roboto, "Noto Sans TC", "Microsoft JhengHei", sans-serif;
 
   /* surfaces(玻璃感:半透明疊在漸層底上;dialog 例外為實色) */
-  --color-surface-0: #09090b;
-  --color-surface-1: rgba(24, 24, 27, 0.6);
-  --color-surface-2: rgba(255, 255, 255, 0.05);
-  --color-surface-raised: rgba(9, 9, 11, 0.6);
-  --color-surface-sunken: rgba(9, 9, 11, 0.8);
-  --color-surface-dialog: #18181b;
+  --color-surface-0: #070b12;
+  --color-surface-1: rgba(14, 21, 33, 0.76);
+  --color-surface-2: rgba(148, 163, 184, 0.08);
+  --color-surface-raised: rgba(20, 29, 44, 0.82);
+  --color-surface-sunken: rgba(5, 9, 16, 0.82);
+  --color-surface-dialog: #111827;
 
   /* 邊框三級 */
-  --color-line: rgba(255, 255, 255, 0.06);
-  --color-line-soft: rgba(255, 255, 255, 0.04);
-  --color-line-strong: rgba(255, 255, 255, 0.1);
+  --color-line: rgba(148, 163, 184, 0.13);
+  --color-line-soft: rgba(148, 163, 184, 0.075);
+  --color-line-strong: rgba(148, 163, 184, 0.22);
 
   /* 台股漲跌 */
   --color-up: #f87171;
@@ -53,7 +53,7 @@
   --color-danger: #ef4444;
 
   /* accent(維持 blue 系) */
-  --color-accent: #3b82f6;
+  --color-accent: #38bdf8;
 }
 
 html,
@@ -66,15 +66,74 @@ body {
   /* 全站數字等寬:dashboard 數字對齊的基礎 */
   font-variant-numeric: tabular-nums;
   /* 柔和深色底:近黑 + 兩道極淡的品牌色光暈(藍/翠),取代死平 zinc-950 */
+  color-scheme: dark;
   background:
-    radial-gradient(1100px 560px at 85% -10%, rgba(59, 130, 246, 0.08), transparent 60%),
-    radial-gradient(900px 520px at -10% 115%, rgba(16, 185, 129, 0.05), transparent 60%),
-    #09090b;
+    linear-gradient(rgba(148, 163, 184, 0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(148, 163, 184, 0.025) 1px, transparent 1px),
+    radial-gradient(1000px 620px at 82% -12%, rgba(14, 165, 233, 0.13), transparent 62%),
+    radial-gradient(850px 540px at 12% 108%, rgba(16, 185, 129, 0.075), transparent 62%),
+    #070b12;
+  background-size: 40px 40px, 40px 40px, auto, auto, auto;
   background-attachment: fixed;
 }
 
 ::selection {
-  background: rgba(59, 130, 246, 0.35);
+  background: rgba(56, 189, 248, 0.32);
+}
+
+a,
+button,
+input,
+select,
+summary {
+  outline-color: rgba(56, 189, 248, 0.75);
+}
+
+button,
+a,
+summary {
+  -webkit-tap-highlight-color: transparent;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
+}
+
+.surface-card {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgba(148, 163, 184, 0.13);
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.035), transparent 48%),
+    rgba(14, 21, 33, 0.76);
+  box-shadow:
+    0 22px 50px rgba(0, 0, 0, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.025);
+  backdrop-filter: blur(18px);
+}
+
+.surface-card::before {
+  position: absolute;
+  inset: 0 auto auto 0;
+  width: 44%;
+  height: 1px;
+  content: "";
+  background: linear-gradient(90deg, rgba(56, 189, 248, 0.55), transparent);
+  pointer-events: none;
+}
+
+.section-anchor {
+  scroll-margin-top: 5.5rem;
+}
+
+.eyebrow {
+  font-size: 0.68rem;
+  font-weight: 650;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #64748b;
 }
 
 /* 細滾動條(表格橫向卷動很常見,粗滾動條破壞質感) */

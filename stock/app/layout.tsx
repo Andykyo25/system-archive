@@ -23,10 +23,10 @@ export default function RootLayout({
       <body className="min-h-full font-sans text-zinc-100">
         <div className="flex min-h-screen">
           <Sidebar />
-          <div className="flex min-w-0 flex-1 flex-col">
+          <div className="flex min-w-0 flex-1 flex-col pb-20 md:pb-0">
             <TopBar />
-            <main className="flex-1 px-4 py-6 md:px-8">
-              <div className="mx-auto w-full max-w-6xl">{children}</div>
+            <main className="flex-1 px-4 py-5 sm:px-6 md:px-8 md:py-7 xl:px-10">
+              <div className="mx-auto w-full max-w-[1480px]">{children}</div>
             </main>
           </div>
         </div>

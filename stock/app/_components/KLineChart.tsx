@@ -67,25 +67,28 @@ export function KLineChart({ data }: { data: OHLCV[] }) {
 
     const chart = createChart(containerRef.current, {
       layout: {
-        background: { type: ColorType.Solid, color: "#09090b" }, // zinc-950
-        textColor: "#a1a1aa", // zinc-400
+        background: { type: ColorType.Solid, color: "transparent" },
+        textColor: "#64748b",
+        fontFamily: "var(--font-geist-sans), ui-sans-serif, system-ui",
       },
       grid: {
-        vertLines: { color: "#27272a" }, // zinc-800
-        horzLines: { color: "#27272a" },
+        vertLines: { color: "rgba(148, 163, 184, 0.08)" },
+        horzLines: { color: "rgba(148, 163, 184, 0.08)" },
       },
       timeScale: {
         timeVisible: false,
-        borderColor: "#3f3f46", // zinc-700
+        borderColor: "rgba(148, 163, 184, 0.16)",
+        rightOffset: 3,
       },
       rightPriceScale: {
-        borderColor: "#3f3f46",
+        borderColor: "rgba(148, 163, 184, 0.16)",
+        scaleMargins: { top: 0.08, bottom: 0.25 },
       },
       crosshair: {
         mode: 1, // Magnet
       },
       width: containerRef.current.clientWidth,
-      height: 400,
+      height: 430,
     });
     chartRef.current = chart;
 
@@ -180,10 +183,12 @@ export function KLineChart({ data }: { data: OHLCV[] }) {
   }
   return (
     <div>
-      <div ref={containerRef} className="w-full" />
-      <p className="mt-1 text-[10px] text-zinc-600">
-        紫線 = 布林上/下軌(20,2)· 灰虛線 = 中軌 MA20 · 走 B:位置參考,非買賣訊號(趨勢股沿上軌走屬正常)
-      </p>
+      <div ref={containerRef} className="w-full overflow-hidden rounded-2xl" />
+      <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 px-2 text-[10px] text-slate-600">
+        <span className="inline-flex items-center gap-1.5"><i className="h-px w-4 bg-violet-400" />布林通道 (20, 2)</span>
+        <span className="inline-flex items-center gap-1.5"><i className="h-px w-4 border-t border-dashed border-slate-500" />MA20</span>
+        <span>紅漲、綠跌 · 成交量置於下方</span>
+      </div>
     </div>
   );
 }
