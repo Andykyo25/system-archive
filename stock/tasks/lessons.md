@@ -685,3 +685,102 @@ memory `stock_current_state` 的定調(不宣稱穩定 alpha)靠的就是這種�
 **為什麼**:這是 [[L42]]/[[L46]]/[[L55]]/[[L60]] 沉默 drift 的第五次重演,但這次的意義不同:
 **它是被新監控主動抓到的,不是靠 Andy 肉眼發現**。coverage 檢查上線第一分鐘就回收成本。
 監控的價值不在於它報的那一項,而在於它讓「系統看起來在跑但其實沒有」變成可觀測。
+
+## 資料健康續篇 — 配額模型錯了一整年(2026-08-11)
+
+### L62 — 外部 API 的配額,要問 API 自己;別從自己的計數器反推「上游擋我」
+
+`api_quota_state` 把 FinMind 當 600/天在 gate,於是連續多天記到 600/600,
+所有人(包含前一輪的我)都讀成「配額結構性打滿、被上游擋住」。
+直接查 `api.web.finmindtrade.com/v2/user_info` 才看到:
+
+```
+"api_request_limit_hour": 600      "api_request_limit_day": "-"
+```
+
+**600 是每小時,而且沒有日上限。** 那條「天天 600/600」的天花板是自己畫的,
+FinMind 從頭到尾沒擋過 —— 診斷當下兩顆 token 直接打都回 200。
+
+再往下,真正撞到限流時的行為也跟猜的不一樣:回應碼是 **402**(不是 400/429),
+視窗是**滾動 1 小時**(整點不會歸零 —— 08:05 查 user_count 仍是 07:30 那批的 587)。
+
+**為什麼**:自己的計數器只證明「我的 gate 開了幾次」,不證明「上游拒絕了幾次」。
+兩者被當成同一件事,錯誤模型就會自我驗證 —— 越接近上限越不敢打,越不敢打越像是被擋。
+**任何「額度」「限流」「配額」類判斷,先找上游的 introspection 端點或實際觸發一次看回應碼,
+不要用自家統計去推論對方的規則。** 同一天 [[L47]] 的「文件描述 ≠ 實際行為」再次成立,
+但這次更狠:連我們自己寫的規則從何而來都沒人查過。
+
+### L63 — 逐檔迴圈前先問「這個 dataset 對這類標的有資料嗎」,答案在自己的 DB 裡
+
+`fetch-finmind-valuation` / `fetch-finmind-fundamentals` 對 `v_fetch_universe` 594 檔逐檔打,
+其中 **416 檔是 ETF**。而 ETF 沒有本益比也沒有財報:
+
+```sql
+select count(*) filter (where symbol ~ '^00') from stock_pe_pb_daily;              -- 0
+select count(*) filter (where symbol ~ '^00') from stock_fundamentals_quarterly;   -- 0
+```
+
+**兩張表從上線到現在,ETF 一列都沒有。** 每天固定燒 416 次 call 換 0 列
+(fundamentals 是 416×3 = 1248 次),而且它排在籌碼 3 EF 前面 → 把配額吃光,後面全餓死。
+
+**為什麼**:這不需要讀 API 文件、不需要試打,**寫入表本身就是最強的證據**——
+「跑了幾個月,這類標的的列數是 0」等於「這個組合不會有資料」。
+新增/檢查任何逐檔迴圈時,先用 `count(*) filter (where <該類標的>)` 反查落地結果;
+是 0 就把那類標的從迴圈裡拿掉。籌碼 4 EF 早在 L42 就改讀 stock 底集了,
+**漏網的是估值與財報這兩支 —— 又是一次 [[L46]]「統一 N EF 類修法必機械式 grep 全鏈」**。
+
+### L64 — `date - interval 'N days'` 是 timestamp,送外部 API 一律用 `date - int`
+
+```sql
+(current_date - interval '3 days')::text  →  '2026-08-08 00:00:00'   -- timestamp
+(current_date - 3)::text                  →  '2026-08-08'            -- date
+```
+
+FinMind 的 `start_date` 只吃 `YYYY-MM-DD`,帶時間就回 HTTP 400。
+`holdings-staleness-backfill-preopen` 因此**從 20260521 建立起沒成功過一次** ——
+它正是 L46 的防護層(「即使 fallback 又漏,持股一定有資料」),整條防線一直是空的。
+
+**為什麼**:同一支 cron 的 `end_date` 用 `current_date::text` 是對的,錯的只有 start,
+所以錯誤訊息長得像「某檔股票有問題」(`2408: HTTP 400`)而不是「日期格式錯」。
+**外部 API 的日期參數,在 SQL 裡就要保持 `date` 型別到最後一刻**;
+而且 debug 時看到「單一 symbol 失敗」要先確認它是不是**唯一被送出去的那個 symbol**
+(2408 是 Andy 唯一持股)—— 樣本數 1 的錯誤訊息沒有指向性。
+
+### L65 — 監控要有「期望清單」,否則「壞掉」跟「不存在」長得一模一樣
+
+`v_data_health` 的 source 那段是 `from fetch_log group by source` ——
+**沒有列的東西不會出現**。而 `fetch-finmind-institutional` / `lending` 的 quota gate
+寫在 `fetch_log` insert **之前**:
+
+```ts
+if (usedSoFar >= budget) return Response.json({ skipped: "quota_exhausted" });
+const { data: logRow } = await supabase.from("fetch_log").insert(...)   // 永遠到不了
+```
+
+→ 這兩支不是變紅,是**整列從監控消失**(institutional 5 天、lending 4 天、
+shareholding 更是 16 天沒人知道)。監控自己有盲區,而盲區的形狀正好是最嚴重的失敗模式。
+
+改成「期望清單 full outer join fetch_log + 超過容忍天數即 danger」後,上線第一分鐘就多抓到
+`finmind_shareholding` 16 天沒成功、`google_news` 近 7 天 20 次 `success is null`
+(開了 log 沒收尾 = EF 被 wall-clock 砍掉;舊 view 的 `fail_n` 用 `not success`,
+**null 兩邊都不算,所以它一直是綠的**)。
+
+**為什麼**:這是 [[L42]]/[[L46]]/[[L55]]/[[L60]] 沉默 drift 的同一家族,但這次躲在監控內部。
+**任何「有什麼報什麼」的監控都測不到消失**;必須有一份獨立於資料的期望清單當骨架。
+同理,三態欄位(true/false/**null**)在健康度判斷裡,null 一定要明確歸類,不能讓它從 CASE 掉出去。
+
+### L66 — 「先收 text 再 parse」不是萬用解;而且重試是重發請求,res.json() 一樣重試得了
+
+為了讓 tpex 的截斷可辨識,前一輪在 `fetch-daily-prices` 用了 `res.text()` + `JSON.parse`。
+本輪把同一套搬到 `backfill-market-history` → 直接 **WORKER_RESOURCE_LIMIT**:
+TWSE `MI_INDEX?type=ALL` 單日 31267 列,text 字串與 parse 後的物件同時在記憶體裡就是翻倍,
+一輪 5 天必爆。
+
+更關鍵的是原本那條理由本身站不住:「`res.json()` 失敗後 body 已消耗,無從重試」
+**只在同一個 response 物件內成立**。重試是重新 `fetch()`、拿到全新的 response,
+所以 `res.json()` 放在重試迴圈裡一樣重試得了,還省一份記憶體。
+
+**為什麼**:一個為 A 情境(4MB 回應要分辨截斷 vs 格式壞)寫的技巧,搬到 B 情境
+(31267 列、要跑 5 圈)就從優化變成故障。**複製既有 pattern 時要重問它的前提**——
+這裡的前提是「回應夠小,多一份拷貝無所謂」。順帶:重試的正確判準是**錯誤類別**
+(5xx / 網路錯誤才重試,4xx 與上游自己回的邏輯錯誤不重試),不是「能不能再讀一次 body」。

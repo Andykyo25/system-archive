@@ -45,12 +45,36 @@ function okSymbol(v: unknown): string | null {
   return /^[0-9A-Za-z]{4,6}$/.test(t) ? t : null;
 }
 
+// tpex openapi 會偶發 Cloudflare 520(2026-08-10 events_tpex_prepost 就是這個),
+// 而同一時間本機直打是 200/57KB —— 屬邊緣節點瞬時拒絕,重試會過。
+// 只重試 5xx 與網路錯誤;4xx 是我們自己的請求問題,重試沒有意義。
 async function fetchJson(url: string): Promise<Record<string, unknown>[]> {
-  const res = await fetch(url, { headers: { accept: "application/json" } });
-  if (!res.ok) throw new Error(`${url} -> HTTP ${res.status}`);
-  const j = await res.json();
-  if (!Array.isArray(j)) throw new Error(`${url} -> non-array payload`);
-  return j as Record<string, unknown>[];
+  let lastErr = new Error("unreachable");
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const res = await fetch(url, { headers: { accept: "application/json" } });
+      if (!res.ok) {
+        const err = new Error(`${url} -> HTTP ${res.status}`);
+        if (res.status < 500) throw err;          // 4xx 直接放棄
+        lastErr = err;
+      } else {
+        const body = await res.text();
+        let j: unknown;
+        try {
+          j = JSON.parse(body);
+        } catch {
+          throw new Error(`${url} -> invalid JSON (${body.length} bytes)`);
+        }
+        if (!Array.isArray(j)) throw new Error(`${url} -> non-array payload`);
+        return j as Record<string, unknown>[];
+      }
+    } catch (e) {
+      lastErr = e instanceof Error ? e : new Error(String(e));
+      if (/-> HTTP [34]\d\d$/.test(lastErr.message)) throw lastErr;
+    }
+    if (attempt < 3) await new Promise((r) => setTimeout(r, attempt * 2000));
+  }
+  throw lastErr;
 }
 
 function parseTwt48u(rows: Record<string, unknown>[]): EventRow[] {

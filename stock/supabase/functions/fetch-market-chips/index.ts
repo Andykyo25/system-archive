@@ -64,11 +64,29 @@ async function finmind(
   const token = Deno.env.get("FINMIND_TOKEN");
   if (token) u.searchParams.set("token", token);
 
-  const res = await fetch(u.toString());
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const j = await res.json();
-  if (j?.status !== 200) throw new Error(`finmind: ${j?.msg ?? "unknown"}`);
-  return (j.data ?? []) as FinMindRow[];
+  // FinMind 偶發 502/504(2026-08-10 margin: HTTP 504)。5xx 是上游閘道抖動,重試會過;
+  // 4xx 不重試 —— 402 是限流(打再多次也只是更快撞牆)、400 是參數錯。
+  let lastErr = new Error("unreachable");
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const res = await fetch(u.toString());
+      if (!res.ok) {
+        if (res.status < 500) throw new Error(`HTTP ${res.status}`);
+        lastErr = new Error(`HTTP ${res.status}`);
+      } else {
+        const j = await res.json();
+        if (j?.status !== 200) throw new Error(`finmind: ${j?.msg ?? "unknown"}`);
+        return (j.data ?? []) as FinMindRow[];
+      }
+    } catch (e) {
+      lastErr = e instanceof Error ? e : new Error(String(e));
+      // 4xx 與 FinMind 自己回的錯誤訊息都不重試(重試不會變成功,只是多燒 call)
+      if (/^HTTP [34]\d\d$/.test(lastErr.message)) throw lastErr;
+      if (lastErr.message.startsWith("finmind: ")) throw lastErr;
+    }
+    if (attempt < 3) await new Promise((r) => setTimeout(r, attempt * 2000));
+  }
+  throw lastErr;
 }
 
 const num = (v: unknown): number | null =>

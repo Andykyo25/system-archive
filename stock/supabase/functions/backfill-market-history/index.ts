@@ -67,11 +67,34 @@ function rocSlash(d: Date): string {
   return `${y}/${iso.slice(5, 7)}/${iso.slice(8, 10)}`;
 }
 
+// 上游(尤其 tpex)會偶發 Cloudflare 520 與大回應截斷 —— 2026-08-05/06/07/10 連四天
+// `tpex HTTP 520`,但同一時間本機直打同一支端點是 200/139KB。也就是說 520 不是端點壞掉,
+// 是邊緣節點對這條連線的瞬時拒絕,重試就會過。3 次嘗試、間隔遞增。
+//
+// ⚠ 這裡刻意**不用** fetch-daily-prices 那套「先收 text 再 parse」:
+// TWSE MI_INDEX type=ALL 單日 31267 列,text 與 parse 後的物件同時在記憶體裡會翻倍,
+// 5 天一輪直接 WORKER_RESOURCE_LIMIT(2026-08-11 實測撞到)。
+// 而且「body 消耗掉就不能重試」只在同一個 response 內成立 —— 重試是重發請求、拿到
+// 新的 response,所以 res.json() 一樣重試得了,還省一份記憶體。
+async function fetchJson(url: string, tag: string): Promise<unknown> {
+  let lastErr = new Error("unreachable");
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const res = await fetch(url, { headers: { "User-Agent": UA, Accept: "application/json" } });
+      if (!res.ok) throw new Error(`${tag} HTTP ${res.status}`);
+      return await res.json();
+    } catch (e) {
+      lastErr = e instanceof Error ? e : new Error(`${tag}: ${String(e)}`);
+      if (attempt < 3) await new Promise((r) => setTimeout(r, attempt * 2000));
+    }
+  }
+  throw lastErr;
+}
+
 async function fetchTWSE(d: Date): Promise<PriceRow[]> {
   const url = `${TWSE}?date=${compact(d)}&type=ALL&response=json`;
-  const res = await fetch(url, { headers: { "User-Agent": UA } });
-  if (!res.ok) throw new Error(`twse HTTP ${res.status}`);
-  const j = await res.json();
+  // deno-lint-ignore no-explicit-any
+  const j = await fetchJson(url, "twse") as any;
   if (j?.stat !== "OK") return [];
   // 挑列數最多的 table(= 每日收盤行情全部),用結構判斷不靠中文標題比對
   const tables: { fields?: string[]; data?: unknown[][] }[] = j.tables ?? [];
@@ -102,9 +125,8 @@ async function fetchTWSE(d: Date): Promise<PriceRow[]> {
 
 async function fetchTPEX(d: Date): Promise<PriceRow[]> {
   const url = `${TPEX}?date=${encodeURIComponent(rocSlash(d))}&type=EW&response=json`;
-  const res = await fetch(url, { headers: { "User-Agent": UA } });
-  if (!res.ok) throw new Error(`tpex HTTP ${res.status}`);
-  const j = await res.json();
+  // deno-lint-ignore no-explicit-any
+  const j = await fetchJson(url, "tpex") as any;
   const t = (j?.tables ?? [])[0];
   const rows: unknown[][] = t?.data ?? [];
   const out: PriceRow[] = [];

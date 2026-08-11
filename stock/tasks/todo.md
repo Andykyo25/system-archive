@@ -2684,3 +2684,97 @@ fallback 排 07:30 UTC = 15:30 台北。但實測 tpex openapi 在 06:30 UTC 那
 - [ ] 明天看 `fetch-finmind-fallback` 回傳的 `already_covered` / `api_calls` 實數再決定
 - [ ] 若確認沒省到:把 `fetch-finmind-fallback-postclose` 從 07:30 移到 14:30 UTC
       (排在 14:00 收盤收料之後),當日資料先由免費源蓋滿,fallback 才真的只補殘洞
+
+---
+
+## 資料健康 續篇 — 配額模型從根本就錯 + 前一輪未定案的 400 破案(2026-08-11 下午)
+
+Andy 再丟一次 /health(9 項異常)。上一輪把根因收斂成 A/B/C 三項並修完,但異常沒清掉。
+本輪往下再挖一層,發現**上一輪的 A(「FinMind 配額結構性打滿」)本身建立在一個錯誤前提上**。
+
+### 破案 1 — FinMind 的 600 是「每小時」,不是「每天」
+
+直接查 FinMind 自己的 user_info(兩顆 token 回傳一致):
+
+```
+"api_request_limit_hour": 600
+"api_request_limit_day":  "-"      ← 沒有日上限
+```
+
+`api_quota_state` 從 B1 起就把 600 當日配額在 gate,於是系統每天中午自己把自己關掉。
+`/health` 上那幾條 `quota exhausted at XXXX` **全部是自己 gate 掉的,不是 FinMind 擋的**
+—— 診斷當下兩顆 token 直接打 `TaiwanStockPrice/2408` 都回 200。
+
+**上一輪的「兩顆 token 8/7 起天天 600/600」是這個錯誤模型自己畫出來的天花板,不是真的撞牆。**
+
+再往下量到限流的真實行為(這條是後來手動觸發時撞出來的硬證據):
+砍完 ETF 的 valuation 跑 178 檔,只成功 22 檔就開始 **HTTP 402** ——
+因為 07:30 那批 586 次還在滾動視窗內(586 + 22 ≈ 608 > 600)。
+→ **限流回應碼是 402,視窗是「滾動 1 小時」而非整點歸零**;真正要管的是
+「任何連續 60 分鐘內同一顆 token 幾次」。
+
+### 破案 2 — 每天燒 416 次 call 換 0 列(上一輪 A 的真實成因)
+
+`v_fetch_universe` = 594 檔,拆開來是 **178 個股 + 416 檔 ETF**。而:
+
+| 表 | ETF 列數(至今) | 個股列數 |
+|---|---:|---:|
+| `stock_pe_pb_daily` | **0** | 36,614 |
+| `stock_fundamentals_quarterly` | **0** | 2,450 |
+
+ETF 沒有本益比也沒有財報,`TaiwanStockPER` / `TaiwanStockFinancialStatements` 對 00xxxx
+一律回空陣列。所以 valuation 每天固定燒 416 次 call 換 0 列,fundamentals 更是 416×3 = 1248 次。
+而 valuation 排 08:30,在 institutional(09:00)、lending(09:10) **前面** → 把配額吃光,
+後面兩支直接餓死。籌碼 3 EF 早就讀 `v_fetch_universe_stocks` 了,**漏網的是估值與財報這兩支**。
+
+### 破案 3 — `backfill_price 2408: HTTP 400`(上一輪標「未定案」的那項)
+
+不是 token、不是 2408、不是 FinMind。是 cron body 的 SQL 型別:
+
+```sql
+(current_date - interval '3 days')::text  →  '2026-08-08 00:00:00'   -- timestamp!
+(current_date - 3)::text                  →  '2026-08-08'            -- date
+```
+
+FinMind 的 `start_date` 只吃 `YYYY-MM-DD`,帶時間就回 400。同一支 cron 的 `end_date`
+用 `current_date::text` 一直是對的,所以只有 start 壞 —— 這條 [[L46]] 防護層
+(「即使 fallback 又漏,持股一定有資料」)**從 20260521 建立起沒成功過一次**。
+上一輪查到「錯誤列表從 3236 起的全 universe」的那個附帶問題也一起修了(空持股 → `[]` →
+EF 退回全 universe;加 `where exists` 直接不發)。
+
+### 做了什麼
+
+| # | 項目 | 檔案 | verify |
+|---|---|---|---|
+| A1 | 配額計數器每整點歸零 = 日計數器變時計數器,對齊 FinMind 真實限制。**13 個 EF 一行都沒改** | `20260811000004_finmind_quota_hourly.sql` | cron 建立於 08:00 之後,首次觸發看 09:00 |
+| A2 | cron 日期型別 + 空持股 guard | `20260811000005_fix_preopen_backfill_date_cast.sql` | 明日 00:45 該 cron 應首次 success |
+| A3 | `v_data_health` 加**缺席偵測**:改成「期望清單 full outer join fetch_log」,超過容忍天數沒有成功紀錄即 danger;另把 `success is null`(開了 log 沒收尾)也算成異常 | `20260811000006_v_data_health_absence_watchdog.sql` | ✅ 套用後 institutional/lending/shareholding/google_news 立刻現形(見下) |
+| B1 | valuation 改讀 `v_fetch_universe_stocks`(594→178)+ quota gate 移到 fetch_log 之後 | `fetch-finmind-valuation` **v5** | ✅ 觸發回 `target_symbols:178`(原 594) |
+| B2 | fundamentals 同上(1782→534 calls) | `fetch-finmind-fundamentals` **v4** | 待窗期清空後觸發 |
+| B3 | cron 依滾動小時重排:valuation 08:30→**10:30**;corporate_action 週更用 EF 既有 `symbol_offset/limit` 拆 3 批(21/22/23 點) | `20260811000007_finmind_cron_hour_spacing.sql` | 週六首跑 |
+| C1 | backfill-market-history 加 3 次重試 | `backfill-market-history` **v3** | ✅ 補 8/05–8/07 → 5871 列 **0 errors** |
+| C2 | fetch-stock-events 加重試(5xx 才重試,4xx 不重試) | `fetch-stock-events` **v2** | ✅ 4 源全成功;`twse_t187ap38` 1112 列 |
+| C3 | fetch-market-chips 加重試(同上,402/finmind: 不重試) | `fetch-market-chips` **v3** | ✅ 3 源 0 errors |
+
+### 缺席偵測上線第一分鐘的收穫
+
+之前完全看不見的東西立刻現形:
+
+- `finmind_shareholding` — **已 16 天沒有成功紀錄**(從來沒人知道)
+- `google_news` — 已 5 天沒成功,近 7 天 **20 次開了 fetch_log 沒收尾**
+  (`success is null`,EF 疑似被 wall-clock 砍掉)。原本 `fail_n` 用 `not success`,
+  null 兩邊都不算 → 這種「跑到一半死掉」在舊 view 上是**綠的**
+- institutional / lending / margin / valuation 的「已 N 天沒成功」
+
+### ⚠️ 誠實記著(沒做 / 沒驗到的)
+
+- **整點歸零 vs 滾動視窗有落差**:FinMind 是滾動 1 小時,本檔的 cron 是整點歸零。
+  跨整點的兩批(例如 07:55 打 500 + 08:05 打 500)本地 gate 會放行但上游會 402。
+  排程拉開後實際峰值 token_1 ≤ 594/小時,所以是可接受的近似,**但不是精確模型**。
+  精確版要嘛在 EF 內查 user_info 的 `user_count`(13 EF 都要改),要嘛給
+  `api_quota_state` 加時間戳做真滾動窗。
+- **402 風暴沒處理**:限流後 EF 仍會把剩下的 symbol 全部打完(本次 178 檔打出 156 個 402)。
+  加「遇 402 立刻 break」是對的,但那要再動一輪 EF;排程拉開後觸發條件已消失,先記著。
+- **`google_news` 逾時沒修**:只做到「看得見」。`fetch-stock-news` 對 594+ 檔跑 RSS
+  撞 EF wall-clock,要拆批或縮名單,下一輪。
+- **A1/A2/B2/B3 都還沒被真實 cron 跑過**(建立時間都晚於今天的觸發時刻)。

@@ -134,9 +134,13 @@ Deno.serve(async (req: Request) => {
   }
   const TOKEN = tokenRes.data as string;
 
-  // 收料 symbol 單一來源 v_fetch_universe(根治 holdings_transactions 漏收 drift)。
+  // ETF 沒有財報 —— TaiwanStockFinancialStatements 對 00xxxx 一律回空陣列。
+  // 實測 stock_fundamentals_quarterly 至今 ETF 列數 = 0、個股 2450 列,即
+  // v_fetch_universe(594)裡的 416 檔 ETF 每次燒 416×3 = 1248 次 call 換 0 列
+  // (整支的預算是 594×3 = 1782,難怪永遠停在 quota exhausted at 00798B)。
+  // 改讀 v_fetch_universe_stocks(stock 底集,不含 ETF):178×3 = 534 次(2026-08-11)。
   // fallback:view 異常 → 退回原 holdings/watchlist/industry query(零退化)。
-  const fu = await supabase.from("v_fetch_universe").select("symbol");
+  const fu = await supabase.from("v_fetch_universe_stocks").select("symbol");
   const targetSymbols = new Set<string>();
   if (fu.error) {
     const [holdings, watchlist, industry] = await Promise.all([
@@ -168,12 +172,22 @@ Deno.serve(async (req: Request) => {
   const usedSoFar = quotaRow?.used ?? 0;
   const budget = quotaRow?.budget ?? FINMIND_DAILY_BUDGET;
   const remaining = budget - usedSoFar;
-  if (remaining < 3) {
-    return Response.json({ skipped: "quota_exhausted", quota: { used: usedSoFar, budget } });
-  }
 
+  // fetch_log 必須先寫再判 quota。原本順序相反 —— 配額用盡時直接 return,
+  // 一列 log 都沒留下,於是 /health 上這支不是變紅,是**整列消失**
+  // (institutional 5 天、lending 4 天就是這樣人間蒸發的,2026-08-11 診斷)。
   const { data: logRow } = await supabase.from("fetch_log").insert({ source: "finmind_fundamentals" }).select("id").single();
   const logId = logRow!.id;
+
+  if (remaining < 3) {
+    await supabase.from("fetch_log").update({
+      finished_at: new Date().toISOString(),
+      success: false,
+      rows_written: 0,
+      error: `quota_exhausted before start (used ${usedSoFar}/${budget})`,
+    }).eq("id", logId);
+    return Response.json({ skipped: "quota_exhausted", quota: { used: usedSoFar, budget } });
+  }
 
   let written = 0;
   let apiCalls = 0;
