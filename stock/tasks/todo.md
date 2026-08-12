@@ -2778,3 +2778,52 @@ EF 退回全 universe;加 `where exists` 直接不發)。
 - **`google_news` 逾時沒修**:只做到「看得見」。`fetch-stock-news` 對 594+ 檔跑 RSS
   撞 EF wall-clock,要拆批或縮名單,下一輪。
 - **A1/A2/B2/B3 都還沒被真實 cron 跑過**(建立時間都晚於今天的觸發時刻)。
+
+### 追加:配額修好之後浮出來的下一層 —— 150 秒 wall-clock
+
+配額不再擋人之後,margin / lending 還是不動。查 edge-function log 才看到真兇:
+
+```
+fetch-finmind-lending       546  execution_time_ms 150810
+fetch-finmind-margin        546  execution_time_ms 150539
+fetch-stock-news            546  execution_time_ms 150499
+fetch-finmind-institutional 200  execution_time_ms 137288   ← 只差 13 秒
+```
+
+**Supabase EF 的 wall-clock 是 150 秒**,546 = 被砍。這幾支逐檔 EF 全部貼著牆在跑,
+institutional 擦邊過關。所以它們的 fetch_log 是 `success is null`(開了沒收尾)而非失敗 ——
+正好是本輪新加的缺席偵測才看得見的那一類。
+
+**而且被砍的執行對配額是隱形的**:`increment_quota` 寫在迴圈之後,EF 被砍就永遠不會執行,
+那 ~150 次 call 打出去了卻沒進 `api_quota_state`。實測:09:05 margin 被砍後,
+09:22 手動跑的 margin backfill 178 檔出現 54 個 402 —— 本地 gate 以為還有額度。
+
+**修法(只改 cron,零 EF 改動)**:margin / lending 改叫 `fetch-finmind-backfill`。
+同一個 FinMind dataset、同一張目標表,差別在批次 upsert(178 檔實測 43 秒 vs dedicated 137 秒)
+且支援 `symbol_offset` / `symbol_limit`。
+
+lending 另外踩了第二層:即使切到 60 檔仍 546(batch1 1094 列、batch2 825 列都過,batch3 爆)。
+**瓶頸是「檔數 × 天數 × 每檔每日列數」的乘積**,不同區段股票每檔列數差很多,光靠固定檔數切不安全。
+把日更回看視窗 8 天 → 3 天後,同一批 58 檔只剩 222 列、0 errors 通過。
+
+| 檔案 | 動作 | verify |
+|---|---|---|
+| `20260811000008_margin_lending_via_backfill_ef.sql` | margin/lending cron 改指 backfill EF + 期望清單改名 backfill_margin/backfill_lending | ✅ 套用 |
+| (cron)`fetch-finmind-lending-b1..b4` | 拆 4 批 × 60 檔(09:10/15/20/25) | ✅ 建立 |
+| (cron)margin + lending | 回看 8 天 → 3 天 | ✅ batch3 重跑 58 檔/222 列/0 errors |
+
+### 隔日(08-12)實跑驗收
+
+- `holdings-staleness-backfill-preopen` **@00:45 success=true** —— **這條 cron 自 20260521 建立以來的第一次成功**(L64)
+- `reset-finmind-hourly-quota` 於 22:00 / 23:00 / 00:00 連續觸發成功
+- **freshness / coverage / quota 三區段全部乾淨**:法人、融資、借券、PE/PB 四張表都回到最新交易日
+- 尚待今日 09:xx 首跑:margin(09:05)、lending b1-b4(09:10-09:25)、valuation(10:30);週六 corporate_action 3 批
+
+### 仍未修(下一輪,診斷已完成)
+
+- `google_news`:`fetch-stock-news` 對 594 檔跑 RSS,8/06 起每次撞 150 秒。最後一次成功
+  8/06 06:00 花了 110 秒 —— universe 547→594 那次把它推過牆。需要拆批(EF 要加 offset/limit)
+- `finmind_shareholding`:同樣 546,17 天沒成功
+- `finmind_institutional`:137 秒過關但只剩 13 秒餘裕,universe 再長就會步上後塵
+- **402 風暴**:限流後 EF 仍會把剩下的 symbol 全部打完;應「遇 402 立刻 break」
+- **被砍的 EF 不計配額**:`increment_quota` 應改成迴圈內分段遞增,而非結束時一次記
