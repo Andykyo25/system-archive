@@ -135,6 +135,20 @@ Deno.serve(async (req: Request) => {
 
   if (nameMap.size === 0) return Response.json({ skipped: "no_target_symbols" });
 
+  // 分批(2026-08-12):Supabase EF wall-clock 是 150 秒。本 EF 每檔 ~0.2 秒
+  // (SYMBOL_THROTTLE_MS 80ms + RSS 往返),universe 從 547 長到 594 之後
+  // 就整批撞牆 —— 最後一次成功是 8/06 06:00 花了 110 秒,之後每次 546 被砍,
+  // fetch_log 停在 success is null(開了沒收尾)。
+  // 用與 fetch-finmind-backfill 同名的 symbol_offset / symbol_limit 切批,
+  // 由 cron 分次呼叫;不傳 = 全跑(等於現狀,退版安全)。
+  let body: { symbol_offset?: number; symbol_limit?: number } = {};
+  try { body = await req.json(); } catch { /* 無 body 視為全跑 */ }
+  const allSymbols = [...nameMap];
+  const offset = body.symbol_offset ?? 0;
+  const limit = body.symbol_limit ?? allSymbols.length;
+  const batch = allSymbols.slice(offset, offset + limit);
+  if (batch.length === 0) return Response.json({ skipped: "no_symbols_in_batch", offset, limit });
+
   const { data: logRow } = await supabase
     .from("fetch_log").insert({ source: "google_news" }).select("id").single();
   const logId = logRow!.id;
@@ -143,7 +157,7 @@ Deno.serve(async (req: Request) => {
   let apiCalls = 0;
   const errors: string[] = [];
 
-  for (const [symbol, name] of nameMap) {
+  for (const [symbol, name] of batch) {
     try {
       apiCalls++;
       const items = await fetchNewsForSymbol(symbol, name);
@@ -164,8 +178,11 @@ Deno.serve(async (req: Request) => {
   // 清舊資料(NEWS_RETENTION_DAYS 之前 published 的)
   // B2 衍生:null published_at(pubDate 解析失敗)對 lt 永不成立 → 永久殘留表膨脹。
   //   改 or(is null OR < cutoff)一併清掉解析失敗的舊 row。
-  const cutoff = new Date(Date.now() - NEWS_RETENTION_DAYS * 86400 * 1000).toISOString();
-  await supabase.from("stock_news").delete().or(`published_at.is.null,published_at.lt.${cutoff}`);
+  // 只在第一批做:清理與 symbol 無關,分批後每批都跑等於同一件事做 N 次。
+  if (offset === 0) {
+    const cutoff = new Date(Date.now() - NEWS_RETENTION_DAYS * 86400 * 1000).toISOString();
+    await supabase.from("stock_news").delete().or(`published_at.is.null,published_at.lt.${cutoff}`);
+  }
 
   await supabase.from("fetch_log").update({
     finished_at: new Date().toISOString(),
@@ -176,6 +193,7 @@ Deno.serve(async (req: Request) => {
 
   return Response.json({
     target_symbols: nameMap.size,
+    batch: { offset, limit, size: batch.length },
     api_calls: apiCalls,
     written,
     errors: errors.length,

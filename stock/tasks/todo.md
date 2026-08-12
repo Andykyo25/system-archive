@@ -2827,3 +2827,48 @@ lending 另外踩了第二層:即使切到 60 檔仍 546(batch1 1094 列、batch
 - `finmind_institutional`:137 秒過關但只剩 13 秒餘裕,universe 再長就會步上後塵
 - **402 風暴**:限流後 EF 仍會把剩下的 symbol 全部打完;應「遇 402 立刻 break」
 - **被砍的 EF 不計配額**:`increment_quota` 應改成迴圈內分段遞增,而非結束時一次記
+
+## 150 秒 wall-clock 清剩下的 + dashboard 兩項調整(2026-08-12)
+
+Andy:「修 1、2」(= google_news / shareholding)+「今日戰情下面的進場訊號 10 檔刪除,與起漲掃描衝突」
++「起漲掃描是否能看到掃描時間」。
+
+### 1-2. 逐檔 EF 撞 150 秒牆 —— 全部改走 backfill EF
+
+| source | 原狀 | 修法 | verify |
+|---|---|---|---|
+| `google_news` | 594 檔約 250 秒,8/06 起每 6 小時被砍一次 | EF v3 加 `symbol_offset`/`symbol_limit`;cron 拆 4 批 × 150 | ✅ 200 檔 **84 秒** success=true / 0 errors(8/06 以來第一次成功) |
+| `finmind_shareholding` | 546,**17 天沒成功** | 改叫 backfill EF `dataset=shareholding`,週六拆 3 批 × 60(回看 14 天) | ✅ 三批 600+560+580 列、**全 0 errors** |
+| `finmind_institutional` | 200 但 137 秒,只剩 13 秒餘裕 | 同上改 backfill EF,日更回看 3 天 | ✅ 先前已驗 178 檔 43 秒 / 1061 列 |
+
+順手清掉本輪殘留的 danger:margin 重跑 178 檔 344 列 0 errors;
+valuation(dedicated v5)178 檔 870 列 **0 errors** —— v5 第一次乾淨跑完。
+
+**期望清單抽成表**(`data_source_expectation`):本輪光是改 source 名字就被迫整段 view
+重寫三次。清單是會動的設定,不該跟查詢邏輯綁在同一個 DDL 裡;抽表後改名單是一行 DML,
+而且清單本身可查(/health 上能直接看到「我們期望哪些資料源在跑」)。
+
+**/health danger:16 → 3**,剩下的都可解釋:
+- `backfill_corporate_action`(10 天)= 週六才跑,不是壞掉
+- `finmind_fundamentals` = 週日才跑;探針測 60 檔 = 180 calls / 208 列 / 0 errors 通過
+- `finmind_margin` = 已停用的舊 source 名,7 天後自然退出視窗
+
+### 3. dashboard 移除「今日進場訊號」表
+
+`app/page.tsx` 移除 `EntrySignalWidget`(10 檔表格)與只被它用到的 `fmtScore`。
+**保留** MorningPanel 內的機會行(今日戰情**內部**的一行摘要,非「下面」那塊)——
+Andy 指的是 10 檔表格。`getCachedEntrySignals` 仍被 MorningPanel 的 signalCount/signalTop 使用,未動。
+
+### 4. /scan 加掃描時間
+
+`v_breakout_scan` 是即時 view(force-dynamic),每次開頁重算 → 掃描時間就是本次 render。
+標頭改成「資料 {trade_date} 收盤 · 全市場 N 檔 · **掃描於 MM/DD HH:MM**」(Asia/Taipei),
+tooltip 說明兩者差距過大 = 收料沒跟上。tsc + next build 皆過。
+
+### 仍未修
+
+- **`finmind_fundamentals` 是最後一支還在 dedicated EF 上的逐檔收料**:178 檔 × 3 dataset
+  = 534 calls,佔滿小時配額的 89%,wall-clock 也只是「應該夠」。週日 19:00 首跑要看。
+- **402 風暴**(限流後仍把剩下的 symbol 打完)、**`increment_quota` 應分段遞增**
+  (EF 被砍時打出去的 call 對本地計數器隱形)—— 兩者都要動 EF,本輪未做。
+- `fetch-stock-news` 第 4 批 offset 450 只覆蓋到 600 檔,universe 再長要再加批。

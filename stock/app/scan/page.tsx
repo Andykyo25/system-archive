@@ -155,14 +155,28 @@ export default async function ScanPage() {
   const passed = rows.filter((r) => r.passes_all === true);
   const near = rows.filter((r) => r.passes_all !== true);
   const scanDate = rows[0]?.trade_date ?? null;
+  // v_breakout_scan 是即時 view(force-dynamic),每次開頁都重算 → 掃描時間就是本次 render。
+  // 與 scanDate(資料截至哪一天收盤)並列才看得出新鮮度:兩者差太多 = 收料沒跟上。
+  const scannedAt = new Date().toLocaleString("zh-TW", {
+    timeZone: "Asia/Taipei",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
 
   return (
     <div className="space-y-5">
       <header className="rounded-2xl border border-line bg-surface-1 px-4 py-3">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <h1 className="text-xl font-semibold">起漲掃描</h1>
-          <span className="text-xs text-zinc-500">
-            {scanDate ?? "—"} 收盤 · 全市場 {scanned ?? "—"} 檔
+          <span
+            className="text-xs text-zinc-500"
+            title="資料日 = 掃描用的收盤資料屬於哪個交易日;掃描時間 = 本頁這次重算的時間(每次開頁即時重算)。兩者差距過大代表收料沒跟上。"
+          >
+            資料 {scanDate ?? "—"} 收盤 · 全市場 {scanned ?? "—"} 檔 ·{" "}
+            <span className="text-zinc-400">掃描於 {scannedAt}</span>
           </span>
         </div>
         <p className="mt-1 text-xs text-zinc-500">
