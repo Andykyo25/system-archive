@@ -2872,3 +2872,99 @@ tooltip 說明兩者差距過大 = 收料沒跟上。tsc + next build 皆過。
 - **402 風暴**(限流後仍把剩下的 symbol 打完)、**`increment_quota` 應分段遞增**
   (EF 被砍時打出去的 call 對本地計數器隱形)—— 兩者都要動 EF,本輪未做。
 - `fetch-stock-news` 第 4 批 offset 450 只覆蓋到 600 檔,universe 再長要再加批。
+
+---
+
+## 2026-08-17 — 交易行為分析回饋:追高判定修正 + 每日 MTM 權益(Andy「直接動手做 1 跟 3」)
+
+**背景**:分析 17 筆波段 + 3 筆當沖(2026-03-03 ~ 08-17)後發現兩件事,一件是量測 bug、
+一件是我自己先講錯的範圍修正。
+
+### 1 — `dev_ma20_at_buy` 改用實際成交價(量測 bug)
+
+**問題**:`v_trade_behavior.dev_ma20_at_buy` 用「進場日**收盤價**」vs MA20 回算追高;
+但 BuyForm 的追高警示走 `v_entry_quality.dev_ma20_pct`(**即時價** vs MA20)。收盤價在
+下單當下並不存在,拿它做「你追不追高」的事後判定,量的不是同一件事。
+
+**影響**:17 筆全量重算,唯一翻轉是 2408 2026-06-05(「暴跌買進」,+106,180 = 最大單筆獲利)
+dev 9.20% → 10.56%,跨過 +10% 門檻。而「追高比較差」這個結論**完全靠這一筆落在哪一邊**:
+
+| 定義 | 追高 | 非追高 |
+|---|---|---|
+| 收盤價(現行) | 8 筆 / 平均 +11,549 | 8 筆 / 平均 +33,078 |
+| 成交價(修正後) | 9 筆 / 平均 +22,063 | 7 筆 / 平均 +22,635 |
+
+→ 差異消失。BuyForm 掛在上面的敘事要一起改成誠實版本。
+
+- [x] migration `20260817000001_v_trade_behavior_v4_fill_dev`:`create or replace view` 只換
+      `dev_ma20_at_buy` / `is_chase_buy` 的**價格基準**(收盤 → `entry_price`),MA20 口徑
+      (還原收盤、含進場日、不足 20 筆回 null)一字不動 → 唯一變數可歸因([[L39]] 退版錨點精神);
+      append `dev_ma20_at_close` 保留舊值當稽核錨點([[L37]] append-only)
+      → verify: 17 筆逐筆對照,僅 2408 06-05 翻轉;`is_chase_buy` null 筆(009816)維持 null
+- [x] `BuyForm.tsx` 敘事修正:① 追高框移除「較差」暗示,改陳述「歷史 N 勝 M 敗、與非追高
+      無可辨識差異(n 小)」② pullback 框「你的贏單多屬此型態」已與數據不符 → 改寫
+      ③ 回追框寫死的「2408 6/25 即此型態,−8.2%」單邊舉例 → 補 08/10 那筆(+6.6%)
+      → verify: grep 無殘留舊敘事 + 逐句對照本次統計
+- [x] `holdings/page.tsx` 「買點 MA20±」欄 tooltip 標明「以成交價計」→ verify: grep
+
+**rollback**:依序重跑 `20260703000001`(v2)+ `20260711000001`(v3),即回到收盤價版本。
+
+### 3 — 每日 MTM 權益序列(範圍修正)
+
+**⚠ 我先前講錯**:說「沒有帳戶淨值表 → 算不出報酬率」是錯的。`v_equity_curve` + `/performance`
++ `app_settings.initial_capital`(203,004)早就在,報酬率一直算得出來。
+
+**真正缺的**:現有 `v_equity_curve` 是**階梯式**(只在平倉事件跳動、持股期間不含未實現浮動)
+→ 曲線在持股期間是平的,**最大回撤因此是假的**(只反映已實現虧損,不反映抱單期間的帳面回撤)。
+實例:2408 從 6 月高點 505 跌到 07-30 低點 322(−36.2%),階梯曲線上完全看不到。
+
+- [x] migration `20260817000002_v_account_equity_daily`:新 view,每交易日
+      `cash`(本金 + 累計現金流 + 當沖損益)+ `market_value`(未平倉 × 當日收盤)
+      + `equity` / `peak_equity` / `drawdown_pct` / `position_count` / `coverage_ok`
+      → verify: 全平倉日 equity 必須等於 `v_equity_curve` 末值(兩條路徑對帳)
+- [x] **coverage 誠實處理**([[L45]] 不偽造):009816 在 03-03~04-29 持有期間 `price_daily`
+      **零筆**(該檔首筆 bar 是 07-30)→ 那段無法 MTM。不用成本價假裝,改 `coverage_ok=false`
+      標記,回撤/peak 的 window 只走 `coverage_ok` 列 → verify: 03-03~04-28 全 false、
+      04-29 起全 true
+- [x] `/performance` 加「最大回撤」卡(真 MTM)+ 頁首說明區分兩條曲線
+      → verify: 手算 2408 抱單期間回撤對得上
+
+**rollback**:`drop view public.v_account_equity_daily;`(全新物件,零下游依賴);
+`/performance` 改動為純 append,移除新卡即還原。
+
+**不做**(明講範圍):不建實體表 + cron。理由:所有輸入(`initial_capital` /
+`holdings_transactions` / `day_trades` / `price_daily`)都已存在,derived view 可直接
+回算全段歷史;實體表 + cron 只會從今天起累積(歷史歸零),且多一個會安靜死掉的 cron
+(對照 `scan_picks` 表註解自己寫的同一個理由)。若 Andy 要實體快照另議。
+
+**Review(2026-08-17)**:
+
+- **1 已上線並驗證**:`v_trade_behavior` v4 apply 成功。17 筆逐筆對照 `dev_ma20_at_close`(舊)
+  vs `dev_ma20_at_buy`(新),**唯一翻轉 = 2408 2026-06-05(9.20 → 10.56,false → true)**,
+  009816 維持 null,`TOTAL 17 筆 / 13 勝 / +381,657` 零漂移。分組:
+  追高 9 筆 7 勝 +198,571(平均 22,063)/ 非追高 7 筆 5 勝 +158,443(平均 22,635)。
+- **還原係數一致化**:成交價是原始價、MA20 是還原價,分子要乘進場日 adj_factor 才同基準。
+  2408/3006/6213 該期間 adj_factor = 0.9917~0.9968,不乘會差 0.3~0.8pp。2408 06-05 在
+  乘與不乘兩種算法下都 > 10%(10.56 / 10.92),翻轉結論不受此影響。
+- **UI**:`checkBuyContext` 加 `nonChaseWins/nonChaseLosses` 對照組(`is_chase_buy === false`
+  才計,null = MA20 不可評不計入任一組);BuyForm 追高框改成「兩組並列 + 沒有可辨識差異」、
+  pullback 框拿掉與數據不符的「你的贏單多屬此型態」、回追框補上 8/10 那筆勝的案例。
+  全部走動態聚合,不寫死會 stale 的數字。
+- **3 已上線並驗證**:`v_account_equity_daily`。**對帳 22 個全平倉日 vs `v_equity_curve`
+  零差異**(兩條獨立路徑算出同一個數 = 現金流公式正確)。coverage:03-03~04-28 共 39 日
+  `coverage_ok=false`(009816 該段 price_daily 零筆),04-29 起 75 日全 true。
+- **MTM 曲線立刻揭露階梯曲線看不到的事**:
+  - 權益峰值 **530,636 @ 2026-06-22**;最大回撤 **−30.22% @ 2026-07-20**(370,264);
+    29 個交易日回撤深於 −10%
+  - 06-22 峰值到 08-17 收工:**淨 −329**。期間波段實現 +175,977、當沖 −34,387,
+    但 06-22 的權益裡本來就含 2408 未實現 +140,500 → 後面兩個月主要是把既有浮盈換成現金,
+    不是新獲利。**階梯曲線會把這兩個月畫成一路上升,MTM 曲線顯示原地踏步。**
+- **未做 / 待驗**:本機無 node/npm([[L50]]),`tsc` + `next build` 交 Railway;
+  改動已逐行複查(untyped supabase client → `from("v_account_equity_daily")` 無 generated
+  types 問題;`select("*")` 多吐 `dev_ma20_at_close` 對既有 interface 無害)。
+- **新 lesson [[L67]]**:量測口徑必須對齊它所服務的決策時點。這兩個 bug 是同一型態 ——
+  用事後才存在的資訊去衡量事前行為,且都不會報錯、都長得很合理。
+- **踩坑(已進 [[L67]] 附註候選)**:本次用 Git Bash `sed -i` 改 todo.md → 整檔行尾被改寫成
+  LF,產生 2600 行假 diff。這兩個 md 在 HEAD 就是**混合行尾**(todo.md 2874 行 / 2609 CR),
+  任何全檔改寫都會炸 diff。正確做法:純 `cat >>` append(前幾個 session 的做法),
+  勾選狀態直接寫進 append 內容,不要事後 `sed -i`。

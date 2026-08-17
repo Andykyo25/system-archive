@@ -120,22 +120,25 @@ function ContextPanel({ ctx }: { ctx: BuyContext }) {
         <b>{ctx.devMa20 != null ? `+${ctx.devMa20.toFixed(1)}%` : "—"}</b>
         (門檻 +10%)
         {ctx.ret20d != null && <>,20 日已漲 {ctx.ret20d.toFixed(1)}%</>}。
-        歷史波段追高買:{ctx.chaseWins} 勝 {ctx.chaseLosses} 敗
+        歷史波段追高買:{ctx.chaseWins} 勝 {ctx.chaseLosses} 敗;
+        非追高買:{ctx.nonChaseWins} 勝 {ctx.nonChaseLosses} 敗 —{" "}
+        <b>兩組沒有可辨識的差異</b>(2026-08-17 全量重算;樣本小,自動統計)。
+        這個框是「讓你知道自己站在哪裡」,不是「這樣做比較差」。
         {(ctx.chaseWinRegimeBand || ctx.chaseLossRegimeBand) && (
           <>
-            (勝發生在 0050 近季 {fmtBand(ctx.chaseWinRegimeBand)}、敗在{" "}
-            {fmtBand(ctx.chaseLossRegimeBand)};樣本小,自動統計)
+            {" "}
+            追高的勝發生在 0050 近季 {fmtBand(ctx.chaseWinRegimeBand)}、敗在{" "}
+            {fmtBand(ctx.chaseLossRegimeBand)}。
           </>
         )}
-        。
         {ctx.regimeRet != null && rz && (
           <>
+            {" "}
             此刻 0050 近季 <b>{ctx.regimeRet >= 0 ? "+" : ""}{ctx.regimeRet.toFixed(1)}%</b>
             ({rz.label})
-            {rz.minefield && <b> — 地雷區 + 追高是最差組合,強烈建議等回檔</b>}。
+            {rz.minefield && <b> — 地雷區訊號來自 12 季回測樣本,與上面的逐筆戰績是兩套證據</b>}。
           </>
         )}
-        想要就掛回 MA20 附近限價,別市價追。
       </WarnBox>,
     );
   } else if (ctx.zone === "pullback") {
@@ -143,7 +146,9 @@ function ContextPanel({ ctx }: { ctx: BuyContext }) {
       <WarnBox key="pb" tone="green">
         ✓ 回檔至支撐區(偏離 MA20{" "}
         {ctx.devMa20 != null ? `${ctx.devMa20 >= 0 ? "+" : ""}${ctx.devMa20.toFixed(1)}%` : "—"}
-        )— 你的贏單多屬此型態。仍需並看籌碼 / 訊號燈。
+        )。歷史非追高買 {ctx.nonChaseWins} 勝 {ctx.nonChaseLosses} 敗,與追高組
+        ({ctx.chaseWins} 勝 {ctx.chaseLosses} 敗)無可辨識差異 —
+        買點位置本身不是你的勝負來源,仍需並看籌碼 / 訊號燈。
       </WarnBox>,
     );
   } else if (ctx.zone === "broken") {
@@ -160,7 +165,8 @@ function ContextPanel({ ctx }: { ctx: BuyContext }) {
         🔁 <b>賣飛回追警示</b>:{ctx.recentSell.date} 曾於{" "}
         {ctx.recentSell.price.toLocaleString()} 賣出,現價{" "}
         {ctx.currentPrice?.toLocaleString()} 更高。歷史回追:
-        {ctx.reentryWins} 勝 {ctx.reentryLosses} 敗(2408 6/25 即此型態,−8.2%)。
+        {ctx.reentryWins} 勝 {ctx.reentryLosses} 敗(2408 6/25 −8.2%、8/10 +6.6%,
+        樣本 n=2 不足以下結論)。真正確定的是:用更高的價買回 = 上一次停利出早了。
       </WarnBox>,
     );
   }

@@ -148,6 +148,10 @@ export interface BuyContext {
   // 歷史戰績(波段平倉,v_trade_behavior)
   chaseWins: number;
   chaseLosses: number;
+  // 對照組:非追高買。v4 把追高判定改用成交價後,兩組戰績幾乎相同 —
+  // 追高框要能同時秀對照組才不會暗示「追高比較差」(2026-08-17)
+  nonChaseWins: number;
+  nonChaseLosses: number;
   reentryWins: number;
   reentryLosses: number;
   sizing: BuySizing | null; // 資料不足(<15 bars / 無本金設定)= null,不偽造
@@ -249,6 +253,8 @@ export async function checkBuyContext(symbol: string): Promise<BuyContext | null
 
   let chaseWins = 0,
     chaseLosses = 0,
+    nonChaseWins = 0,
+    nonChaseLosses = 0,
     reentryWins = 0,
     reentryLosses = 0;
   const chaseWinRegimes: number[] = [];
@@ -265,6 +271,9 @@ export async function checkBuyContext(symbol: string): Promise<BuyContext | null
       r.is_win ? chaseWins++ : chaseLosses++;
       const reg = n(r.regime_60d_at_entry);
       if (reg != null) (r.is_win ? chaseWinRegimes : chaseLossRegimes).push(reg);
+    } else if (r.is_chase_buy === false) {
+      // null(MA20 不足 20 筆 = 不可評)不計入任一組
+      r.is_win ? nonChaseWins++ : nonChaseLosses++;
     }
     if (r.is_reentry_buy) r.is_win ? reentryWins++ : reentryLosses++;
   }
@@ -372,6 +381,8 @@ export async function checkBuyContext(symbol: string): Promise<BuyContext | null
     recentSell: sellRow ? { date: sellRow.txn_date, price: Number(sellRow.price) } : null,
     chaseWins,
     chaseLosses,
+    nonChaseWins,
+    nonChaseLosses,
     reentryWins,
     reentryLosses,
     sizing,

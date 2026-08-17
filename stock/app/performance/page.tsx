@@ -15,10 +15,20 @@ interface SummaryRow {
   count_holdings: number | string;
 }
 
+// v_account_equity_daily(2026-08-17):每日 MTM。階梯曲線持股期間是平的,回撤看不出來;
+// 這條才是風險曲線。coverage_ok=false 的日子無法 MTM,不參與回撤統計。
+interface DailyEquityRow {
+  trade_date: string;
+  equity: number | string;
+  peak_equity: number | string;
+  drawdown_pct: number | string | null;
+  coverage_ok: boolean;
+}
+
 export default async function PerformancePage() {
   const sb = createClient();
 
-  const [pRes, sRes, cRes] = await Promise.all([
+  const [pRes, sRes, cRes, dRes] = await Promise.all([
     sb
       .from("v_equity_curve")
       .select("*")
@@ -26,6 +36,10 @@ export default async function PerformancePage() {
       .order("created_at", { ascending: true }),
     sb.from("v_holdings_summary").select("*").single(),
     sb.from("app_settings").select("value").eq("key", "initial_capital"),
+    sb
+      .from("v_account_equity_daily")
+      .select("trade_date, equity, peak_equity, drawdown_pct, coverage_ok")
+      .order("trade_date", { ascending: true }),
   ]);
 
   const points = unwrap(pRes, "equity-curve") as EquityPoint[];
@@ -33,6 +47,19 @@ export default async function PerformancePage() {
   const capRows = unwrap(cRes, "initial-capital") as {
     value: number | string;
   }[];
+  const daily = unwrap(dRes, "account-equity-daily") as DailyEquityRow[];
+
+  // 真回撤只在 coverage_ok 的日子有意義(009816 持有期間 price_daily 零筆 → 無法 MTM)
+  const covered = daily.filter((d) => d.coverage_ok && d.drawdown_pct != null);
+  const maxDd = covered.reduce<DailyEquityRow | null>(
+    (worst, d) =>
+      worst == null || Number(d.drawdown_pct) < Number(worst.drawdown_pct)
+        ? d
+        : worst,
+    null,
+  );
+  const lastDaily = covered.length > 0 ? covered[covered.length - 1] : null;
+  const peakEquity = lastDaily != null ? Number(lastDaily.peak_equity) : null;
 
   // initial_capital 以「萬」存(沿用 budget_ntd 繞 numeric(10,6)),×10000 還原為元
   const initialCapital = Number(capRows[0]?.value ?? 0) * 10000;
@@ -49,13 +76,15 @@ export default async function PerformancePage() {
       <div>
         <h1 className="text-xl font-semibold">績效 · 權益曲線</h1>
         <p className="mt-1 text-xs text-zinc-500">
-          階梯式·每筆落袋:本金為起點,每次平倉跳升該筆已實現損益(扣費稅)。
-          持股期間僅微降買入手續費,不含未實現浮動。
+          下方曲線是<b>階梯式</b>(每次平倉跳升已實現損益,持股期間不含未實現浮動)=
+          落袋節奏。「最大回撤 / 峰值」則來自 <code>v_account_equity_daily</code> 的
+          <b>每日 mark-to-market</b> = 風險曲線。兩者刻意分開:階梯曲線只會在實現虧損時下降,
+          用它算回撤會嚴重低估。
         </p>
       </div>
 
       {/* Summary 卡 */}
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
         <div className="rounded-2xl border border-line bg-surface-1 p-4">
           <div className="text-xs text-zinc-500">初始本金</div>
           <div className="mt-1 text-lg font-semibold text-zinc-200 tabular-nums">
@@ -82,6 +111,26 @@ export default async function PerformancePage() {
           <div className="mt-1 text-lg font-semibold text-rose-400 tabular-nums">
             {realized >= 0 ? "+" : ""}
             {fmtMoney(realized)}
+          </div>
+        </div>
+        <div className="rounded-2xl border border-line bg-surface-1 p-4">
+          <div className="text-xs text-zinc-500">最大回撤(每日 MTM)</div>
+          <div className="mt-1 text-lg font-semibold text-green-400 tabular-nums">
+            {maxDd != null ? `${Number(maxDd.drawdown_pct).toFixed(1)}%` : "—"}
+          </div>
+          <div className="mt-0.5 text-[10px] text-zinc-600">
+            {maxDd != null ? `最深於 ${maxDd.trade_date}` : "資料不足"}
+          </div>
+        </div>
+        <div className="rounded-2xl border border-line bg-surface-1 p-4">
+          <div className="text-xs text-zinc-500">權益峰值 · 目前距峰值</div>
+          <div className="mt-1 text-lg font-semibold text-zinc-200 tabular-nums">
+            {peakEquity != null ? fmtMoney(peakEquity) : "—"}
+          </div>
+          <div className="mt-0.5 text-[10px] text-zinc-600">
+            {lastDaily != null
+              ? `${lastDaily.trade_date} 收盤 ${Number(lastDaily.drawdown_pct).toFixed(1)}%`
+              : "資料不足"}
           </div>
         </div>
       </div>
@@ -176,6 +225,13 @@ export default async function PerformancePage() {
 
       <p className="text-xs text-zinc-600">
         ⚠ 假設單一初始本金、期間無額外存提。本金可於「設定」調整。
+        {covered.length < daily.length && (
+          <>
+            {" "}
+            回撤統計排除 {daily.length - covered.length} 個無法 MTM 的交易日
+            (該日持股在 <code>price_daily</code> 無報價 — 不用成本價假裝)。
+          </>
+        )}
       </p>
     </div>
   );

@@ -631,7 +631,8 @@ function TradeBehaviorSection({ rows }: { rows: TradeBehaviorRow[] }) {
   const avgFwd20 = withFwd.length
     ? withFwd.reduce((a, r) => a + (num(r.fwd_20d_pct) ?? 0), 0) / withFwd.length
     : null;
-  // v2 買入質量統計(追高 = 買進日 dev MA20 > +10%;回追 = 近10日賣過又更高價買回)
+  // v2 買入質量統計(追高 = 實際成交價 dev MA20 > +10%,v4 改用成交價非收盤價;
+  // 回追 = 近10日賣過又更高價買回)
   const chaseW = rows.filter((r) => r.is_chase_buy === true && r.is_win).length;
   const chaseL = rows.filter((r) => r.is_chase_buy === true && !r.is_win).length;
   const reW = rows.filter((r) => r.is_reentry_buy && r.is_win).length;
@@ -679,7 +680,7 @@ function TradeBehaviorSection({ rows }: { rows: TradeBehaviorRow[] }) {
               <th className="px-3 py-2 text-right">持有</th>
               <th
                 className="px-3 py-2 text-right"
-                title="開倉日收盤 vs MA20 偏離。>+10% = 追高區(紅字);🔁 = 近10日賣過又更高價買回"
+                title="實際成交價(乘還原係數與 MA20 同基準)vs MA20 偏離。>+10% = 追高區(紅字);🔁 = 近10日賣過又更高價買回"
               >
                 買點 MA20±
               </th>
