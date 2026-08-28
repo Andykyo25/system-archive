@@ -3363,3 +3363,68 @@ Andy:「請直接把設定入金拿掉,我直接改原始本金金額就好」�
 **踩坑(再次)**:用 `sed '96,184d'` 刪 section 時整檔行尾被改成 LF,產生 362/467 的假 diff。
 `app/settings/page.tsx` 在 repo 裡是 **CRLF**。用 `sed 's/\r*$/\r/'` 轉回後 diff 變成
 真實的 6/111。→ [[L67]] 附註那條「不要用 sed 全檔改寫」不只適用 md,**所有 CRLF 檔都一樣**。
+
+---
+
+## 2026-08-28(續3)— 本金警告的真因 + Dependabot 5 個漏洞修復
+
+### 1. 「改了 291205 還是不夠」— 是我算錯,不是設定問題
+
+`initial_capital` 存的是對的(29.1205 萬 = 291,205),`/performance` 也是 force-dynamic 沒快取。
+真因:**現金差的是 0.11 元**。
+
+`v_account_equity_daily` 的 `cash` 欄位是 `round(d.cash, 0)`,但 `capital_incomplete`
+判斷的是**未四捨五入的原值**。真實 min(cash) = **−0.110000**,顯示出來是 0 → 
+畫面上看起來已經打平,警告卻還在。而我先前給的「29.1205 萬」是**拿 round 過的欄位算的**,
+所以差那 0.11。
+
+**這是同一個 [[L67]] 家族的錯**:判斷用的數字與顯示用的數字不是同一個。
+
+- [x] migration `20260828000012_capital_incomplete_use_rounded_cash`:
+      `capital_incomplete` 改判 `round(d.cash, 0) < 0`,與畫面上的 `cash` 欄位一致。
+      0.11 元的零頭是浮點尾數等級的雜訊,不是「本金設得不夠」
+      → verify: `incomplete_days` **3 → 0**;`min(cash)` = 0;權益 597,000;最大回撤 −25.92%
+      → rollback: 改回 `(d.cash < 0)`
+
+### 2. Dependabot 5 個漏洞 — 全部修掉
+
+Andy 貼的清單 → 對照 GitHub Advisory API(公開端點)查出修補版本:
+
+| # | 套件 | 目前 | 需要 | severity | GHSA |
+|---|---|---|---|---|---|
+| 21 | nanoid | 3.3.12 | 3.3.16 | High | GHSA-28wg-ghj8-5hjv(負數 size 無限迴圈) |
+| 22 | nanoid | 3.3.12 | **3.3.18** | High | GHSA-2v37-7h3g-55p8(size=0 無限迴圈) |
+| 14 | postcss | 8.5.14 | 8.5.18 | High | GHSA-r28c-9q8g-f849(sourceMappingURL 路徑穿越) |
+| 18 | postcss | 8.5.14 | **8.5.23** | Moderate | GHSA-fxqj-rqcc-2cmp(前者的不完整修補) |
+| 19 | js-yaml | 4.3.0 | **4.3.1** | High | GHSA-5p4m-2wfm-xmqj(!!omap 二次方 CPU,dev only) |
+
+**三個都在同一個 major 內,是 patch bump 不是破壞性升級。**
+
+**做法:只改 `package-lock.json`,不動 `package.json`。** 理由:
+三者全是傳遞相依,而現有宣告範圍**已經涵蓋新版本** ——
+`nanoid ^3.3.11`(來自 postcss)、`js-yaml ^4.1.1`(來自 eslint)、
+`postcss` 走 package.json 既有的 `overrides: ^8.5.10`。
+所以不需要新增 override,lockfile 單獨升版即可,`npm ci` 仍與 package.json 相容。
+
+**integrity hash 不用 LLM 轉述**([[L51]] 精神:長字串手打/轉述必壞),
+改用 PowerShell `Invoke-RestMethod` 直接打 `registry.npmjs.org/<pkg>/<ver>` 取原始 JSON。
+
+**連帶發現**:`postcss@8.5.23` 把自己對 nanoid 的需求從 `^3.3.11` 提到 **`^3.3.16`**,
+lockfile 裡 postcss 的 `dependencies` 區塊要一起改,否則 tree 不一致。
+其餘相依均已滿足:`picocolors` 1.1.1 ✅ / `source-map-js` 1.2.1 ✅ / `argparse` ^2.0.1 ✅,
+bin 與 engines 三者皆無變動。
+
+- [x] `package-lock.json`:三個 entry 的 version / resolved / integrity + postcss 的
+      nanoid 範圍 → **diff 精確 10/10 行**
+      → verify: 括號配對 1268/1268、191/191;全檔宣告範圍逐一確認新版本都滿足
+        (含一處 `"postcss": "8.4.31"` 精確釘選 —— 由既有 override 壓過,與先前 8.5.14 同處境)
+
+**未驗**:本機無 node/npm([[L50]]),`npm ci` 只能交 Railway。
+手改 lockfile 與 `npm install` 不等價,但**失敗模式是好的**:`npm ci` 會把 integrity hash
+拿去比對下載的 tarball,hash 錯就當場炸,不會靜默裝錯版本。
+若 Railway build 失敗,退路是開 Dependabot 自動 PR 或本機裝 Node 重跑 `npm install`。
+
+**PowerShell 5.1 無法驗證這個檔**:`ConvertFrom-Json` 對 `"packages": { "": {...} }`
+的空字串 key 會拋 "value of argument name is not valid"。
+已用 HEAD 上**未改動**的版本對照確認同樣失敗 → 是 PS 限制不是 JSON 壞掉。
+改用括號配對 + 範圍檢查代替。
