@@ -3322,3 +3322,44 @@ A 是唯一的全市場視角、B 是 `v_holdings_advice` → `/holdings` → Te
 - 前端:`HoldingsAdvice.tsx`(強制出 → 觀察 3)、`app/scan/page.tsx`(entry_quality 對照 chip)
 - **仍未經 `tsc` / `next build`**(本機無 node/npm,[[L50]]),交 Railway
 - **三支新 cron + alert 閘尚未被真實觸發**,下週回頭看 `/health`
+
+---
+
+## 2026-08-28(續2)— 移除 capital_flows,改回單一 initial_capital(Andy 決定)
+
+### 「已輸入入金後還是有警告」查明:不是 bug
+
+`capital_flows` **是空的(0 列)**。Andy 沒有用資金流水表,而是**直接改了 `initial_capital`**
+(20.3004 → 28.8004 萬)。加了 85,000,但現金最深那天缺 88,201 → **還差 3,201**,
+所以 `cash` 仍是 −3,201、`capital_incomplete` 仍為 true,警告沒消。
+
+→ **`initial_capital` 要設到 29.1205 萬(NT$ 291,205)** 警告才會消失。
+
+### 決定:拿掉資金流水,回到單一 initial_capital
+
+Andy:「請直接把設定入金拿掉,我直接改原始本金金額就好」。
+
+**取捨(已告知並由 Andy 選擇)**:把入金併進 `initial_capital` = 視同「這筆錢從第一天就在
+帳戶裡」。後果是 2026-03~08 早期的報酬率會被**低估**(分母提早變大),peak / drawdown 的
+絕對值也會位移。換來的是零額外維護 —— 對單人自用系統是合理取捨。
+
+`v_account_equity_daily` 因此回到 2026-08-17 的形狀,只多保留一個欄位:
+**`capital_incomplete`**(`cash < 0`)。它現在是**唯一**會告訴 Andy「本金設得不夠」的機制 ——
+現金算出負數只可能是本金給少了。
+
+- [x] migration `20260828000011_drop_capital_flows`:
+      `drop view` + 重建(**`create or replace view` 無法刪欄位**,必須 drop;
+      已查 `pg_depend` 確認零 DB 端下游)→ 再 `drop table capital_flows`
+      → verify: `initial_capital` 28.8004 萬 / `min(cash)` −3,201 / 3 天 incomplete /
+        `capital_flows` 已不存在
+- [x] `/performance`:移除 TWR 與 contributed_capital;回用 `drawdown_pct`;
+      警告改成**直接算出「至少要設到多少」**(`initialCapital - minCash`),
+      不用讓 Andy 自己回推
+- [x] `/settings`:移除「資金流水」整個 section(89 行)+ `CapitalFlow` interface + fetch;
+      `actions.ts` 移除 `addCapitalFlow` / `deleteCapitalFlow`(diff 0/41 = 完全回到原狀)
+- [x] 「初始本金」說明改寫:**加碼入金要把金額加進這個數字**,並寫明取捨
+      (入金會被視同從第一天就在,早期報酬率略為低估)
+
+**踩坑(再次)**:用 `sed '96,184d'` 刪 section 時整檔行尾被改成 LF,產生 362/467 的假 diff。
+`app/settings/page.tsx` 在 repo 裡是 **CRLF**。用 `sed 's/\r*$/\r/'` 轉回後 diff 變成
+真實的 6/111。→ [[L67]] 附註那條「不要用 sed 全檔改寫」不只適用 md,**所有 CRLF 檔都一樣**。

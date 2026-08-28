@@ -17,11 +17,10 @@ interface SummaryRow {
 
 // v_account_equity_daily(2026-08-17):每日 MTM。階梯曲線持股期間是平的,回撤看不出來;
 // 這條才是風險曲線。coverage_ok=false 的日子無法 MTM,不參與回撤統計。
-// 2026-08-28:Andy 確認 08 月現金轉負是**加碼入金**不是融資 → initial_capital 這個單一常數
-// 就是錯的分母。新增 capital_flows 表 + TWR(時間加權)欄位:
-//   drawdown_pct      舊的權益基準回撤,有外部金流時會失真,只留當稽核錨點
-//   twr_drawdown_pct  正確的回撤(入金當天中性化,不會被誤記成創新高)
-//   capital_incomplete 現金為負 = 有入金還沒登錄,該列報酬率不可引用
+// 2026-08-28:08 月現金轉負是**加碼入金**造成的。做法(Andy 決定)是直接把入金加進
+// app_settings.initial_capital,不另外維護資金流水表。
+// 取捨:等於視同「這筆錢從第一天就在帳戶裡」,早期報酬率會被低估、peak/drawdown 會位移;
+// 換來零額外維護。capital_incomplete 是唯一會提醒「本金設得不夠」的機制。
 interface DailyEquityRow {
   trade_date: string;
   equity: number | string;
@@ -29,9 +28,6 @@ interface DailyEquityRow {
   drawdown_pct: number | string | null;
   coverage_ok: boolean;
   cash: number | string;
-  contributed_capital: number | string;
-  twr_return_pct: number | string | null;
-  twr_drawdown_pct: number | string | null;
   capital_incomplete: boolean;
 }
 
@@ -49,7 +45,7 @@ export default async function PerformancePage() {
     sb
       .from("v_account_equity_daily")
       .select(
-        "trade_date, equity, peak_equity, drawdown_pct, coverage_ok, cash, contributed_capital, twr_return_pct, twr_drawdown_pct, capital_incomplete",
+        "trade_date, equity, peak_equity, drawdown_pct, coverage_ok, cash, capital_incomplete",
       )
       .order("trade_date", { ascending: true }),
   ]);
@@ -62,25 +58,19 @@ export default async function PerformancePage() {
   const daily = unwrap(dRes, "account-equity-daily") as DailyEquityRow[];
 
   // 真回撤只在 coverage_ok 的日子有意義(009816 持有期間 price_daily 零筆 → 無法 MTM)
-  // 2026-08-28 起改用 twr_drawdown_pct:外部金流當天中性化,入金不會被記成「創新高」
-  const covered = daily.filter((d) => d.coverage_ok && d.twr_drawdown_pct != null);
+  const covered = daily.filter((d) => d.coverage_ok && d.drawdown_pct != null);
   const maxDd = covered.reduce<DailyEquityRow | null>(
     (worst, d) =>
-      worst == null ||
-      Number(d.twr_drawdown_pct) < Number(worst.twr_drawdown_pct)
+      worst == null || Number(d.drawdown_pct) < Number(worst.drawdown_pct)
         ? d
         : worst,
     null,
   );
-  // 現金為負 = 有入金沒登錄到 capital_flows → 分母錯,所有報酬率都不可引用
+  // 現金為負 = initial_capital 設得比實際投入本金少(加碼入金後忘了加上去)
   const incompleteDays = daily.filter((d) => d.capital_incomplete);
   const capitalIncomplete = incompleteDays.length > 0;
-  const contributed =
-    daily.length > 0 ? Number(daily[daily.length - 1].contributed_capital) : null;
-  const twrRet =
-    covered.length > 0
-      ? Number(covered[covered.length - 1].twr_return_pct)
-      : null;
+  const minCash =
+    daily.length > 0 ? Math.min(...daily.map((d) => Number(d.cash))) : 0;
   const lastDaily = covered.length > 0 ? covered[covered.length - 1] : null;
   const peakEquity = lastDaily != null ? Number(lastDaily.peak_equity) : null;
 
@@ -104,33 +94,26 @@ export default async function PerformancePage() {
           <b>每日 mark-to-market</b> = 風險曲線。兩者刻意分開:階梯曲線只會在實現虧損時下降,
           用它算回撤會嚴重低估。
         </p>
-        <p className="mt-1 text-xs text-zinc-500">
-          報酬率以 <b>TWR(時間加權)</b> 計:每次入金／出金在當天中性化,衡量的是
-          <b>操作本身</b>的績效,不會因為多匯錢進來就變好看。
-          {contributed != null && (
-            <>
-              {" "}目前累計投入本金 <b className="text-zinc-400">{fmtMoney(contributed)}</b>
-              {twrRet != null && (
-                <>,TWR 報酬 <b className="text-zinc-400">{twrRet >= 0 ? "+" : ""}{twrRet.toFixed(2)}%</b></>
-              )}。
-            </>
-          )}
-        </p>
       </div>
 
       {capitalIncomplete && (
         <div className="rounded-2xl border border-amber-800/50 bg-amber-950/30 px-4 py-3">
           <p className="text-sm font-medium text-amber-300">
-            ⚠ 有 {incompleteDays.length} 個交易日的現金為負 —— 分母不完整,本頁報酬率不可引用
+            ⚠ 初始本金設得不夠 —— 有 {incompleteDays.length} 個交易日的現金算成負數,本頁報酬率不可引用
           </p>
           <p className="mt-1 text-xs leading-relaxed text-amber-200/70">
-            最早出現在 <b>{incompleteDays[0].trade_date}</b>
-            (現金 {fmtMoney(Number(incompleteDays[0].cash))})。
-            現金算式是「累計投入本金 + 交易現金流 + 當沖損益」,會變負數只有一種原因:
-            <b>有加碼入金還沒登錄</b>。到 <code>/settings</code> 的「資金流水」把每筆入金
-            (日期 + 金額)補上,峰值、回撤、TWR 才會是對的。
+            現金算式是「初始本金 + 交易現金流 + 當沖損益」,會變負數只有一種原因:
+            <b>加碼入金之後沒有把它加進初始本金</b>。最深是 {incompleteDays[0].trade_date} 起的{" "}
+            <b>{fmtMoney(minCash)}</b>。
+            <br />
+            到 <code>/settings</code> → 初始本金,至少要設到{" "}
+            <b className="text-amber-200">
+              {((initialCapital - minCash) / 10000).toFixed(4)} 萬
+              （{fmtMoney(initialCapital - minCash)}）
+            </b>
+            ,警告才會消失。
             <span className="text-amber-200/50">
-              {" "}在補齊之前,系統寧可標記「不知道」也不顯示一個看起來合理的錯數字。
+              {" "}在那之前,系統寧可標記「不知道」也不顯示一個看起來合理的錯數字。
             </span>
           </p>
         </div>
@@ -167,9 +150,9 @@ export default async function PerformancePage() {
           </div>
         </div>
         <div className="rounded-2xl border border-line bg-surface-1 p-4">
-          <div className="text-xs text-zinc-500">最大回撤(TWR)</div>
+          <div className="text-xs text-zinc-500">最大回撤(每日 MTM)</div>
           <div className="mt-1 text-lg font-semibold text-green-400 tabular-nums">
-            {maxDd != null ? `${Number(maxDd.twr_drawdown_pct).toFixed(1)}%` : "—"}
+            {maxDd != null ? `${Number(maxDd.drawdown_pct).toFixed(1)}%` : "—"}
           </div>
           <div className="mt-0.5 text-[10px] text-zinc-600">
             {maxDd != null ? `最深於 ${maxDd.trade_date}` : "資料不足"}
