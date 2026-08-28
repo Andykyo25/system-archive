@@ -36,6 +36,48 @@ const n = (v: number | string | null | undefined): number | null => {
   return Number.isFinite(x) ? x : null;
 };
 
+// 前向追蹤(2026-08-28)。原本這塊是硬寫在 TSX 的字串
+// (「124 次觸發、5 日超額 −0.81%、勝率 42.7%」),線上資料重現不出來,
+// 而且當時 v_scan_track 的 benchmark 是壞的(market_bench_daily 斷更,excess 全 NULL)。
+// 現在 benchmark 改成自 price_daily 直算的全市場等權,數字全部是活的。
+interface TrackRow {
+  scan_date: string;
+  score_total: number | null;
+  excess_5d: number | string | null;
+  excess_10d: number | string | null;
+  passes_all: boolean | null;
+}
+
+// 樣本量門檻:依實測日層級超額標準差 4.56pp,α=0.05 雙尾、power=0.8,
+// 要偵測 +2.0pp / 5 日的效果需要約 42 個**不重疊**的 5 日視窗。
+// 連續交易日凍結的視窗彼此重疊,所以有效獨立視窗 ≈ 掃描日數 / 5。
+const TARGET_WINDOWS = 42;
+
+type TrackAgg = { n: number; mean: number; win: number } | null;
+
+function summarise(rows: TrackRow[]) {
+  const val = (v: number | string | null) => (v == null ? null : Number(v));
+  const agg = (sel: (r: TrackRow) => boolean): TrackAgg => {
+    const xs = rows.filter(sel).map((r) => val(r.excess_5d)).filter((x): x is number => x != null);
+    if (xs.length === 0) return null;
+    const mean = xs.reduce((a, b) => a + b, 0) / xs.length;
+    const win = (xs.filter((x) => x > 0).length / xs.length) * 100;
+    return { n: xs.length, mean, win };
+  };
+  const dates = new Set(rows.map((r) => r.scan_date));
+  const settled = new Set(rows.filter((r) => val(r.excess_5d) != null).map((r) => r.scan_date));
+  return {
+    picks: rows.length,
+    scanDays: dates.size,
+    settledDays: settled.size,
+    windows: settled.size / 5,
+    all: agg(() => true),
+    high: agg((r) => (r.score_total ?? 0) >= 85),
+    low: agg((r) => (r.score_total ?? 0) < 85),
+    strict: agg((r) => r.passes_all === true),
+  };
+}
+
 const DIMS = [
   { key: "score_surge", max: 34, icon: "🚀", label: "起漲",
     detail: "今日漲幅 ≥7%(14) · 突破前20日高(12) · 量 ≥5000張(8)" },
@@ -81,9 +123,33 @@ function oneLiner(r: Row): string {
   return parts.join("、") + "。";
 }
 
-function ScoreRow({ r }: { r: Row }) {
+// 進場品質對照(2026-08-28)。zone 來自 v_entry_quality —— 另一套系統對同一檔的判定。
+// 只有 583 檔的 rank universe 有,掃描池 1,146 檔多數會是 undefined,不顯示即可。
+const ZONE_CHIP: Record<string, { label: string; cls: string; title: string }> = {
+  chase: {
+    label: "另一套判定:追高",
+    cls: "bg-red-950/50 text-red-300",
+    title:
+      "v_entry_quality(/rank·/swing 用的進場品質模型)把這檔判為 chase = 「別在這裡買」。\n" +
+      "起漲掃描與它方向相反(一個追突破、一個等回檔),兩者不相交也不互相校正。\n" +
+      "顯示出來是為了讓你知道自己站在哪裡,不是說哪一邊對。",
+  },
+  pullback: {
+    label: "另一套判定:回檔",
+    cls: "bg-emerald-950/50 text-emerald-300",
+    title: "v_entry_quality 判為 pullback = 兩套系統罕見地同意。掃描池高分候選裡只有約 5 檔。",
+  },
+  broken: {
+    label: "另一套判定:轉弱",
+    cls: "bg-zinc-800 text-zinc-400",
+    title: "v_entry_quality 判為 broken(結構轉弱)。",
+  },
+};
+
+function ScoreRow({ r, zone }: { r: Row; zone?: string }) {
   const total = r.score_total ?? 0;
   const v = verdict(total);
+  const zc = zone ? ZONE_CHIP[zone] : undefined;
   const fgn = n(r.fgn_net_5d);
   return (
     <div className="border-t border-line-soft px-3 py-2.5">
@@ -124,6 +190,14 @@ function ScoreRow({ r }: { r: Row }) {
           );
         })}
         <span className="ml-auto flex items-baseline gap-2">
+          {zc && (
+            <span
+              className={`rounded px-1.5 py-0.5 text-[10px] ${zc.cls}`}
+              title={zc.title}
+            >
+              {zc.label}
+            </span>
+          )}
           {fgn != null && (
             <span
               className="rounded bg-sky-950/50 px-1.5 py-0.5 text-[10px] text-sky-300"
@@ -145,13 +219,38 @@ function ScoreRow({ r }: { r: Row }) {
 
 export default async function ScanPage() {
   const sb = createClient();
-  const [listR, totalR] = await Promise.all([
-    sb.from("v_breakout_scan").select("*").gte("score_total", 80).limit(25),
+  const [listR, totalR, trackR, eqR] = await Promise.all([
+    // 排序必須明示(2026-08-28):原本只靠「PostgREST 會保留 view 內的 ORDER BY」這個
+    // 未定義行為,planner 一變就靜默亂序。
+    // limit 也移除:原本 .limit(25) 會切在同分中間 —— 8/27 當天 ≥80 分共 34 檔,
+    // 第 24-33 名有 10 檔同為 81 分,留下與丟掉的差別只是 0.03pp 的當日漲幅。
+    sb
+      .from("v_breakout_scan")
+      .select("*")
+      .gte("score_total", 80)
+      .order("passes_all", { ascending: false })
+      .order("score_total", { ascending: false })
+      .order("day_pct", { ascending: false }),
     sb.from("v_breakout_scan").select("symbol", { count: "exact", head: true }),
+    sb
+      .from("v_scan_track")
+      .select("scan_date, score_total, excess_5d, excess_10d, passes_all"),
+    // 進場品質(2026-08-28)。/scan 與 /rank 是兩套不相交的系統(1,146 檔 ∩ 583 檔 = 152),
+    // 而且方向相反:掃描器推突破,v_entry_quality 的 pullback 模型會把同一批標的判成
+    // chase(「別買」)。實測高分候選裡 chase 20 檔 vs pullback 5 檔。
+    // 不合併也不砍任何一套 —— 它們真的在測相反的事,硬合會踩 [[L36]]。
+    // 做法照 BuyForm 那句「不擋單,只強制看見」:把另一套的判定掛上去,讓矛盾自己現形。
+    sb.from("v_entry_quality").select("symbol, entry_zone"),
   ]);
 
   const rows = (unwrap(listR, "v_breakout_scan") as Row[] | null) ?? [];
   const scanned = totalR.count ?? null;
+  const track = (trackR.data as TrackRow[] | null) ?? [];
+  const zoneBySymbol = new Map<string, string>(
+    ((eqR.data as { symbol: string; entry_zone: string | null }[] | null) ?? [])
+      .filter((e) => e.entry_zone != null)
+      .map((e) => [e.symbol, e.entry_zone as string]),
+  );
   const passed = rows.filter((r) => r.passes_all === true);
   const near = rows.filter((r) => r.passes_all !== true);
   const scanDate = rows[0]?.trade_date ?? null;
@@ -192,7 +291,7 @@ export default async function ScanPage() {
             <span className="text-xs text-zinc-600">({passed.length})</span>
           </div>
           {passed.map((r) => (
-            <ScoreRow key={r.symbol} r={r} />
+            <ScoreRow key={r.symbol} r={r} zone={zoneBySymbol.get(r.symbol)} />
           ))}
         </section>
       ) : (
@@ -209,15 +308,80 @@ export default async function ScanPage() {
             <span className="ml-1 text-xs text-zinc-600">({near.length})</span>
           </summary>
           {near.map((r) => (
-            <ScoreRow key={r.symbol} r={r} />
+            <ScoreRow key={r.symbol} r={r} zone={zoneBySymbol.get(r.symbol)} />
           ))}
         </details>
       )}
 
+      <TrackPanel s={summarise(track)} />
+
       <p className="px-1 text-[11px] leading-relaxed text-zinc-600">
         盤後資料（即時報價無成交量，量能條件盤中無法判斷）。
-        124 次觸發回顧：進場後 5 日超額 −0.81%、勝率 42.7%，樣本 3.5 個月不足以斷言有效或無效。
       </p>
     </div>
+  );
+}
+
+// 前向追蹤面板:誠實呈現「還不知道」比呈現一個好看的數字重要。
+// 重點是那條進度 —— 讓「距離可下結論還差多久」永遠在畫面上,
+// 否則半年後又會生出一組「看起來有結論」的數字。
+function TrackPanel({ s }: { s: ReturnType<typeof summarise> }) {
+  if (s.picks === 0) return null;
+  const pct = Math.min(100, (s.windows / TARGET_WINDOWS) * 100);
+  type Cell = { label: string; g: TrackAgg };
+  const cells: Cell[] = [
+    { label: "全部 picks", g: s.all },
+    { label: "85 分以上", g: s.high },
+    { label: "80–84 分", g: s.low },
+    { label: "五條件全過", g: s.strict },
+  ];
+  const fmt = (g: TrackAgg) =>
+    g == null ? "—" : `${g.mean >= 0 ? "+" : ""}${g.mean.toFixed(2)}pp・勝率 ${g.win.toFixed(0)}%・n=${g.n}`;
+
+  return (
+    <section className="rounded-2xl border border-line bg-surface-1 px-4 py-3">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h2 className="text-sm font-medium text-zinc-300">前向追蹤</h2>
+        <span
+          className="text-[11px] text-zinc-500"
+          title="每個交易日 07:00 凍結當日 ≥80 分名單,之後用實際價格結算。基準 = 掃描日收盤 ≥20 元全市場等權。"
+        >
+          {s.scanDays} 個掃描日 · {s.picks} 筆 pick · {s.settledDays} 日已滿 5 日
+        </span>
+      </div>
+
+      <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs md:grid-cols-4">
+        {cells.map((c) => (
+          <div key={c.label} className="flex flex-col">
+            <dt className="text-zinc-500">{c.label}</dt>
+            <dd
+              className={`tabular-nums ${
+                c.g == null
+                  ? "text-zinc-600"
+                  : c.g.mean >= 0
+                    ? "text-green-300"
+                    : "text-red-300"
+              }`}
+            >
+              {fmt(c.g)}
+            </dd>
+          </div>
+        ))}
+      </dl>
+
+      <div className="mt-3">
+        <div className="h-1.5 overflow-hidden rounded-full bg-surface-sunken">
+          <div className="h-full rounded-full bg-blue-600" style={{ width: `${pct}%` }} />
+        </div>
+        <p className="mt-1.5 text-[11px] leading-relaxed text-zinc-500">
+          證據進度 <b className="text-zinc-400">{s.windows.toFixed(1)} / {TARGET_WINDOWS}</b> 個獨立視窗（
+          {pct.toFixed(0)}%）。連續交易日凍結的 5 日視窗彼此重疊，有效樣本約為掃描日數 ÷ 5。
+          <span className="text-zinc-600">
+            {" "}依實測日層級超額標準差 4.56pp，偵測 +2.0pp／5 日的效果需約 42 個獨立視窗（≈10 個月）；
+            偵測 +1.0pp 需約 166 個（≈3.2 年）。在那之前，上面每一欄都只是觀察，不是結論。
+          </span>
+        </p>
+      </div>
+    </section>
   );
 }

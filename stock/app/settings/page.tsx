@@ -4,6 +4,8 @@ import {
   updateSetting,
   upsertEtf,
   deleteEtf,
+  addCapitalFlow,
+  deleteCapitalFlow,
 } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -25,6 +27,16 @@ interface EtfMeta {
   notes: string | null;
 }
 
+// 資金流水(2026-08-28):initial_capital 只是起點,之後每次加碼入金都記在這裡。
+// 不記的話 v_account_equity_daily 的 cash 會算出負數,而報酬率的分母跟著錯。
+interface CapitalFlow {
+  id: string;
+  flow_date: string;
+  amount: number | string;
+  flow_type: "deposit" | "withdrawal";
+  note: string | null;
+}
+
 const CATEGORIES = ["市值型", "高股息", "主題", "主動式", "債券", "其他"];
 
 const inputCls =
@@ -36,14 +48,19 @@ const btnDangerCls =
 
 export default async function SettingsPage() {
   const sb = createClient();
-  const [{ data: settings }, { data: etfs }] =
+  const [{ data: settings }, { data: etfs }, { data: flows }] =
     await Promise.all([
       sb.from("app_settings").select("*").order("key"),
       sb.from("etf_metadata").select("*").order("symbol"),
+      sb
+        .from("capital_flows")
+        .select("id, flow_date, amount, flow_type, note")
+        .order("flow_date", { ascending: false }),
     ]);
 
   const settingsList = (settings as AppSetting[] | null) ?? [];
   const etfList = (etfs as EtfMeta[] | null) ?? [];
+  const flowList = (flows as CapitalFlow[] | null) ?? [];
 
   // 分組 settings:budget_ntd 獨立 / 其他歸「factor / 費率」
   const budgetSetting = settingsList.find((s) => s.key === "budget_ntd") ?? null;
@@ -77,8 +94,12 @@ export default async function SettingsPage() {
       <section>
         <h2 className="mb-1 text-lg font-semibold">初始本金</h2>
         <p className="mb-4 text-xs text-zinc-500">
-          /performance 權益曲線的起點。**單位:萬 NT$**(輸 20.3004 = NT$
+          /performance 權益曲線的<b>起點</b>。**單位:萬 NT$**(輸 20.3004 = NT$
           203,004)。反推自交易紀錄,可手動校正為實際入金。
+          <span className="text-zinc-600">
+            {" "}之後每次加碼入金<b>不要改這個數字</b> —— 改了會讓歷史整條曲線位移。
+            請登錄在下方「資金流水」。
+          </span>
         </p>
         {capitalSetting ? (
           <CapitalRow setting={capitalSetting} />
@@ -86,6 +107,95 @@ export default async function SettingsPage() {
           <p className="rounded-2xl border border-line bg-surface-1 p-3 text-sm text-zinc-500">
             initial_capital 設定尚未建立(套用 migration 後會自動出現)
           </p>
+        )}
+      </section>
+
+      <section>
+        <h2 className="mb-1 text-lg font-semibold">資金流水</h2>
+        <p className="mb-4 text-xs leading-relaxed text-zinc-500">
+          每一筆<b>入金 / 出金</b>。金額一律填正數,方向由類型決定。
+          <span className="text-zinc-600">
+            {" "}沒登錄的入金會讓 /performance 的現金算成負數,報酬率與回撤的分母就是錯的 ——
+            系統會在該頁標記「不可引用」而不是顯示一個看起來合理的數字。
+          </span>
+        </p>
+        <form
+          action={addCapitalFlow}
+          className="mb-3 grid grid-cols-1 gap-3 md:grid-cols-5"
+        >
+          <input
+            name="flow_date"
+            type="date"
+            required
+            defaultValue={new Date().toISOString().slice(0, 10)}
+            className={inputCls}
+          />
+          <select name="flow_type" defaultValue="deposit" className={inputCls}>
+            <option value="deposit">入金</option>
+            <option value="withdrawal">出金</option>
+          </select>
+          <input
+            name="amount"
+            type="number"
+            step="1"
+            min="1"
+            placeholder="金額 (元)"
+            required
+            className={inputCls}
+          />
+          <input name="note" placeholder="備註 (選填)" className={inputCls} />
+          <button className={btnCls} type="submit">
+            新增
+          </button>
+        </form>
+        {flowList.length === 0 ? (
+          <p className="rounded-2xl border border-amber-800/50 bg-amber-950/30 px-3 py-2 text-xs text-amber-200/80">
+            尚未登錄任何資金流水。若 /performance 顯示現金為負,就是這裡缺紀錄。
+          </p>
+        ) : (
+          <TableShell>
+            <table className="w-full text-sm">
+              <THead>
+                <tr>
+                  <th className="px-3 py-2">日期</th>
+                  <th className="px-3 py-2">類型</th>
+                  <th className="px-3 py-2 text-right">金額</th>
+                  <th className="px-3 py-2">備註</th>
+                  <th className="px-3 py-2"></th>
+                </tr>
+              </THead>
+              <tbody>
+                {flowList.map((f) => (
+                  <tr key={f.id} className="border-t border-line">
+                    <td className="px-3 py-2 tabular-nums">{f.flow_date}</td>
+                    <td className="px-3 py-2">
+                      <span
+                        className={
+                          f.flow_type === "deposit"
+                            ? "text-green-300"
+                            : "text-amber-300"
+                        }
+                      >
+                        {f.flow_type === "deposit" ? "入金" : "出金"}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2 text-right tabular-nums">
+                      {Number(f.amount).toLocaleString()}
+                    </td>
+                    <td className="px-3 py-2 text-zinc-500">{f.note ?? "—"}</td>
+                    <td className="px-3 py-2 text-right">
+                      <form action={deleteCapitalFlow} className="inline">
+                        <input type="hidden" name="id" value={f.id} />
+                        <button className={btnDangerCls} type="submit">
+                          刪除
+                        </button>
+                      </form>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </TableShell>
         )}
       </section>
 

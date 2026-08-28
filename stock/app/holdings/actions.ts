@@ -53,6 +53,80 @@ function calcTax(qty: number, price: number, taxRate: number): number {
   return Math.floor(qty * price * taxRate);
 }
 
+// 訊號歸因(2026-08-28)。下單當下去該來源的 view 抓分數與名次。
+//
+// 為什麼在 server action 查而不是讓 client 送進來:
+// 這個值要能回答「系統當時推薦它嗎」,所以必須是**下單那一刻 view 的真值**,
+// 不能是使用者手打或前端快取的舊值。
+//
+// 查不到就回 null，不填 0 或任何預設值([[L45]])—— null 的意思是「這個來源沒有分數」
+// 或「這檔當下不在那個 view 裡」,兩者都不該被當成 0 分算進日後的統計。
+const SIGNAL_SOURCES = [
+  "scan",
+  "rank",
+  "swing",
+  "holdings_advice",
+  "news",
+  "discretionary",
+] as const;
+type SignalSource = (typeof SIGNAL_SOURCES)[number];
+
+async function lookupSignal(
+  symbol: string,
+  source: SignalSource | null,
+): Promise<{ signal_score: number | null; signal_rank: number | null }> {
+  const empty = { signal_score: null, signal_rank: null };
+  if (!source) return empty;
+  const sb = createClient();
+
+  if (source === "scan") {
+    // v_breakout_scan 沒有名次欄位(它靠 view 內的 ORDER BY),所以名次要自己數:
+    // 比這檔分數高的有幾檔 + 1
+    const { data } = await sb
+      .from("v_breakout_scan")
+      .select("score_total")
+      .eq("symbol", symbol)
+      .maybeSingle();
+    const score = data?.score_total == null ? null : Number(data.score_total);
+    if (score == null) return empty;
+    const { count } = await sb
+      .from("v_breakout_scan")
+      .select("symbol", { count: "exact", head: true })
+      .gt("score_total", score);
+    return { signal_score: score, signal_rank: count == null ? null : count + 1 };
+  }
+
+  if (source === "rank") {
+    const { data } = await sb
+      .from("v_stock_rank")
+      .select("weighted_score, expected_rank")
+      .eq("symbol", symbol)
+      .maybeSingle();
+    if (!data) return empty;
+    return {
+      signal_score: data.weighted_score == null ? null : Number(data.weighted_score),
+      signal_rank: data.expected_rank == null ? null : Number(data.expected_rank),
+    };
+  }
+
+  if (source === "swing") {
+    // v_swing_scan 只有名次(expected_rank),沒有自己的總分 → score 留 null
+    const { data } = await sb
+      .from("v_swing_scan")
+      .select("expected_rank")
+      .eq("symbol", symbol)
+      .maybeSingle();
+    if (!data) return empty;
+    return {
+      signal_score: null,
+      signal_rank: data.expected_rank == null ? null : Number(data.expected_rank),
+    };
+  }
+
+  // holdings_advice / news / discretionary 本來就沒有分數與名次
+  return empty;
+}
+
 // 新增 BUY transaction(取代原本的 addHolding)
 export async function addBuyTransaction(formData: FormData): Promise<void> {
   const symbol = String(formData.get("symbol") ?? "").trim();
@@ -60,6 +134,10 @@ export async function addBuyTransaction(formData: FormData): Promise<void> {
   const price = Number(formData.get("price"));
   const txnDateRaw = String(formData.get("txn_date") ?? "").trim();
   const note = String(formData.get("note") ?? "").trim() || null;
+  const rawSource = String(formData.get("signal_source") ?? "").trim();
+  const signalSource = (SIGNAL_SOURCES as readonly string[]).includes(rawSource)
+    ? (rawSource as SignalSource)
+    : null;
 
   if (!symbol) throw new Error("股號必填");
   if (!Number.isFinite(qty) || qty <= 0) throw new Error("股數必須是正整數");
@@ -68,6 +146,7 @@ export async function addBuyTransaction(formData: FormData): Promise<void> {
   const { feeRate } = await loadFeeSettings();
   const fee = calcFee(qty, price, feeRate);
   const txnDate = txnDateRaw || new Date().toISOString().slice(0, 10);
+  const signal = await lookupSignal(symbol, signalSource);
 
   const sb = createClient();
   const { error } = await sb.from("holdings_transactions").insert({
@@ -79,6 +158,9 @@ export async function addBuyTransaction(formData: FormData): Promise<void> {
     tax: 0,
     txn_date: txnDate,
     note,
+    signal_source: signalSource,
+    signal_score: signal.signal_score,
+    signal_rank: signal.signal_rank,
   });
   if (error) throw new Error(error.message);
   revalidatePath("/holdings");

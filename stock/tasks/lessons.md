@@ -830,3 +830,85 @@ TWSE `MI_INDEX?type=ALL` 單日 31267 列,text 字串與 parse 後的物件同�
 行尾改寫掉。`tasks/todo.md` / `tasks/lessons.md` 在 repo 裡本來就是**混合行尾**
 (todo.md 2874 行只有 2609 個 CR),全檔改寫會產生 2600 行假 diff 蓋掉真正的改動。
 一律用 `cat >>` append,勾選狀態直接寫進 append 內容。
+
+---
+
+## 多 agent 盤點後執行 P0/P0.5/P1(2026-08-28)
+
+### L68 — 計畫階段的「一行 view 改動」,實作前必須先 grep 誰在讀那張 view
+**問題**:計畫寫「P0.5-1 熱股池納入籌碼收料底集 —— `v_fetch_universe_stocks`
+`union select symbol from universe_dynamic where active`,**一行 `create or replace view`**」。
+實作時 grep 才發現那張 view 被 **10 支 EF** 讀,而擴張會沿著每一個消費者傳播:
+- `fetch-finmind-fundamentals` 在 178 檔時已是 178 × 3 dataset = **534 calls = 滾動小時配額的 89%**,
+  擴到 228 檔 → 684 calls **直接爆 600**
+- 更糟的是它 **cron 只送 auth header、完全不吃 body 參數**(名單在函式內部查)→
+  **沒辦法只改 cron 拆批**,得改 EF 再 deploy
+- `fetch-stock-news` 現行 4 批 × 150 只覆蓋到 600,擴張後需要第 5 批
+- `fetch-finmind-shareholding` b1-b3 × 60 只覆蓋到 offset 180,228 檔會**靜默漏掉最後 48 檔**
+
+**做法**:
+1. 任何「擴共用 view / 擴 universe / 放寬濾網」的改動,動工前先
+   `grep -rl "<view_name>" supabase/functions/ app/ lib/` + 查 `cron.job.command`,
+   列出**全部消費者**,逐個問「它的成本是 O(n) 嗎?n 變大它會怎樣?」
+2. 發現消費者成本不一致時,**開一張窄用途的新 view,不要擴既有的**。
+   本次開 `v_fetch_chip_universe`(只給籌碼四 dataset),blast radius 從 10 支 EF 縮到 4 支,
+   而且**實際缺口本來就只有籌碼**(熱股池的 fundamentals 已有 41/50、monthly_revenue 50/50)——
+   擴全部是把成本花在沒有缺口的地方
+3. **offset/limit 型的批次 cron 是隱形的覆蓋率上限**。改 universe 大小時要回頭驗
+   「最後一批的 offset + limit ≥ 新的總數」,否則尾巴那幾檔會安靜地收不到 ——
+   不會報錯、fetch_log 還是 success
+**為什麼**:「一行改動」是**對 diff 大小的描述,不是對影響範圍的描述**。這兩件事在共用
+schema 上完全脫鉤。[[L46]] 講的是「掃全鏈修法要 grep 出待升級清單」,這條是它的前置版本:
+**連「要不要動」都還沒決定時,就該先知道誰在讀**。
+
+### L69 — 改長 view 用 `pg_get_viewdef` + 定點替換,不要重打整個 view
+**問題**:本輪要改 4 個長 view(`v_breakout_scan` 內含 30+ 個中文產業字串、
+`v_trade_behavior` 是三層巢狀 + 6 個重複子查詢)。`create or replace view` 語法上要求
+重新給出**完整定義**,而手抄一次那份產業清單就有打錯的風險 —— 打錯會**靜默改變掃描池**,
+不報錯、不會被任何測試抓到。
+**做法**:
+```sql
+do $$
+declare def text; newdef text;
+begin
+  select pg_get_viewdef('public.<view>'::regclass, true) into def;
+  newdef := replace(def, '<舊片段>', '<新片段>');   -- 或 regexp_replace
+  if newdef = def then
+    raise exception '<view> 的 X 沒有被替換到 — 線上定義與預期不符,中止';
+  end if;
+  execute 'create or replace view public.<view> as ' || newdef;
+end $$;
+```
+三個要點:
+1. **來源是線上定義**,不是 repo 裡的 migration 檔 —— 兩者不對齊是常態(見 auto-memory)
+2. **`if newdef = def then raise`** 是關鍵。沒有這行,替換沒命中會靜默套用一個「跟原本一樣」
+   的 view,你以為修好了其實沒有。這是最便宜的自我驗證
+3. 驗收要對**不該變的東西**做等價檢查。本次 `industry_policy` 那支改完立刻驗
+   1146 列 / ≥80 分 23 檔 / 最高分 94 / 籌碼標籤 106,四項與改動前逐項相同才收工
+   (同 [[L39]] 退版錨點精神:大改先證明零漂移)
+**為什麼**:手術刀式改動(CLAUDE.md §3)在 SQL 裡的實作方式。view 越長、越多人依賴,
+「重打一次」的期望損失越大,而定點替換的成本幾乎不隨 view 長度增加。
+
+### L70 — subagent 自建的量化結論,要先查它的**樣本母體**,而不是先看它的 p 值
+**問題**:選股邏輯 agent 用自建 PIT 重跑 114,620 obs / 243 交易日,結論是
+「`ma20_gap<10` 這 12 分方向相反(5/20 日各 −1.07pp / −2.22pp),應該反轉或歸零」——
+數字紮實、方向一致、可以直接寫成 P0。主線程照 [[L48]] 複查時先查了一件事:
+**`price_daily` 每日的檔數**。結果是全市場覆蓋 **2026-04 才開始**:
+2023 H1 每日 154 檔 → 2023 Q3~2026 Q1 約 293-310 → 2026 Q2 跳到 1,809 → Q3 2,023。
+agent 的樣本(≈ 每日 472 檔)把 **300 檔策展池與 2,000 檔全市場混在同一個平均裡** = [[L60]] 重演。
+主線程改用橫斷面去均值 + 只取母體一致的日子(85 天、全部 ≥1500 檔)重跑,
+**單調關係基本消失**(5 日 −0.02/−0.15/−0.09/−0.01/+0.89/+0.94)。
+**做法**:
+1. 收到任何 subagent 的量化結論,**第一個複查動作固定是「查母體」**:
+   `select trade_date, count(*) from <來源表> group by 1` 看全期是否一致。
+   這比重跑它的統計便宜得多,而且是最常見的失效模式
+2. 給分析型 agent 的 prompt 要**明寫「跑橫斷面統計前先驗每日母體一致」**。
+   本次三個 agent 的 prompt 都沒寫,只有主線程查了
+3. 結論要分兩級講:「**沒有證據支持**」(那 12 分沒幫上忙)與「**證據顯示相反**」
+   (應該反轉)是完全不同的強度,後者需要乾淨母體才說得出口。本次只有前者成立
+**為什麼**:[[L48]] 說不要照單全收 subagent 的 P0,但沒說**先查什麼**。答案是母體 ——
+因為 [[L57]](regime 單一)與 [[L60]](母體不齊)這兩個失效模式都會產出
+「數字漂亮、方向一致、可以直接引用」的結論,而且**兩者都不會報錯**。
+附帶收穫:查母體同時回答了一個更大的問題 —— `v_breakout_scan` 掃的 1,146 檔
+**只有約 5 個月價格歷史**,所以「重新分配 100 分」這件事現階段**根本沒有樣本可做**,
+整個 P1 提案因此被降級為「先讓量尺活過來,累積前向樣本再談」。

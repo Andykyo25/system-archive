@@ -38,7 +38,7 @@ export function BuyForm() {
     <div>
       <form
         action={addBuyTransaction}
-        className="grid grid-cols-1 gap-3 md:grid-cols-6"
+        className="grid grid-cols-1 gap-3 md:grid-cols-7"
       >
         <input
           name="symbol"
@@ -70,6 +70,26 @@ export function BuyForm() {
           required
           className={inputCls}
         />
+        {/* 訊號歸因(2026-08-28):必填。實查 23 筆歷史 BUY 對 scan_picks 命中 0 筆 —— */}
+        {/* 掃描名單與實際下單是兩條互不相干的軌道,而且事後永遠回推不回來。 */}
+        {/* 分數/名次由 server action 在下單當下自己去 view 抓,這裡只問「從哪裡看到的」。 */}
+        <select
+          name="signal_source"
+          required
+          defaultValue=""
+          className={inputCls}
+          title="這筆買進是從哪裡來的?這是日後唯一能回答「系統選股有沒有效」的欄位"
+        >
+          <option value="" disabled>
+            訊號來源 *
+          </option>
+          <option value="scan">起漲掃描 /scan</option>
+          <option value="rank">多因子排名 /rank</option>
+          <option value="swing">波段掃描 /swing</option>
+          <option value="holdings_advice">持股建議</option>
+          <option value="news">新聞 / 消息</option>
+          <option value="discretionary">自己判斷</option>
+        </select>
         <input name="note" placeholder="備註 (選填)" className={inputCls} />
         <button className={btnCls}>新增</button>
       </form>

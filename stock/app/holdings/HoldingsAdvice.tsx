@@ -8,6 +8,7 @@ import { fmtMoney, fmtPct } from "../_components/Format";
 // 2. 單張部位:用觀察點 + 整張出(不分批)
 // 3. 多張部位(≥2 張):分張賣
 // 4. 5 個 threshold 從 v_holdings_advice 拿(stop / add / obs1 / obs2 / force_out)
+//    force_out 自 2026-08-28 起在 UI 上顯示為「觀察 3」而非指令 —— 見下方註解
 // 5. 動態整合 factor(RSI / fund_count / signal_strength)
 //
 // UI: 每持股一張卡 + status badge + 建議動作 + 價位線
@@ -528,11 +529,16 @@ function AdviceCard({
           tag="+30%"
           color="text-amber-400"
         />
+        {/* 2026-08-28:原本標「強制出」。降級為第三個觀察位,理由是系統自己的證據跟它矛盾 —— */}
+        {/* [[L52]] 的機制分析(報酬右尾集中,任何截斷都在殺大贏家)+ passes_all 的 */}
+        {/* 5 日超額平均 +2.06pp 但中位數只有 +0.49pp = alpha 全在右尾。 */}
+        {/* 實例:2408 六筆合計 +257,365 = 已實現損益的 75.9%,+40% 天花板會把它切掉。 */}
+        {/* 欄位名 force_out_price 保留不動(append-only,當稽核錨點),改的是它被呈現成指令這件事。 */}
         <PriceTick
-          label="強制出"
+          label="觀察 3"
           value={row.force_out_price}
           tag="+40%"
-          color="text-red-400"
+          color="text-amber-400"
         />
       </div>
 

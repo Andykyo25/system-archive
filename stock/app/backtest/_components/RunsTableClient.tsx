@@ -49,6 +49,14 @@ function fmtDate(s: string): string {
   return s.slice(0, 10) + " " + s.slice(11, 16);
 }
 
+// 資料覆蓋率門檻(2026-08-28)。這個日期之前起算的 run,其計分模型在回測期間
+// 有 1~2 個維度(權重合計 .20~.60)根本不存在,而且掃描池從 153 檔長到 577 檔。
+// 不刪這些 run(append-only,留退版錨點與稽核痕跡),但要在畫面上標清楚不可引用。
+const COVERAGE_OK_FROM = "2026-05-01";
+function isPreCoverage(startDate: string | undefined): boolean {
+  return startDate != null && startDate < COVERAGE_OK_FROM;
+}
+
 function metricColor(v: number | undefined | null): string {
   if (v == null) return "text-zinc-400";
   if (!Number.isFinite(v) || v === 0) return "text-zinc-400";
@@ -213,6 +221,22 @@ function RunRow({
       <td className="px-3 py-2">{statusBadge}</td>
       <td className="px-3 py-2 text-xs text-zinc-300">
         {p.start_date} → {p.end_date}
+        {isPreCoverage(p.start_date) && (
+          <span
+            className="ml-1.5 cursor-help rounded bg-amber-950/60 px-1 py-0.5 text-[10px] text-amber-300"
+            title={
+              "覆蓋率不足,這個 run 的數字不可引用(正反面都不行)。\n\n" +
+              "1) chip 維度(權重 .20)在 2023-2025 期間零覆蓋 —— stock_margin 起於 2026-04-01、" +
+              "securities_lending 起於 2026-04-17、shareholding 起於 2026-01-02。\n" +
+              "2) 2023 上半年連 fund 維度(權重 .40)也是空的(季報最早 2023-03-31 + 45 天才可得)。\n" +
+              "3) 可計分池從 153 檔長到 577 檔 —— 樣本期間內每日母體不一致。\n" +
+              "4) universe 非 point-in-time:stock_universe 148 檔全部 selected_at=2026-05-12。\n\n" +
+              "= 它測的不是任何一個定義清楚的策略,而是一個維度隨時間長出來的移動標的。"
+            }
+          >
+            ⚠ 不可引用
+          </span>
+        )}
       </td>
       <td className="px-3 py-2 text-right tabular-nums text-zinc-300">
         {p.top_n}/{p.rebalance_days}
