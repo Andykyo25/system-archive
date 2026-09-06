@@ -12,62 +12,23 @@
 //
 // 寫入 price_intraday_cache:
 //   - source 改為 'twse_mis'(view 已動態化吃 source 欄位,migration 24)
-//   - quoted_at 用 tlong (毫秒 unix) 或 fallback to fetched_at
+//   - quoted_at 只用有效 tlong (毫秒 unix)，不可用抓取時間掩蓋舊報價
 //
 // 設計筆記:
-// - L05:verify_jwt:true + 函式內 decode JWT role 驗證
+// - L05:verify_jwt:true + 函式內比對可信 service/cron secret
 // - L07:每次 invoke 寫 fetch_log
 // - L11 例外:price_intraday_cache 是 cache,upsert 用 ON CONFLICT DO UPDATE
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { authorizeServiceRequest } from "../_shared/authorize.ts";
+import { deduplicateQuotes, quoteToRow, type IntradayRow, type MisQuote } from "./quote.ts";
 
 const MIS_BASE = "https://mis.twse.com.tw/stock/api/getStockInfo.jsp";
 const REFERER = "https://mis.twse.com.tw/stock/";
 const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 const BATCH_SIZE = 80;
 const BATCH_THROTTLE_MS = 400;
-
-interface MisQuote {
-  c?: string;     // symbol
-  ch?: string;    // channel "tse_2330.tw_"
-  z?: string;     // 最新成交價(免費 mis 對個股有 throttle,常 "-")
-  pz?: string;    // 前次成交價(也常被 throttle)
-  y?: string;     // 昨日收盤
-  o?: string;     // 開盤
-  h?: string;     // 最高
-  l?: string;     // 最低
-  a?: string;     // 五檔賣盤 "p1_p2_p3_p4_p5_"(下劃線分隔,p1=最佳賣)
-  b?: string;     // 五檔買盤 "p1_p2_p3_p4_p5_"(下劃線分隔,p1=最佳買)
-  tv?: string;    // 本次成交量
-  tlong?: string; // unix ms timestamp(mis 端時間,某些股 stuck)
-  ex?: string;    // 'tse' or 'otc'
-}
-
-interface IntradayRow {
-  symbol: string;
-  quoted_at: string;
-  price: number;
-  volume: number | null;
-  change_pct: number | null;
-  market_state: string | null;
-  currency: string | null;
-  source: "twse_mis" | "twse_mis_mid";
-}
-
-function decodeJwtPayload(jwt: string): Record<string, unknown> {
-  const parts = jwt.split(".");
-  if (parts.length !== 3) throw new Error("invalid jwt shape");
-  const b64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
-  const pad = b64 + "=".repeat((4 - b64.length % 4) % 4);
-  return JSON.parse(atob(pad));
-}
-
-function toN(v: unknown): number | null {
-  if (v == null || v === "" || v === "-") return null;
-  const n = Number(v);
-  return Number.isFinite(n) ? n : null;
-}
 
 async function fetchMisBatch(channels: string[]): Promise<{
   quotes: MisQuote[];
@@ -78,7 +39,6 @@ async function fetchMisBatch(channels: string[]): Promise<{
   u.searchParams.set("ex_ch", channels.join("|"));
   u.searchParams.set("json", "1");
   u.searchParams.set("delay", "0");
-  const fetchedAt = new Date().toISOString();
 
   const r = await fetch(u, {
     headers: {
@@ -88,8 +48,9 @@ async function fetchMisBatch(channels: string[]): Promise<{
       "Accept-Language": "zh-TW,zh;q=0.9,en;q=0.8",
     },
   });
-  if (!r.ok) return { quotes: [], fetchedAt, error: `HTTP ${r.status} ${r.statusText}` };
+  if (!r.ok) return { quotes: [], fetchedAt: new Date().toISOString(), error: `HTTP ${r.status} ${r.statusText}` };
   const text = await r.text();
+  const fetchedAt = new Date().toISOString(); // response receipt, only for validating provider time
   let json: { msgArray?: unknown };
   try { json = JSON.parse(text); }
   catch { return { quotes: [], fetchedAt, error: `invalid json: ${text.slice(0, 100)}` }; }
@@ -98,70 +59,16 @@ async function fetchMisBatch(channels: string[]): Promise<{
   return { quotes: arr as MisQuote[], fetchedAt };
 }
 
-function quoteToRow(q: MisQuote, fallbackTs: string): IntradayRow | null {
-  // Price 多源 fallback(v5,L47):
-  //   問題:免費 mis 對個股 z 有 throttle,即使該股持續在成交(v 累積金額在跳),z/pz 仍長期回 "-"。
-  //         L45 v4 寫「z="-" → skip」是邏輯對的(不偽造),但代價是 cache 對 6285/2330 這類常 z="-" 的股
-  //         寫入頻率 = mis z 偶發回應頻率(20 min 1-5 次),user 看「16 min ago」。
-  //   解法:用 mis 的五檔買賣盤 a/b(每 5-10 秒真更新)當 fallback。
-  //     1. z 有真值 → 用 z(成交價,source="twse_mis")
-  //     2. z="-" 但 a[0]/b[0] 有值 → 用五檔中價 (a[0]+b[0])/2(掛單反映即時,source="twse_mis_mid")
-  //     3. z 跟 a/b 都 "-"(盤前/盤後/停牌) → skip 不寫
-  //   時間軸:quoted_at 用 fetchedAt(EF 跑當下),不用 q.tlong。
-  //     原因:q.tlong 對部分股 stuck(2454 z=3550 多次 query mis_t 都同個),用 fetchedAt 保證每分鐘 cron
-  //           跑都寫新 row → user 看「1 min ago」即時度;**price 仍是 mis 真實值**(z 或五檔中價),
-  //           只是時間軸用我們端,誠實標記 source。
-  const z = toN(q.z);
-  let price: number | null = null;
-  let source: "twse_mis" | "twse_mis_mid";
-  if (z != null && z > 0) {
-    price = z;
-    source = "twse_mis";
-  } else {
-    // 五檔買賣盤 "p1_p2_p3_p4_p5_"(下劃線分隔,p1=最佳),取最佳買 + 最佳賣中價
-    const ask = toN((q.a ?? "").split("_")[0]);
-    const bid = toN((q.b ?? "").split("_")[0]);
-    if (ask != null && bid != null && ask > 0 && bid > 0) {
-      price = (ask + bid) / 2;
-      source = "twse_mis_mid";
-    } else {
-      return null; // 盤前/盤後/停牌等,a/b/z 全空 → skip
-    }
-  }
-  if (price <= 0) return null;
-
-  const prev = toN(q.y);
-  const change_pct = (prev != null && prev > 0)
-    ? ((price - prev) / prev) * 100
-    : null;
-
-  const symbol = q.c ?? "";
-  if (!symbol) return null;
-
-  return {
-    symbol,
-    quoted_at: fallbackTs, // EF 端 fetched_at,每分鐘 cron 寫新 row,不受 mis tlong stuck 影響
-    price,
-    volume: toN(q.tv),
-    change_pct,
-    market_state: "REGULAR", // 能寫入 cache 即真實在盤中(z 或 a/b 有值) → 必 REGULAR
-    currency: "TWD",
-    source,
-  };
-}
-
 Deno.serve(async (req: Request) => {
-  // L05:auth via JWT payload role
-  const auth = req.headers.get("authorization");
-  if (!auth?.startsWith("Bearer ")) return Response.json({ error: "missing bearer" }, { status: 401 });
-  let role: unknown;
-  try { role = decodeJwtPayload(auth.slice(7)).role; }
-  catch { return Response.json({ error: "invalid jwt" }, { status: 401 }); }
-  if (role !== "service_role") return Response.json({ error: "forbidden", role }, { status: 403 });
-
   const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
   if (!SERVICE_ROLE) return Response.json({ error: "missing SUPABASE_SERVICE_ROLE_KEY env" }, { status: 500 });
   const supabase = createClient(Deno.env.get("SUPABASE_URL")!, SERVICE_ROLE);
+  const authorized = await authorizeServiceRequest(req, SERVICE_ROLE, async () => {
+    const { data, error } = await supabase.rpc("read_edge_function_auth");
+    if (error) return null;
+    return typeof data === "string" ? data : null;
+  });
+  if (!authorized) return Response.json({ error: "unauthorized" }, { status: 401 });
 
   // 收集 target symbol + market
   // - stock_universe(已有 market 欄位):權威來源
@@ -242,15 +149,16 @@ Deno.serve(async (req: Request) => {
     }
   }
 
+  const uniqueRows = deduplicateQuotes(allRows);
   const missingSymbols = Array.from(symbolToMarket.keys()).filter((s) => !seenSymbols.has(s));
 
   // L11 例外:price_intraday_cache 即時 cache → ON CONFLICT DO UPDATE
   let written = 0;
   let writeError: string | null = null;
-  if (allRows.length > 0) {
+  if (uniqueRows.length > 0) {
     const { data, error } = await supabase
       .from("price_intraday_cache")
-      .upsert(allRows, { onConflict: "symbol,quoted_at", ignoreDuplicates: false })
+      .upsert(uniqueRows, { onConflict: "symbol,quoted_at", ignoreDuplicates: false })
       .select("symbol");
     if (error) writeError = error.message;
     else written = data?.length ?? 0;

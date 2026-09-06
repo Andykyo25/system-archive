@@ -2,6 +2,7 @@ import { TableShell, THead } from "@/app/_components/ui";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { fmtPct } from "@/app/_components/Format";
+import { canOverlay, type CurveSummary } from "@/lib/backtest-view";
 
 export const dynamic = "force-dynamic";
 
@@ -14,7 +15,7 @@ interface BacktestParams {
   benchmark_symbol: string;
 }
 
-interface BacktestSummary {
+interface BacktestSummary extends CurveSummary {
   win_rate?: number;
   total_return_pct?: number;
   annual_return_pct?: number;
@@ -97,14 +98,12 @@ export default async function BacktestComparePage({
           回測對比 ({finished.length} runs)
         </h1>
         <p className="mt-2 text-xs text-zinc-500">
-          資產曲線 (equity curve) 疊圖,起始值都正規化為 1.00。Benchmark 0050 用灰線
-          (取第一個 run 的 benchmark_equity_curve 當基準,若各 run 的 benchmark
-          日期不同,以第一個為準)。
+          資產曲線以本金 1.00 正規化。成交版本、帳務版本、估值日期與基準一致時才疊圖。
         </p>
       </header>
 
       <SummaryTable runs={colored} />
-      <EquityOverlay runs={colored} />
+      {canOverlay(finished) ? <EquityOverlay runs={colored} /> : <p className="rounded-xl border border-amber-400/20 bg-amber-400/5 p-4 text-sm text-amber-200">所選回測的版本、日期或基準不一致，暫不疊圖。下表數字僅供各次結果查閱，請選擇相同口徑後比較。</p>}
     </div>
   );
 }
@@ -239,9 +238,7 @@ function SummaryTable({ runs }: { runs: ColoredRun[] }) {
 }
 
 function EquityOverlay({ runs }: { runs: ColoredRun[] }) {
-  // 用「期數 index」當 X 軸(各 run 的 equity_curve 起點為 t0=1.0)。
-  // 若各 run 的 rebalance_dates 不一致,我們仍把它們從 t0 對齊到右側(不同 run 終點不同 index)。
-  // 顯示 X 軸標籤:用第一個 run 的 rebalance_dates(若有)。
+  // canOverlay verifies that every index represents the same date/model.
   const allCurves = runs
     .map((r) => r.summary?.equity_curve ?? [])
     .filter((c) => c.length >= 2);
@@ -249,7 +246,7 @@ function EquityOverlay({ runs }: { runs: ColoredRun[] }) {
 
   const firstRun = runs[0];
   const benchmark = firstRun.summary?.benchmark_equity_curve ?? [];
-  const labelDates = firstRun.summary?.rebalance_dates ?? [];
+  const labelDates = firstRun.summary?.equity_dates ?? firstRun.summary?.rebalance_dates ?? [];
 
   const maxLen = Math.max(
     benchmark.length,
@@ -272,10 +269,10 @@ function EquityOverlay({ runs }: { runs: ColoredRun[] }) {
   const yScale = (v: number) =>
     padT + (H - padT - padB) * (1 - (v - minV) / (maxV - minV));
 
-  // path 點數 stride 取樣到 ~240,x 用原索引保多 run 對齊、保尾點(HTML 瘦身,視覺無差)
+  // Preserve every point, including brief drawdowns between rebalance dates.
   function pathFor(curve: number[]): string {
     if (curve.length === 0) return "";
-    const step = Math.max(1, Math.ceil(curve.length / 240));
+    const step = 1;
     const pts: string[] = [];
     for (let i = 0; i < curve.length; i += step) {
       pts.push(`${pts.length === 0 ? "M" : "L"} ${padL + i * xStep} ${yScale(curve[i])}`);
@@ -338,7 +335,7 @@ function EquityOverlay({ runs }: { runs: ColoredRun[] }) {
               key={i}
               x={padL + i * xStep}
               y={H - padB + 16}
-              textAnchor="middle"
+              textAnchor={i === 0 ? "start" : i === maxLen - 1 ? "end" : "middle"}
               className="fill-zinc-500"
               fontSize="10"
             >

@@ -7,7 +7,7 @@ const pageDescriptions: Record<string, string> = {
   "/": "盤前資訊、持股狀態與今日決策",
   "/holdings": "部位、成本與交易紀錄",
   "/performance": "資產曲線與已實現績效",
-  "/scan": "突破候選與前向追蹤",
+  "/scan": "突破候選、交易計畫與證據追蹤",
   "/backtest": "策略樣本與歷史驗證",
   "/health": "來源時效、涵蓋率與排程狀態",
   "/settings": "資金與策略參數",

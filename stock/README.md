@@ -141,7 +141,9 @@ Supabase 還有兩個 vault secret 是直接在 DB 建,不放 env:
 
 ## 部署(Railway)
 
-Railway root directory 設 `stock/`,builder = Dockerfile,環境變數設 4 個(見上)。
+推送 GitHub 已連結的部署分支後，由 Railway 自動建置及部署。Railway root directory 設 `stock/`,builder = Dockerfile,沿用既有環境變數(見上)。網站供本人使用，不設帳號密碼。
+
+Supabase migrations 與 Edge Functions 需另外套用，現有 Dockerfile 不會隨網站建置執行這些更新。本輪更新與順序見 [起漲決策更新說明](docs/decision-upgrade.md)。
 
 每次 `git push` 到 `main`,Railway 會自動 build & deploy。Build 流程在 `Dockerfile`:
 

@@ -140,12 +140,25 @@ export async function addBuyTransaction(formData: FormData): Promise<void> {
     : null;
 
   if (!symbol) throw new Error("股號必填");
-  if (!Number.isFinite(qty) || qty <= 0) throw new Error("股數必須是正整數");
+  if (!Number.isSafeInteger(qty) || qty <= 0) throw new Error("股數必須是正整數");
   if (!Number.isFinite(price) || price <= 0) throw new Error("價格必須是正數");
 
   const { feeRate } = await loadFeeSettings();
   const fee = calcFee(qty, price, feeRate);
   const txnDate = txnDateRaw || new Date().toISOString().slice(0, 10);
+  const planId = String(formData.get("plan_id") ?? "").trim();
+  if (planId) {
+    const { error } = await createClient().rpc("record_plan_buy", {
+      p_plan_id: planId, p_qty: qty, p_price: price, p_fee: fee,
+      p_txn_date: txnDate, p_note: note,
+    });
+    if (error) throw new Error(error.message);
+    revalidatePath("/scan");
+    revalidatePath("/holdings");
+    revalidatePath("/performance");
+    revalidatePath("/");
+    return;
+  }
   const signal = await lookupSignal(symbol, signalSource);
 
   const sb = createClient();
@@ -176,7 +189,7 @@ export async function addSellTransaction(formData: FormData): Promise<void> {
   const note = String(formData.get("note") ?? "").trim() || null;
 
   if (!symbol) throw new Error("股號必填");
-  if (!Number.isFinite(qty) || qty <= 0) throw new Error("股數必須是正整數");
+  if (!Number.isSafeInteger(qty) || qty <= 0) throw new Error("股數必須是正整數");
   if (!Number.isFinite(price) || price <= 0) throw new Error("價格必須是正數");
 
   // 驗證 net_qty 足夠
@@ -484,10 +497,10 @@ export async function deleteTransaction(formData: FormData): Promise<void> {
   if (!id) return;
   const sb = createClient();
   const { error } = await sb
-    .from("holdings_transactions")
-    .delete()
-    .eq("id", id);
+    .rpc("delete_transaction_with_plan", { p_txn_id: id });
   if (error) throw new Error(error.message);
+  revalidatePath("/scan");
+  revalidatePath("/performance");
   revalidatePath("/holdings");
   revalidatePath("/");
 }
@@ -520,7 +533,7 @@ export async function addDayTradeTransaction(formData: FormData): Promise<void> 
   const note = String(formData.get("note") ?? "").trim() || null;
 
   if (!symbol) throw new Error("股號必填");
-  if (!Number.isFinite(qty) || qty <= 0) throw new Error("股數必須是正整數");
+  if (!Number.isSafeInteger(qty) || qty <= 0) throw new Error("股數必須是正整數");
   if (!Number.isFinite(buyPrice) || buyPrice <= 0)
     throw new Error("買價必須是正數");
   if (!Number.isFinite(sellPrice) || sellPrice <= 0)

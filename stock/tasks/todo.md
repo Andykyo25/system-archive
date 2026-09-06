@@ -2,6 +2,14 @@
 
 > 工作流程依 [CLAUDE.md](../CLAUDE.md)。每個項目完成後勾選並寫 1~2 行 review。
 
+## 2026-09-06 — 維持免登入與現有部署流程
+
+- [x] 移除上一輪新增的網站登入 proxy、帳密設定及 Server Action 登入檢查。
+- [x] 文件對齊 GitHub 推送 → Railway 部署網站、Supabase 管理資料庫與 Edge Functions。
+- [x] 確認 production build、33 項測試及 standalone 免登入讀寫流程。
+
+**Review**：遵循原定「完全不做 Auth」決策；Supabase 服務間授權與 server-only 金鑰維持既有用途。正式 standalone 的頁面讀取、保存計畫與記錄成交測試通過；本輪未推送或部署正式環境。
+
 ---
 
 ## 已拍板的核心決策(2026-05-07)

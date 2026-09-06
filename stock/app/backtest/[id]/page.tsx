@@ -3,6 +3,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { fmtMoney, fmtPct, pctColor } from "@/app/_components/Format";
+import { readAll, unwrap } from "@/lib/db";
+import { monthlyEquityReturns, type CurveSummary } from "@/lib/backtest-view";
 
 export const dynamic = "force-dynamic";
 
@@ -13,9 +15,23 @@ interface BacktestParams {
   top_n: number;
   weight_strategy: string;
   benchmark_symbol: string;
+  exec_model?: string;
 }
 
-interface BacktestSummary {
+interface BacktestSummary extends CurveSummary {
+  n_open_positions?: number;
+  stale_mark_days?: number;
+  initial_capital?: number;
+  cash_curve?: number[];
+  market_value_curve?: number[];
+  open_positions?: {
+    symbol: string;
+    qty: number;
+    last_price: number;
+    last_price_date: string;
+    market_value: number;
+    scheduled_exit_date: string;
+  }[];
   win_rate?: number;
   total_return_pct?: number;
   annual_return_pct?: number;
@@ -68,16 +84,20 @@ export default async function BacktestDetailPage({
   const { id } = await params;
   const sb = createClient();
 
-  const [{ data: run }, { data: trades }] = await Promise.all([
+  const [runResult, tradeResult] = await Promise.all([
     sb.from("backtest_runs").select("*").eq("id", id).maybeSingle(),
-    sb
-      .from("backtest_trades")
-      .select("*")
-      .eq("run_id", id)
-      .order("entry_date", { ascending: true })
-      .limit(2000),
+    readAll<BacktestTrade>((from, to) =>
+      sb
+        .from("backtest_trades")
+        .select("*")
+        .eq("run_id", id)
+        .order("entry_date", { ascending: true })
+        .order("id")
+        .range(from, to),
+    ),
   ]);
-
+  const run = unwrap(runResult, "回測結果");
+  const trades = unwrap(tradeResult, "回測交易");
   if (!run) return notFound();
   const r = run as BacktestRun;
   const tradeRows = (trades as BacktestTrade[] | null) ?? [];
@@ -106,6 +126,16 @@ export default async function BacktestDetailPage({
           <Pill label="Benchmark" value={r.params.benchmark_symbol} />
         </div>
       </header>
+
+      <p className="rounded-xl border border-amber-400/20 bg-amber-400/5 p-4 text-sm leading-6 text-amber-200">
+        此頁驗證多因子排名，與起漲掃描是不同策略。
+        {r.summary?.accounting_version === "daily-cash-ledger-v1"
+          ? "本次使用逐日現金與持股估值計算回撤；延後出場的資金待成交才回到現金。尚未納入滑價、最小手續費與整股限制。"
+          : "舊版回撤僅按換股節點計算，可能低估持有期間風險。"}
+        不同成交與帳務版本請分開比較。
+        {r.params.exec_model === "close" &&
+          " 本次使用訊號日收盤成交，含當日資訊，只作診斷用途。"}
+      </p>
 
       {r.status === "failed" ? (
         <FailedReason run={r} />
@@ -155,7 +185,8 @@ function FailedReason({ run }: { run: BacktestRun }) {
     <div className="rounded-lg border border-red-900/40 bg-red-950/30 p-4">
       <div className="text-sm font-semibold text-red-200">回測失敗</div>
       <div className="mt-2 text-sm text-red-100">
-        reason: <code className="font-mono">{s.reason ?? run.error ?? "unknown"}</code>
+        reason:{" "}
+        <code className="font-mono">{s.reason ?? run.error ?? "unknown"}</code>
       </div>
       {s.message ? (
         <div className="mt-1 text-xs text-red-200/80">{s.message}</div>
@@ -166,8 +197,9 @@ function FailedReason({ run }: { run: BacktestRun }) {
         </div>
       ) : null}
       <div className="mt-3 text-xs text-zinc-400">
-        提示:price_daily 還沒累積足夠歷史(目前 M8 cron 從 2026-05-07 起跑)。等 Andy
-        手動 trigger `fetch-finmind-backfill` 把 3 年資料補齊,backtest 才能跑出有意義結果。
+        提示:price_daily 還沒累積足夠歷史(目前 M8 cron 從 2026-05-07 起跑)。等
+        Andy 手動 trigger `fetch-finmind-backfill` 把 3 年資料補齊,backtest
+        才能跑出有意義結果。
       </div>
     </div>
   );
@@ -191,15 +223,22 @@ function FinishedView({
   const s = run.summary ?? {};
   return (
     <>
-      <SummaryCards summary={s} />
+      <SummaryCards summary={s} benchmark={run.params.benchmark_symbol} />
+      <AccountState summary={s} />
       <EquityCurveChart summary={s} />
-      <MonthlyPnLChart trades={trades} />
+      <MonthlyPnLChart trades={trades} summary={s} />
       <TradesTable trades={trades} />
     </>
   );
 }
 
-function SummaryCards({ summary }: { summary: BacktestSummary }) {
+function SummaryCards({
+  summary,
+  benchmark,
+}: {
+  summary: BacktestSummary;
+  benchmark: string;
+}) {
   const cards: {
     label: string;
     value: string;
@@ -208,8 +247,11 @@ function SummaryCards({ summary }: { summary: BacktestSummary }) {
   }[] = [
     {
       label: "勝率",
-      value: summary.win_rate != null ? `${summary.win_rate.toFixed(1)}%` : "—",
-      sub: `${summary.n_trades ?? 0} trades × ${summary.n_rebalances ?? 0} 期`,
+      value:
+        summary.n_trades && summary.win_rate != null
+          ? `${summary.win_rate.toFixed(1)}%`
+          : "—",
+      sub: `${summary.n_trades ?? 0} 筆已平倉 · ${summary.n_rebalances ?? 0} 期`,
     },
     {
       label: "總報酬",
@@ -221,13 +263,13 @@ function SummaryCards({ summary }: { summary: BacktestSummary }) {
       sub: `年化 ${summary.annual_return_pct != null ? fmtPct(summary.annual_return_pct) : "—"}`,
     },
     {
-      label: "vs 0050 Alpha",
+      label: `vs ${benchmark} 超額`,
       value:
         summary.alpha_vs_benchmark != null
           ? fmtPct(summary.alpha_vs_benchmark)
           : "—",
       color: pctColor(summary.alpha_vs_benchmark),
-      sub: `0050 同期 ${summary.benchmark_return_pct != null ? fmtPct(summary.benchmark_return_pct) : "—"}`,
+      sub: `${benchmark} 同期 ${summary.benchmark_return_pct != null ? fmtPct(summary.benchmark_return_pct) : "—"}`,
     },
     {
       label: "最大回撤",
@@ -245,7 +287,10 @@ function SummaryCards({ summary }: { summary: BacktestSummary }) {
   return (
     <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
       {cards.map((c) => (
-        <div key={c.label} className="rounded-2xl border border-line bg-surface-1 p-4">
+        <div
+          key={c.label}
+          className="rounded-2xl border border-line bg-surface-1 p-4"
+        >
           <div className="text-xs text-zinc-400">{c.label}</div>
           <div
             className={`mt-1 text-2xl font-semibold tabular-nums ${c.color ?? ""}`}
@@ -259,10 +304,43 @@ function SummaryCards({ summary }: { summary: BacktestSummary }) {
   );
 }
 
+function AccountState({ summary: s }: { summary: BacktestSummary }) {
+  if (s.accounting_version !== "daily-cash-ledger-v1") return null;
+  const capital = s.initial_capital ?? 1_000_000;
+  return (
+    <section className="rounded-2xl border border-line bg-surface-1 p-4 text-sm">
+      <h2 className="font-semibold">期末帳戶狀態</h2>
+      <p className="mt-2 text-slate-300">
+        現金 {fmtMoney((s.cash_curve?.at(-1) ?? 0) * capital, 0)} 元 · 持股估值{" "}
+        {fmtMoney((s.market_value_curve?.at(-1) ?? 0) * capital, 0)} 元 · 未平倉{" "}
+        {s.n_open_positions ?? 0} 檔
+      </p>
+      <p className="mt-2 text-xs text-slate-400">
+        回撤依逐日收盤淨值；未平倉估值尚未扣未來賣出成本。缺少當日收盤價時沿用最後已知價格，本次有{" "}
+        {s.stale_mark_days ?? 0} 日受影響。
+      </p>
+      {!!s.open_positions?.length && (
+        <ul className="mt-3 space-y-2 text-xs text-amber-200">
+          {s.open_positions.map((p) => (
+            <li key={p.symbol}>
+              {p.symbol} · 原訂退出 {p.scheduled_exit_date} · 尚未成交 · 估值日{" "}
+              {p.last_price_date}，市值 {fmtMoney(p.market_value, 0)} 元
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
 function EquityCurveChart({ summary }: { summary: BacktestSummary }) {
   const ec = summary.equity_curve ?? [];
   const bc = summary.benchmark_equity_curve ?? [];
-  const dates = summary.rebalance_dates ?? [];
+  const dates =
+    summary.equity_dates ??
+    (summary.rebalance_dates?.length === ec.length
+      ? summary.rebalance_dates
+      : []);
   if (ec.length < 2) return null;
 
   const W = 800;
@@ -278,31 +356,29 @@ function EquityCurveChart({ summary }: { summary: BacktestSummary }) {
   const yScale = (v: number) =>
     padT + (H - padT - padB) * (1 - (v - minV) / (maxV - minV));
 
-  // path 點數 stride 取樣到 ~240(viewBox 800px 已超像素密度),x 用原索引保對齊、
-  // 保尾點 — 長 curve(數百期)HTML path 字串瘦身,視覺無差
+  // Preserve every daily point so short drawdowns do not disappear from the chart.
   const pathFor = (curve: number[]) => {
     if (curve.length === 0) return "";
-    const step = Math.max(1, Math.ceil(curve.length / 240));
+    const step = 1;
     const pts: string[] = [];
     for (let i = 0; i < curve.length; i += step) {
-      pts.push(`${pts.length === 0 ? "M" : "L"} ${padL + i * xStep} ${yScale(curve[i])}`);
+      pts.push(
+        `${pts.length === 0 ? "M" : "L"} ${padL + i * xStep} ${yScale(curve[i])}`,
+      );
     }
     const last = curve.length - 1;
-    if (last % step !== 0) pts.push(`L ${padL + last * xStep} ${yScale(curve[last])}`);
+    if (last % step !== 0)
+      pts.push(`L ${padL + last * xStep} ${yScale(curve[last])}`);
     return pts.join(" ");
   };
 
   // x-axis tick labels(取首中尾)
-  const labelIdxs = [
-    0,
-    Math.floor((ec.length - 1) / 2),
-    ec.length - 1,
-  ];
+  const labelIdxs = [0, Math.floor((ec.length - 1) / 2), ec.length - 1];
   return (
     <section>
       <h2 className="mb-2 text-lg font-semibold">資產曲線 vs Benchmark</h2>
       <div className="rounded-2xl border border-line bg-surface-1 p-4">
-        <svg width="100%" viewBox={`0 0 ${W} ${H}`} className="text-xs">
+        <svg role="img" aria-label="策略與基準資產曲線" width="100%" viewBox={`0 0 ${W} ${H}`} className="text-xs">
           {/* y baseline = 1.0 */}
           <line
             x1={padL}
@@ -320,19 +396,14 @@ function EquityCurveChart({ summary }: { summary: BacktestSummary }) {
             strokeWidth="1.5"
           />
           {/* strategy line */}
-          <path
-            d={pathFor(ec)}
-            fill="none"
-            stroke="#facc15"
-            strokeWidth="2"
-          />
+          <path d={pathFor(ec)} fill="none" stroke="#facc15" strokeWidth="2" />
           {/* axis labels */}
           {labelIdxs.map((i) => (
             <text
               key={i}
               x={padL + i * xStep}
               y={H - padB + 14}
-              textAnchor="middle"
+              textAnchor={i === 0 ? "start" : i === ec.length - 1 ? "end" : "middle"}
               className="fill-zinc-500"
               fontSize="10"
             >
@@ -377,13 +448,20 @@ function EquityCurveChart({ summary }: { summary: BacktestSummary }) {
   );
 }
 
-function MonthlyPnLChart({ trades }: { trades: BacktestTrade[] }) {
+function MonthlyPnLChart({
+  trades,
+  summary,
+}: {
+  trades: BacktestTrade[];
+  summary: BacktestSummary;
+}) {
   // 把策略 trades(非 benchmark)按月聚合報酬:每月平均報酬 %
   // exit_date 落哪個月就算哪個月
   const monthMap = new Map<string, { sum: number; n: number }>();
   for (const t of trades) {
     if (t.is_benchmark) continue;
     const m = t.exit_date.slice(0, 7);
+    if (t.return_pct == null) continue;
     const r = Number(t.return_pct);
     if (!Number.isFinite(r)) continue;
     const slot = monthMap.get(m) ?? { sum: 0, n: 0 };
@@ -392,15 +470,15 @@ function MonthlyPnLChart({ trades }: { trades: BacktestTrade[] }) {
     monthMap.set(m, slot);
   }
   const months = Array.from(monthMap.keys()).sort();
-  if (months.length === 0) return null;
-  const monthData = months.map((m) => {
-    const slot = monthMap.get(m)!;
-    return { month: m, avg: slot.sum / slot.n };
-  });
-  const maxAbs = Math.max(
-    ...monthData.map((d) => Math.abs(d.avg)),
-    1,
-  );
+  const dailyMonths = monthlyEquityReturns(summary);
+  const monthData =
+    dailyMonths ??
+    months.map((m) => {
+      const slot = monthMap.get(m)!;
+      return { month: m, avg: slot.sum / slot.n };
+    });
+  if (monthData.length === 0) return null;
+  const maxAbs = Math.max(...monthData.map((d) => Math.abs(d.avg)), 1);
 
   const W = 800;
   const H = 200;
@@ -410,41 +488,31 @@ function MonthlyPnLChart({ trades }: { trades: BacktestTrade[] }) {
   const padB = 40;
   const barWidth = Math.max(8, (W - padL - padR) / monthData.length - 4);
   const midY = padT + (H - padT - padB) / 2;
-  const yScale = (v: number) =>
-    midY - (v / maxAbs) * ((H - padT - padB) / 2);
+  const yScale = (v: number) => midY - (v / maxAbs) * ((H - padT - padB) / 2);
 
   return (
     <section>
-      <h2 className="mb-2 text-lg font-semibold">月度平均報酬</h2>
+      <h2 className="mb-2 text-lg font-semibold">
+        {dailyMonths ? "月度帳戶報酬" : "各月平倉交易平均價差"}
+      </h2>
+      <p className="mb-2 text-xs text-slate-400">
+        {dailyMonths
+          ? "依月末帳戶淨值計算，含未平倉估值；首尾月份可能未滿整月。"
+          : "未扣成本的逐筆平均，並非整體帳戶月報酬。"}
+      </p>
       <div className="rounded-2xl border border-line bg-surface-1 p-4">
         <svg width="100%" viewBox={`0 0 ${W} ${H}`} className="text-xs">
-          <line
-            x1={padL}
-            x2={W - padR}
-            y1={midY}
-            y2={midY}
-            stroke="#52525b"
-          />
+          <line x1={padL} x2={W - padR} y1={midY} y2={midY} stroke="#52525b" />
           {monthData.map((d, i) => {
-            const x =
-              padL + i * ((W - padL - padR) / monthData.length) + 2;
+            const x = padL + i * ((W - padL - padR) / monthData.length) + 2;
             const y = d.avg >= 0 ? yScale(d.avg) : midY;
             const h = Math.abs(midY - yScale(d.avg));
             // 台股配色:紅 = 漲,綠 = 跌
             const cls = d.avg >= 0 ? "fill-red-500" : "fill-green-500";
             return (
               <g key={d.month}>
-                <rect
-                  x={x}
-                  y={y}
-                  width={barWidth}
-                  height={h}
-                  className={cls}
-                />
-                <title>
-                  {d.month}: {d.avg >= 0 ? "+" : ""}
-                  {d.avg.toFixed(2)}%
-                </title>
+                <rect x={x} y={y} width={barWidth} height={h} className={cls} />
+                <title>{`${d.month}: ${d.avg >= 0 ? "+" : ""}${d.avg.toFixed(2)}%`}</title>
               </g>
             );
           })}
@@ -523,7 +591,7 @@ function TradesTable({ trades }: { trades: BacktestTrade[] }) {
               <th className="px-3 py-2 text-right">進場價</th>
               <th className="px-3 py-2">出場日</th>
               <th className="px-3 py-2 text-right">出場價</th>
-              <th className="px-3 py-2 text-right">報酬</th>
+              <th className="px-3 py-2 text-right">價差（未扣成本）</th>
             </tr>
           </THead>
           <tbody>
@@ -548,11 +616,15 @@ function TradesTable({ trades }: { trades: BacktestTrade[] }) {
                 <td className="px-3 py-2 text-right tabular-nums text-zinc-400">
                   {t.entry_rank ?? "—"}
                 </td>
-                <td className="px-3 py-2 text-xs text-zinc-300">{t.entry_date}</td>
+                <td className="px-3 py-2 text-xs text-zinc-300">
+                  {t.entry_date}
+                </td>
                 <td className="px-3 py-2 text-right tabular-nums">
                   {fmtMoney(t.entry_price, 2)}
                 </td>
-                <td className="px-3 py-2 text-xs text-zinc-300">{t.exit_date}</td>
+                <td className="px-3 py-2 text-xs text-zinc-300">
+                  {t.exit_date}
+                </td>
                 <td className="px-3 py-2 text-right tabular-nums">
                   {fmtMoney(t.exit_price, 2)}
                 </td>
