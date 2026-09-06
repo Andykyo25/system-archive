@@ -22,8 +22,8 @@ export interface RiskEstimate {
   cashRequired: number;
   limitingFactors: string[];
   caps: { label: string; shares: number }[];
-  positionPct: number;
-  industryPct: number;
+  positionPct: number | null;
+  industryPct: number | null;
   slippagePct: number;
   priceDate: string;
   calculatedAt: string;
@@ -40,8 +40,10 @@ export interface RiskEstimate {
   };
 }
 
-// Budget estimate, not a guaranteed fill/loss bound. Caps are supplied explicitly
-// by the user; avoid inventing personalised allocation limits.
+// Budget estimate, not a guaranteed fill/loss bound. Concentration caps stay
+// OPTIONAL and user-supplied; avoid inventing personalised allocation limits.
+// The risk-budget and cash caps need no such policy, so an estimate is still
+// produced when the user has not set any concentration limit.
 export function estimateRisk(
   context: RiskContext,
   input: {
@@ -49,8 +51,8 @@ export function estimateRisk(
     industry: string | null;
     entry: number;
     stop: number;
-    positionPct: number;
-    industryPct: number;
+    positionPct?: number | null;
+    industryPct?: number | null;
     slippagePct: number;
   },
   today: string,
@@ -64,20 +66,21 @@ export function estimateRisk(
   } = context;
   if (
     !context.coverage_ok ||
-    !input.industry ||
     !context.price_date ||
     [cash, equity, riskPct, fee, tax].some(
       (v) => v == null || !Number.isFinite(Number(v)),
     )
   ) {
-    throw new Error("持股估值、產業或風險設定未齊，暫不提供股數估算");
+    throw new Error("持股估值或風險設定未齊，暫不提供股數估算");
   }
   const age = Date.parse(today) - Date.parse(context.price_date);
   if (!Number.isFinite(age) || age < 0 || age > 7 * 86400000)
     throw new Error("估值日期不適用，請先更新價格");
+  // Cash below zero (over-invested, or a rounding residue) is a real account
+  // state, not a data fault: it must size to 0 shares and stay visible, never
+  // disable the estimate. Only genuinely unusable settings refuse.
   if (
     Number(equity) <= 0 ||
-    Number(cash) < 0 ||
     Number(riskPct) <= 0 ||
     Number(riskPct) > 1 ||
     Number(fee) < 0 ||
@@ -86,21 +89,23 @@ export function estimateRisk(
   ) {
     throw new Error("現金或風險設定不適用，請確認本金與費率");
   }
-  const { entry, stop, positionPct, industryPct, slippagePct } = input;
+  const { entry, stop, slippagePct } = input;
+  const positionPct = input.positionPct ?? null;
+  const industryPct = input.industryPct ?? null;
   if (
-    ![entry, stop, positionPct, industryPct, slippagePct].every(
-      Number.isFinite,
-    ) ||
+    ![entry, stop, slippagePct].every(Number.isFinite) ||
     stop <= 0 ||
     entry <= stop ||
-    positionPct <= 0 ||
-    positionPct > 100 ||
-    industryPct <= 0 ||
-    industryPct > 100 ||
     slippagePct < 0 ||
     slippagePct > 10
   )
-    throw new Error("請填寫有效的價格、集中度上限與滑價假設");
+    throw new Error("請填寫有效的價格與滑價假設");
+  const badCap = (v: number | null) =>
+    v != null && (!Number.isFinite(v) || v <= 0 || v > 100);
+  if (badCap(positionPct) || badCap(industryPct))
+    throw new Error("集中度上限須介於 0 與 100 之間");
+  if (industryPct != null && !input.industry)
+    throw new Error("此標的沒有產業分類，無法套用產業集中度上限");
   const slip = slippagePct / 100;
   const buyCost = entry * (1 + slip) * (1 + Number(fee));
   const sellProceeds = stop * (1 - slip) * (1 - Number(fee) - Number(tax));
@@ -119,15 +124,17 @@ export function estimateRisk(
       shares: Math.max(0, Math.floor(riskBudget / riskPerShare)),
     },
     { label: "可用現金", shares: cap(Number(cash)) },
-    {
+  ];
+  if (positionPct != null)
+    caps.push({
       label: "單股集中度",
       shares: cap((Number(equity) * positionPct) / 100 - existing),
-    },
-    {
+    });
+  if (industryPct != null)
+    caps.push({
       label: "產業集中度",
       shares: cap((Number(equity) * industryPct) / 100 - industryValue),
-    },
-  ];
+    });
   const shares = Math.min(...caps.map((c) => c.shares));
   return {
     shares,

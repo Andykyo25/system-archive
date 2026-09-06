@@ -39,12 +39,10 @@ export async function savePlan(
       if (context.error || stock.error || !context.data)
         return { error: "風險資料無法取得，計畫尚未保存，請稍後重試" };
       const field = (name: string) => String(form.get(name) ?? "").trim();
-      if (
-        ["position_pct", "industry_pct", "slippage_pct"].some(
-          (name) => !field(name),
-        )
-      )
-        return { error: "請填寫集中度上限與滑價假設" };
+      // Concentration caps are optional policy; blank means "no such limit".
+      const optionalPct = (name: string) =>
+        field(name) === "" ? null : Number(field(name));
+      if (!field("slippage_pct")) return { error: "請填寫滑價假設" };
       const estimate = estimateRisk(
         context.data as RiskContext,
         {
@@ -52,8 +50,8 @@ export async function savePlan(
           industry: stock.data?.industry_category ?? null,
           entry: input.p_entry_max,
           stop: input.p_stop_price,
-          positionPct: Number(field("position_pct")),
-          industryPct: Number(field("industry_pct")),
+          positionPct: optionalPct("position_pct"),
+          industryPct: optionalPct("industry_pct"),
           slippagePct: Number(field("slippage_pct")),
         },
         taipeiDate(),

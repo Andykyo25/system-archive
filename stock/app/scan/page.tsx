@@ -9,15 +9,15 @@ import {
 } from "@/lib/scan";
 import { taipeiDate, type TradePlan } from "@/lib/trade-plan";
 import { ScanBoard } from "./ScanBoard";
-import { PlanItem } from "./PlanForms";
+import { PlanItem, type PlanSettings } from "./PlanForms";
 import type { RiskContext } from "@/lib/plan-risk";
 
 export const dynamic = "force-dynamic";
 
 export default async function ScanPage() {
   const sb = createClient();
-  const [listR, totalR, dateR, plansR, observations, riskR] = await Promise.all(
-    [
+  const [listR, totalR, dateR, plansR, observations, riskR, settingsR] =
+    await Promise.all([
       readAll<ScanRow>((from, to) =>
         sb
           .from("v_breakout_scan")
@@ -62,8 +62,11 @@ export default async function ScanPage() {
         }
       })(),
       sb.from("v_plan_risk_context").select("*").single(),
-    ],
-  );
+      sb
+        .from("app_settings")
+        .select("key,value")
+        .in("key", ["atr_stop_multiple", "plan_slippage_pct"]),
+    ]);
   const rows = (unwrap(listR, "起漲掃描") ?? []) as ScanRow[];
   unwrap(totalR, "掃描涵蓋數");
   const date = unwrap(dateR, "價格資料日")?.[0]?.trade_date ?? null;
@@ -75,6 +78,19 @@ export default async function ScanPage() {
   const past = plans.filter((p) => !active.includes(p));
   const stats = summarizeObservations(observations ?? []);
   const passed = rows.filter((r) => r.passes_all).length;
+  // Plan defaults reuse existing settings; a missing key means "no suggestion",
+  // never a made-up number.
+  const setting = (key: string) => {
+    const raw = (
+      (settingsR.data ?? []) as { key: string; value: number | string }[]
+    ).find((r) => r.key === key)?.value;
+    const n = Number(raw);
+    return raw != null && Number.isFinite(n) ? n : null;
+  };
+  const planSettings: PlanSettings = {
+    atrStopMultiple: setting("atr_stop_multiple"),
+    slippagePct: setting("plan_slippage_pct"),
+  };
   return (
     <div className="space-y-6">
       <header className="relative overflow-hidden rounded-3xl border border-sky-400/15 bg-gradient-to-br from-sky-400/10 via-surface-1 to-surface-1 p-5 sm:p-7">
@@ -128,6 +144,7 @@ export default async function ScanPage() {
         today={today}
         plansAvailable={!plansR.error}
         riskContext={riskR.error ? null : (riskR.data as RiskContext | null)}
+        settings={planSettings}
       />
       <section id="plans" className="scroll-mt-6 space-y-4">
         <div className="flex items-center justify-between gap-3">

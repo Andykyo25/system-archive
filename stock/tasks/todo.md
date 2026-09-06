@@ -3436,3 +3436,24 @@ bin 與 engines 三者皆無變動。
 的空字串 key 會拋 "value of argument name is not valid"。
 已用 HEAD 上**未改動**的版本對照確認同樣失敗 → 是 PS 限制不是 JSON 壞掉。
 改用括號配對 + 範圍檢查代替。
+
+
+## Review — 2026-09-06 正式部署(Claude 執行 docs/claude-deployment-runbook.md)
+
+- Supabase `trnvkwievjewhghdvniq`:六支 migration 全數套用(遠端 version 20260906072500 / 072521 / 072545 / 072609 / 072629 / 072639),SQL 原文未改。
+- EF:check-price-alerts v1→v2、fetch-yahoo-intraday v7→v8、run-backtest v7→v8,verify_jwt 全維持 true,相依檔一併上傳。
+- cron jobid 25:更新期間暫停,部署後還原 active=true;schedule 改 */10 * * * *,URL/授權原樣保留。
+- GitHub:commit 48103c5 推到 **main**(不是 master — origin/main 才是 Railway 部署分支)。
+- Railway deployment 025c5e08 成功,https://system-archive-production.up.railway.app 七個頁面實測 200 且無登入挑戰。
+- 舊資料全數保留:scan_picks 385 筆 strategy_version 仍為 null、持股交易 41 筆、舊回測 76 筆/9608 明細未改寫。
+- **未完成**:本機無 Node.js/npm/Deno/Supabase CLI,33 項測試、npm run build、deno check、ui-smoke 未能在本機重跑;改由 Railway 容器內 npm ci + next build 成功背書。
+- 完整報告:docs/deployment-result-20260906-1540.md;備份在 Git 外 C:\Users\User\Documents\AI\deploy-backups-20260906\。
+
+## 交易計畫表單自動帶入(2026-09-06 追加)
+
+- 問題:表單九個欄位全空,其中三個(單股上限/產業上限/滑價)是使用者無從判斷的政策數字,estimateRisk 又要求全部填好才肯算 → 實際上無法使用。
+- 決策(使用者確認):停損取 ATR×atr_stop_multiple 與月線的「較緊者」;不設集中度上限。
+- migration 20260906000007:v_breakout_scan 追加 atr14 欄位(需 14 根完整 bar,否則 null),新增 app_settings.plan_slippage_pct=0.3。既有欄位順序與內容不變。
+- lib/plan-defaults.ts:由訊號列 + 既有設定推出買入區間、停損、有效期限、進場依據、出場規則。刻意零 runtime import,讓 node --experimental-strip-types 可直接載入測試。
+- estimateRisk 兩處放寬:集中度上限改為選填(缺 = 不套用該上限);現金為負不再 throw,改為算出 0 股並如實顯示金額 —— 使用者實際 cash 是 -0.11,舊行為會讓整個估算變成錯誤訊息。
+- /scan 現金為 0 時頂部直接標明「新計畫都會是 0 股,這是實際資金狀況不是計算錯誤」。

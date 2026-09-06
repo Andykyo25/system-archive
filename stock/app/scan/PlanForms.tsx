@@ -2,18 +2,25 @@
 
 import { useActionState, useState } from "react";
 import { cancelPlan, recordPlanFill, savePlan } from "./actions";
-import type { ScanRow } from "@/lib/scan";
+import { conditions, type ScanRow } from "@/lib/scan";
 import type { ActionResult, TradePlan } from "@/lib/trade-plan";
+import { planDefaults } from "@/lib/plan-defaults";
 import {
   estimateRisk,
   type RiskContext,
   type RiskEstimate,
 } from "@/lib/plan-risk";
 
+export interface PlanSettings {
+  atrStopMultiple: number | null;
+  slippagePct: number | null;
+}
+
 const input =
   "mt-1 w-full rounded-lg border border-line-strong bg-surface-sunken px-3 py-2.5 text-sm text-slate-100";
 const button =
   "rounded-xl bg-sky-400 px-4 py-2.5 text-sm font-semibold text-slate-950 hover:bg-sky-300 disabled:opacity-50";
+const hint = "mt-1 block text-[11px] leading-4 text-slate-500";
 
 function Result({ state }: { state: ActionResult }) {
   return (
@@ -30,34 +37,65 @@ export function PlanForm({
   row,
   today,
   riskContext,
+  settings,
 }: {
   row: ScanRow;
   today: string;
   riskContext: RiskContext | null;
+  settings: PlanSettings;
 }) {
   const [state, action, pending] = useActionState(savePlan, {});
-  const [withRisk, setWithRisk] = useState(false);
-  const [entry, setEntry] = useState("");
-  const [stop, setStop] = useState("");
-  const [positionPct, setPositionPct] = useState("");
-  const [industryPct, setIndustryPct] = useState("");
-  const [slippagePct, setSlippagePct] = useState("");
+  const suggested = planDefaults(row, {
+    today,
+    atrStopMultiple: settings.atrStopMultiple,
+    checks: conditions(row),
+  });
+  const defaultSlippage = String(settings.slippagePct ?? 0.3);
+  // Prefilled from the signal row and existing settings; every field stays editable.
+  const [entryMin, setEntryMin] = useState(
+    suggested ? suggested.entryMin.toFixed(2) : "",
+  );
+  const [entryMax, setEntryMax] = useState(
+    suggested ? suggested.entryMax.toFixed(2) : "",
+  );
+  const [stop, setStop] = useState(
+    suggested ? suggested.stopPrice.toFixed(2) : "",
+  );
+  const [validUntil, setValidUntil] = useState(suggested?.validUntil ?? "");
+  const [entryReason, setEntryReason] = useState(suggested?.entryReason ?? "");
+  const [exitRule, setExitRule] = useState(suggested?.exitRule ?? "");
+  const [slippagePct, setSlippagePct] = useState(defaultSlippage);
+  const [withRisk, setWithRisk] = useState(!!riskContext);
+  const [edited, setEdited] = useState(false);
+
+  const reset = () => {
+    if (!suggested) return;
+    setEntryMin(suggested.entryMin.toFixed(2));
+    setEntryMax(suggested.entryMax.toFixed(2));
+    setStop(suggested.stopPrice.toFixed(2));
+    setValidUntil(suggested.validUntil);
+    setEntryReason(suggested.entryReason);
+    setExitRule(suggested.exitRule);
+    setSlippagePct(defaultSlippage);
+    setEdited(false);
+  };
+  // Marks the form as touched so "還原建議值" only appears once it is useful.
+  const track = (set: (v: string) => void) => (v: string) => {
+    setEdited(true);
+    set(v);
+  };
+
   let risk: RiskEstimate | null = null;
-  let riskError = "填寫買入上限、停損與三項風險假設後顯示估算。";
-  if (
-    riskContext &&
-    [entry, stop, positionPct, industryPct, slippagePct].every((v) => v !== "")
-  ) {
+  let riskError = "填寫買入上限、停損與滑價後顯示估算。";
+  if (riskContext && [entryMax, stop, slippagePct].every((v) => v !== "")) {
     try {
       risk = estimateRisk(
         riskContext,
         {
           symbol: row.symbol,
           industry: row.industry_category,
-          entry: Number(entry),
+          entry: Number(entryMax),
           stop: Number(stop),
-          positionPct: Number(positionPct),
-          industryPct: Number(industryPct),
           slippagePct: Number(slippagePct),
         },
         today,
@@ -66,37 +104,72 @@ export function PlanForm({
       riskError = e instanceof Error ? e.message : "無法估算";
     }
   }
+  const equity = Number(riskContext?.equity ?? 0);
+  const sameIndustry =
+    riskContext && row.industry_category && equity > 0
+      ? (riskContext.positions
+          .filter((p) => p.industry === row.industry_category)
+          .reduce((a, p) => a + Number(p.market_value ?? 0), 0) /
+          equity) *
+        100
+      : null;
+
   return (
     <form action={action} className="mt-4 space-y-4 border-t border-line pt-4">
       <input type="hidden" name="symbol" value={row.symbol} />
       <input type="hidden" name="signal_date" value={row.trade_date} />
-      <p className="text-sm text-slate-300">
-        先寫好價格與退出條件。保存時會一併凍結掃描依據；這裡不會送出委託。
-      </p>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm text-slate-300">
+          {suggested
+            ? "已依訊號資料與你的設定自動帶入，確認或修改後再保存。這裡不會送出委託。"
+            : "此標的缺少價格資料，無法自動帶入，請自行填寫。"}
+        </p>
+        {suggested && edited && (
+          <button
+            type="button"
+            onClick={reset}
+            className="text-xs text-sky-300 underline underline-offset-4"
+          >
+            還原建議值
+          </button>
+        )}
+      </div>
+      {suggested?.notes.map((n) => (
+        <p
+          key={n}
+          className="rounded-lg border border-amber-400/20 bg-amber-400/5 p-2.5 text-xs leading-5 text-amber-200"
+        >
+          {n}
+        </p>
+      ))}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <label className="text-xs text-slate-400">
           買入下限
           <input
             className={input}
             name="entry_min"
+            value={entryMin}
+            onChange={(e) => track(setEntryMin)(e.target.value)}
             type="number"
             min="0.01"
             step="0.01"
             required
           />
+          <span className={hint}>訊號收盤 −3%</span>
         </label>
         <label className="text-xs text-slate-400">
           買入上限
           <input
             className={input}
             name="entry_max"
-            value={entry}
-            onChange={(e) => setEntry(e.target.value)}
+            value={entryMax}
+            onChange={(e) => track(setEntryMax)(e.target.value)}
             type="number"
             min="0.01"
             step="0.01"
             required
           />
+          <span className={hint}>收盤 +3%，且不超過月線 +15%</span>
         </label>
         <label className="text-xs text-slate-400">
           初始停損
@@ -104,22 +177,28 @@ export function PlanForm({
             className={input}
             name="stop_price"
             value={stop}
-            onChange={(e) => setStop(e.target.value)}
+            onChange={(e) => track(setStop)(e.target.value)}
             type="number"
             min="0.01"
             step="0.01"
             required
           />
+          <span className={hint}>
+            {suggested ? suggested.stopBasis : "須低於買入下限"}
+          </span>
         </label>
         <label className="text-xs text-slate-400">
           有效至
           <input
             className={input}
             name="valid_until"
+            value={validUntil}
+            onChange={(e) => track(setValidUntil)(e.target.value)}
             type="date"
             min={today}
             required
           />
+          <span className={hint}>約 10 個交易日</span>
         </label>
       </div>
       <div className="grid gap-3 lg:grid-cols-2">
@@ -128,10 +207,11 @@ export function PlanForm({
           <textarea
             className={input}
             name="entry_reason"
+            value={entryReason}
+            onChange={(e) => track(setEntryReason)(e.target.value)}
             minLength={5}
             maxLength={1000}
-            rows={2}
-            placeholder="例如：突破後回測支撐，且在買入區間內才考慮進場"
+            rows={5}
             required
           />
         </label>
@@ -140,10 +220,11 @@ export function PlanForm({
           <textarea
             className={input}
             name="exit_rule"
+            value={exitRule}
+            onChange={(e) => track(setExitRule)(e.target.value)}
             minLength={5}
             maxLength={1000}
-            rows={2}
-            placeholder="寫明停損採盤中觸價或收盤確認，以及多久未推進就退出"
+            rows={5}
             required
           />
         </label>
@@ -157,7 +238,7 @@ export function PlanForm({
             disabled={!riskContext}
             onChange={(e) => setWithRisk(e.target.checked)}
           />
-          一併估算可投入股數
+          一併保存股數估算
         </label>
         {!riskContext && (
           <p className="mt-2 text-xs text-slate-400">
@@ -166,68 +247,47 @@ export function PlanForm({
         )}
         {withRisk && (
           <>
-            <div className="mt-3 grid grid-cols-3 gap-3">
-              <label className="text-xs text-slate-400">
-                單股上限 %
-                <input
-                  className={input}
-                  name="position_pct"
-                  type="number"
-                  min="0.1"
-                  max="100"
-                  step="0.1"
-                  value={positionPct}
-                  onChange={(e) => setPositionPct(e.target.value)}
-                  required
-                />
-              </label>
-              <label className="text-xs text-slate-400">
-                產業上限 %
-                <input
-                  className={input}
-                  name="industry_pct"
-                  type="number"
-                  min="0.1"
-                  max="100"
-                  step="0.1"
-                  value={industryPct}
-                  onChange={(e) => setIndustryPct(e.target.value)}
-                  required
-                />
-              </label>
-              <label className="text-xs text-slate-400">
-                單邊滑價 %
-                <input
-                  className={input}
-                  name="slippage_pct"
-                  type="number"
-                  min="0"
-                  max="10"
-                  step="0.01"
-                  value={slippagePct}
-                  onChange={(e) => setSlippagePct(e.target.value)}
-                  required
-                />
-              </label>
-            </div>
             <div aria-live="polite" className="mt-3">
               {risk ? (
                 <>
-                  <p className="text-lg font-semibold text-sky-200">
+                  <p
+                    className={`text-lg font-semibold ${risk.shares > 0 ? "text-sky-200" : "text-amber-200"}`}
+                  >
                     估算上限 {risk.shares.toLocaleString()} 股
                   </p>
                   <p className="mt-1 text-xs text-slate-400">
-                    限制來自：{risk.limitingFactors.join("、")}
-                    。依買入上限估算需現金{" "}
-                    {Math.ceil(risk.cashRequired).toLocaleString()}{" "}
-                    元，停損損失約{" "}
-                    {Math.ceil(risk.estimatedLoss).toLocaleString()} 元。
+                    {risk.shares > 0 ? (
+                      <>
+                        限制來自：{risk.limitingFactors.join("、")}
+                        。依買入上限估算需現金{" "}
+                        {Math.ceil(risk.cashRequired).toLocaleString()}{" "}
+                        元，觸及停損損失約{" "}
+                        {Math.ceil(risk.estimatedLoss).toLocaleString()} 元。
+                      </>
+                    ) : (
+                      <>
+                        目前買不到：{risk.limitingFactors.join("、")}為 0。
+                        可用現金{" "}
+                        {(
+                          Math.round(risk.inputs.cash * 100) / 100
+                        ).toLocaleString()}{" "}
+                        元，單筆風險預算{" "}
+                        {Math.floor(risk.riskBudget).toLocaleString()}{" "}
+                        元。要進場需先賣出部位或增加資金。
+                      </>
+                    )}
                   </p>
                   <dl className="mt-3 grid grid-cols-2 gap-2 text-xs">
                     {risk.caps.map((c) => (
                       <div key={c.label}>
                         <dt className="text-slate-500">{c.label}</dt>
-                        <dd className="text-slate-300">
+                        <dd
+                          className={
+                            c.shares === risk!.shares
+                              ? "text-amber-200"
+                              : "text-slate-300"
+                          }
+                        >
                           {c.shares.toLocaleString()} 股
                         </dd>
                       </div>
@@ -238,9 +298,32 @@ export function PlanForm({
                 <p className="text-xs text-amber-300">{riskError}</p>
               )}
             </div>
+            <label className="mt-3 block text-xs text-slate-400 sm:w-40">
+              單邊滑價 %
+              <input
+                className={input}
+                name="slippage_pct"
+                type="number"
+                min="0"
+                max="10"
+                step="0.01"
+                value={slippagePct}
+                onChange={(e) => track(setSlippagePct)(e.target.value)}
+                required
+              />
+              <span className={hint}>沿用設定 plan_slippage_pct</span>
+            </label>
             <p className="mt-3 text-xs leading-5 text-slate-500">
-              風險比例沿用設定；估值日 {riskContext?.price_date ?? "—"}
-              。已計手續費、稅與你填寫的滑價。此估算不預留現金，跳空或無法成交時損失可能更大；保存時重新取得帳戶資料。
+              風險比例沿用設定 risk_pct_per_trade；估值日{" "}
+              {riskContext?.price_date ?? "—"}。已計手續費、稅與滑價。
+              未設集中度上限，估算只受單筆風險預算與可用現金限制
+              {sameIndustry != null && sameIndustry > 0 && (
+                <>
+                  ；目前 {row.industry_category} 已佔帳戶{" "}
+                  {sameIndustry.toFixed(0)}%，同產業加碼請自行斟酌
+                </>
+              )}
+              。此估算不預留現金，跳空或無法成交時損失可能更大；保存時會重新取得帳戶資料再算一次。
             </p>
           </>
         )}

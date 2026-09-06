@@ -18,6 +18,7 @@ export interface ScanRow {
   score_total: number | null;
   passes_all: boolean | null;
   fgn_net_5d: number | null;
+  atr14: number | null;
 }
 
 export function conditions(r: ScanRow) {

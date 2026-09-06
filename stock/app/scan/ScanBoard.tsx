@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { conditions, type ScanRow } from "@/lib/scan";
 import { fmtMoney, fmtPct, pctColor } from "@/app/_components/Format";
-import { PlanForm } from "./PlanForms";
+import { PlanForm, type PlanSettings } from "./PlanForms";
 import type { RiskContext } from "@/lib/plan-risk";
 
 export function ScanBoard({
@@ -19,11 +19,13 @@ export function ScanBoard({
   today,
   plansAvailable,
   riskContext,
+  settings,
 }: {
   rows: ScanRow[];
   today: string;
   plansAvailable: boolean;
   riskContext: RiskContext | null;
+  settings: PlanSettings;
 }) {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("all");
@@ -53,6 +55,15 @@ export function ScanBoard({
     );
   return (
     <section className="space-y-4" aria-label="起漲候選清單">
+      {riskContext && Number(riskContext.cash) <= 0 && (
+        <p className="rounded-2xl border border-amber-400/25 bg-amber-400/5 p-4 text-sm leading-6 text-amber-200">
+          可用現金{" "}
+          {(Math.round(Number(riskContext.cash) * 100) / 100).toLocaleString()}{" "}
+          元（估值日 {riskContext.price_date ?? "—"}）—— 資金已全部投入。
+          新計畫的股數估算都會是 0 股，這是實際資金狀況，不是計算錯誤。
+          仍可先保存價格與退出條件，等賣出後再執行。
+        </p>
+      )}
       <div className="rounded-2xl border border-line bg-surface-1 p-4">
         <div className="flex flex-wrap items-center gap-3">
           <div className="relative min-w-48 flex-1">
@@ -234,7 +245,12 @@ export function ScanBoard({
                 。分數描述型態符合程度，不代表上漲機率。請確認價格、停損與有效期限後再決定。
               </p>
               {plansAvailable ? (
-                <PlanForm row={r} today={today} riskContext={riskContext} />
+                <PlanForm
+                  row={r}
+                  today={today}
+                  riskContext={riskContext}
+                  settings={settings}
+                />
               ) : (
                 <p className="mt-3 text-sm text-amber-300">
                   交易計畫暫時無法載入，請稍後重試。

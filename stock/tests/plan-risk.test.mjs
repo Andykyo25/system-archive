@@ -8,10 +8,29 @@ test('risk estimate includes both-side fees/tax/slippage and respects all caps',
   assert.ok(r.riskPerShare>5);assert.ok(r.cashRequired<=context.cash);assert.ok(r.estimatedLoss<=1000);
   assert.equal(r.shares,119);assert.deepEqual(r.limitingFactors,['單股集中度','產業集中度']);
 });
-test('negative cash or incomplete valuation never produces a share suggestion',()=>{
-  assert.throws(()=>estimateRisk({...context,cash:-1},input,'2026-09-06'));
+test('negative cash sizes to zero and stays visible; unusable valuation still refuses',()=>{
+  // Over-invested (or a rounding residue) is a real account state. Refusing to
+  // estimate hides it behind an error; 0 shares reports it.
+  const r=estimateRisk({...context,cash:-1},input,'2026-09-06');
+  assert.equal(r.shares,0);
+  assert.deepEqual(r.limitingFactors,['可用現金']);
+  assert.equal(r.inputs.cash,-1);
   assert.throws(()=>estimateRisk({...context,coverage_ok:false},input,'2026-09-06'));
   assert.throws(()=>estimateRisk({...context,price_date:'2026-08-01'},input,'2026-09-06'));
+  assert.throws(()=>estimateRisk({...context,equity:0},input,'2026-09-06'));
+});
+test('concentration caps are optional; risk budget and cash alone still size a trade',()=>{
+  const noCaps={symbol:'TEST',industry:'半導體業',entry:100,stop:95,slippagePct:0.1};
+  const r=estimateRisk(context,noCaps,'2026-09-06');
+  assert.deepEqual(r.caps.map(c=>c.label),['單筆風險預算','可用現金']);
+  assert.equal(r.positionPct,null);
+  assert.equal(r.industryPct,null);
+  assert.equal(r.shares,173);
+  assert.deepEqual(r.limitingFactors,['單筆風險預算']);
+  assert.ok(r.estimatedLoss<=r.riskBudget);
+  // Supplying only one cap still applies just that one.
+  assert.equal(estimateRisk(context,{...noCaps,industryPct:30},'2026-09-06').shares,0);
+  assert.throws(()=>estimateRisk(context,{...noCaps,positionPct:0},'2026-09-06'),/集中度/);
 });
 test('existing concentration and zero cash each yield zero capacity',()=>{
   assert.equal(estimateRisk({...context,cash:0},input,'2026-09-06').shares,0);
