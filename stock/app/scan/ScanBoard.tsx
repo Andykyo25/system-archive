@@ -55,7 +55,7 @@ export function ScanBoard({
     );
   return (
     <section className="space-y-4" aria-label="起漲候選清單">
-      {riskContext && Number(riskContext.cash) <= 0 && (
+      {riskContext?.cash != null && Number(riskContext.cash) <= 0 && (
         <p className="rounded-2xl border border-amber-400/25 bg-amber-400/5 p-4 text-sm leading-6 text-amber-200">
           可用現金{" "}
           {(Math.round(Number(riskContext.cash) * 100) / 100).toLocaleString()}{" "}

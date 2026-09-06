@@ -34,6 +34,7 @@ const base = {
   score_total: 100,
   passes_all: true,
   fgn_net_5d: 500000,
+  atr14: 1.5,
 };
 const candidates = [
   { ...base, symbol: "TEST", name: "示範半導體" },
@@ -152,6 +153,8 @@ const mock = createServer(async (req, res) => {
     payload = [
       { key: "commission_discount", value: 1 },
       { key: "commission_base_rate", value: 0.001425 },
+      { key: "atr_stop_multiple", value: 2 },
+      { key: "plan_slippage_pct", value: 0.3 },
     ];
   else if (
     route === "create_breakout_plan" ||
@@ -250,17 +253,35 @@ try {
   await page.getByRole("button", { name: "五條件全過", exact: true }).click();
   assert.equal(await page.getByRole("link", { name: /示範光電/ }).count(), 0);
   await page.getByText("查看依據與建立計畫", { exact: true }).click();
+  // Auto-filled before any typing: close 54, ma20 50, atr14 1.5, multiple 2.
+  const valueOf = async (label) =>
+    Number(await page.getByLabel(label, { exact: true }).inputValue());
+  assert.equal(await valueOf("買入下限"), 52.38); // 54 × 0.97
+  assert.equal(await valueOf("買入上限"), 55.62); // 54 × 1.03 < 50 × 1.15
+  assert.equal(await valueOf("初始停損"), 51); // 54 − 2×1.5, tighter than MA20 50
+  assert.equal(
+    await page.getByLabel("有效至", { exact: true }).inputValue(),
+    "2026-09-20",
+  );
+  for (const label of ["進場依據與觸發條件", "出場規則與失效條件"]) {
+    const text = await page.getByLabel(label).inputValue();
+    assert.ok(text.length >= 5, `${label} should be prefilled`);
+  }
+  assert.ok(
+    (await page.getByLabel("出場規則與失效條件").inputValue()).includes("51.00"),
+  );
+  // Now override with explicit values and confirm the estimate follows.
   await page.getByLabel("買入下限", { exact: true }).fill("52");
   await page.getByLabel("買入上限", { exact: true }).fill("54");
   await page.getByLabel("初始停損", { exact: true }).fill("49");
   await page.getByLabel("有效至", { exact: true }).fill("2026-09-10");
   await page.getByLabel("進場依據與觸發條件").fill("突破回測後在區間內進場");
   await page.getByLabel("出場規則與失效條件").fill("收盤跌破支撐就退出部位");
-  await page.getByLabel("一併估算可投入股數").check();
-  await page.getByLabel("單股上限 %", { exact: true }).fill("20");
-  await page.getByLabel("產業上限 %", { exact: true }).fill("75");
+  await page.getByLabel("一併保存股數估算").check();
   await page.getByLabel("單邊滑價 %", { exact: true }).fill("0.1");
-  await page.getByText("估算上限 923 股", { exact: true }).waitFor();
+  // No concentration caps configured, so only risk budget and cash apply.
+  await page.getByText("估算上限 1,853 股", { exact: true }).waitFor();
+  await page.getByText(/限制來自：單筆風險預算/).waitFor();
   await page.setViewportSize({ width: 390, height: 844 });
   await page.evaluate(() => window.scrollTo(0, 0));
   assert.equal(
@@ -280,9 +301,11 @@ try {
     .getByText("計畫已保存。可在「我的計畫」記錄實際買入。", { exact: true })
     .waitFor();
   assert.equal(plans.length, 1);
-  assert.equal(plans[0].risk_snapshot.shares, 923);
+  assert.equal(plans[0].risk_snapshot.shares, 1853);
+  assert.equal(plans[0].risk_snapshot.positionPct, null);
+  assert.equal(plans[0].risk_snapshot.industryPct, null);
   await page.getByText("記錄實際買入", { exact: true }).click();
-  await page.getByLabel("股數", { exact: true }).fill("1000");
+  await page.getByLabel("股數", { exact: true }).fill("2000");
   await page.getByLabel("成交價", { exact: true }).fill("53");
   await page.getByLabel("成交日", { exact: true }).fill(today);
   await page.getByRole("button", { name: "確認記錄成交", exact: true }).click();
@@ -290,7 +313,7 @@ try {
   assert.equal(plans[0].status, "entered");
   await page.getByText("已成交、到期與取消的計畫（1）").click();
   await page.getByText(/成交在價格區間內/).waitFor();
-  await page.getByText(/建立時估算上限 923 股/).waitFor();
+  await page.getByText(/建立時估算上限 1,853 股/).waitFor();
   await page.getByText(/成交股數超過建立時估算上限/).waitFor();
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("http://127.0.0.1:3189/scan");
