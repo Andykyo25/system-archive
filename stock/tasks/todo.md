@@ -3457,3 +3457,35 @@ bin 與 engines 三者皆無變動。
 - lib/plan-defaults.ts:由訊號列 + 既有設定推出買入區間、停損、有效期限、進場依據、出場規則。刻意零 runtime import,讓 node --experimental-strip-types 可直接載入測試。
 - estimateRisk 兩處放寬:集中度上限改為選填(缺 = 不套用該上限);現金為負不再 throw,改為算出 0 股並如實顯示金額 —— 使用者實際 cash 是 -0.11,舊行為會讓整個估算變成錯誤訊息。
 - /scan 現金為 0 時頂部直接標明「新計畫都會是 0 股,這是實際資金狀況不是計算錯誤」。
+
+## v_scan_track_v2 benchmark 涵蓋率門檻(2026-09-06)
+
+問題:benchmark 用 bool_and 要求市場池每一檔都有進出場價。實測 60 個錨點
+full_coverage = 0,涵蓋率上限 99.2%(約 1750 檔固定有 15-30 檔停牌)。
+→ benchmark 永遠 null → excess_pct 永遠 null → /scan「策略證據」永遠無結果。
+
+- [ ] 1. 量涵蓋率分布決定門檻 → verify: 已完成,95% 可救回 25/60 錨點(h5 14 / h10 9 / h20 2)
+- [ ] 2. 寫 migration 20260906000008,只改 benchmark 閘門,avg 加同條件 filter → verify: 檔案 diff 只動 benchmark CTE 與 view comment
+- [ ] 3. 套用到 Supabase → verify: settled 筆數 由 0 變 >0;bench_n/bench_observed_n 不變
+- [ ] 4. 確認舊資料未受影響 → verify: scan_picks 385 筆、strategy_version 仍全 null;v_scan_track 舊 view 不動
+- [ ] 5. commit + push + Railway → verify: commit status success,/scan HTTP 200
+
+Rollback:重新套用 supabase/migrations/20260906000002_scan_track_v2.sql(該檔含完整舊定義)。
+
+### Review — benchmark 涵蓋率門檻(2026-09-06 完成)
+
+- [x] 1. 量涵蓋率:60 錨點 full_coverage = 0,上限 99.2% → bool_and 數學上不可能成立
+- [x] 2. migration 20260906000008,diff 只動 benchmark CTE 閘門 + avg filter + view comment
+- [x] 3. 套用成功:settled 0 → 289,missing_benchmark 289 → 0
+- [x] 4. 舊資料未動:scan_picks 385 筆 strategy_version 仍全 null、v_scan_track 385 列、txn 41、plan 1;anon 仍無讀取權
+- [x] 5. commit + push + Railway(見下)
+
+首次算出的超額(舊版樣本,日層級等權,未扣成本):
+- h5:12 日 204 筆,候選 +0.74% / 基準 +0.13% / 超額 +0.61pp,95% CI [-1.82, +3.04]
+- h10:7 日 85 筆,候選 +4.50% / 基準 +1.00% / 超額 +3.50pp,95% CI [-2.69, +9.69]
+- 兩者 CI 都跨 0 → 不顯著。settled 錨點涵蓋率 98.0-98.6%。
+- 有趣的側面:勝率 41.7% 略低於市場 41.9%,但平均報酬較高 → 賺賠比較好,符合突破型態特徵。
+
+注意:/scan 策略證據面板 filter strategy_version='breakout-v3-adjusted',新版樣本目前 0 筆,
+要等 freeze-scan-picks-daily(jobid 33,每日 15:00 TW)累積後才會顯示,面板短期仍是尚無結果。
+
