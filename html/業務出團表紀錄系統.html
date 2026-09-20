@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>業務出團管理系統 v10.0</title>
+    <title>業務出團管理系統｜穩定修正版 2026.09</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -232,7 +232,7 @@
         <div class="col-12 col-md-4">
             <div class="input-group">
                 <span class="input-group-text bg-white border-end-0"><i class="fas fa-search text-muted"></i></span>
-                <input type="text" class="form-control border-start-0" id="searchInput" placeholder="搜尋行程、客人..." onkeyup="debounceSearch()">
+                <input type="text" class="form-control border-start-0" id="searchInput" placeholder="搜尋行程、客人..." oninput="debounceSearch()">
             </div>
         </div>
         <div class="col-12 col-md-8 text-end d-flex align-items-center justify-content-md-end justify-content-between">
@@ -501,12 +501,137 @@ let sortColumn  = 'date';
 let sortAsc     = false;  // 預設降序:近期出團排最上面
 let searchQuery = '';
 let statusFilter = '';
-let hiddenCols  = new Set(JSON.parse(localStorage.getItem('hiddenCols') || '[]'));
+let hiddenCols  = new Set(readStoredJSON(localStorage, 'hiddenCols', [], Array.isArray));
 let selectedIds = new Set();  // 批次操作選取的 row id
-let currentView = localStorage.getItem('currentView') || 'list';  // 'list' | 'week'
-let weekStart  = startOfWeek(new Date());
+let currentView = (readStored(localStorage, 'currentView') === 'week' ? 'week' : 'list');  // 'list' | 'week'
+let weekStart  = startOfWeek(localCalendarDate(todayYMD()));
 let _debounceTimer = null;
 let performanceChartInstance = null;
+let activeUserId = null;
+let sessionEpoch = 0;
+let loadSequence = 0;
+let dataReady = false;
+let realtimeChannel = null;
+let reloadTimer = null;
+let reloadPending = false;
+let editSnapshot = null;
+let mutationBusy = false;
+let sessionTransition = 0;
+let lastToday = todayYMD();
+
+function readStored(storage, key) { try { return storage.getItem(key); } catch { return null; } }
+function writeStored(storage, key, value) { try { storage.setItem(key, value); } catch {} }
+function removeStored(storage, key) { try { storage.removeItem(key); } catch {} }
+function readStoredJSON(storage, key, fallback, valid) {
+    try { const value = JSON.parse(readStored(storage, key)); return valid(value) ? value : fallback; }
+    catch { return fallback; }
+}
+// 業務日期一律使用台灣日曆日；天數運算用 UTC 序號，避免時區及夏令時間混算。
+function todayYMD(now = new Date()) {
+    const p = new Intl.DateTimeFormat('en-US', {timeZone:'Asia/Taipei',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(now);
+    const get = t => p.find(x => x.type === t).value;
+    return get('year') + '-' + get('month') + '-' + get('day');
+}
+function dayNumber(value) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value || '')) return NaN;
+    const [y,m,d] = value.split('-').map(Number);
+    const n = Date.UTC(y,m-1,d);
+    return new Date(n).toISOString().slice(0,10) === value ? n / 86400000 : NaN;
+}
+function daysFromToday(value, today = todayYMD()) { return dayNumber(value) - dayNumber(today); }
+function localCalendarDate(value) { const [y,m,d] = value.split('-').map(Number); return new Date(y,m-1,d); }
+function visibleSelectedIds() {
+    const visible = new Set(currentData.map(r => String(r.id)));
+    return [...selectedIds].filter(id => visible.has(id));
+}
+function queueReload() {
+    reloadPending = true;
+    clearTimeout(reloadTimer);
+    reloadTimer = setTimeout(() => {
+        if (!activeUserId || mutationBusy || document.getElementById('editId').value) return;
+        reloadPending = false;
+        loadData();
+    }, 350);
+}
+function clearAccountState() {
+    sessionEpoch++;
+    loadSequence++;
+    dataReady = false;
+    clearTimeout(reloadTimer);
+    clearTimeout(_debounceTimer);
+    reloadPending = false;
+    if (realtimeChannel) { sb.removeChannel(realtimeChannel); realtimeChannel = null; }
+    clearDraft();
+    removeStored(sessionStorage, 'formDraft'); // 舊版未分帳號的草稿不自動移轉。
+    resetForm();
+    allData = []; currentData = []; selectedIds.clear();
+    currentTab = 'ALL'; searchQuery = ''; statusFilter = '';
+    _pendingUploadId = null;
+    weekStart = startOfWeek(localCalendarDate(todayYMD()));
+    document.getElementById('searchInput').value = '';
+    document.getElementById('inlineContractFile').value = '';
+    document.querySelector('#formBody').classList.remove('show');
+    document.querySelectorAll('.chip').forEach(el => el.classList.toggle('active', el.dataset.filter === ''));
+    ['tableBody','mobileCards','monthTabs','weekViewContainer','customerAnalysis','notifList','chart-year-selector','syncStatus','user-email','toast-container'].forEach(id => document.getElementById(id).textContent = '');
+    ['sumCount','sumPax','sumEst','sumAct','notifBadge'].forEach(id => document.getElementById(id).textContent = '0');
+    document.getElementById('notifBadge').style.display = 'none';
+    bootstrap.Modal.getInstance(document.getElementById('notificationModal'))?.hide();
+    if (performanceChartInstance) { performanceChartInstance.destroy(); performanceChartInstance = null; }
+    updateBatchToolbar(); syncSelectAllState();
+}
+async function acceptSession(session, transition = ++sessionTransition) {
+    if (transition !== sessionTransition) return;
+    const id = session?.user?.id || null;
+    if (id === activeUserId) { if (!id) showLogin(); return; }
+    // 等待已送出的寫入結束，再切換帳號畫面，避免舊操作污染新帳號狀態。
+    if (mutationBusy) { setTimeout(() => acceptSession(session, transition), 100); return; }
+    clearAccountState();
+    activeUserId = id;
+    if (id) { showApp(session.user.email); initApp(); }
+    else showLogin();
+}
+function wireRecordActions() {
+    document.getElementById('app-container').addEventListener('click', event => {
+        const el = event.target.closest('[data-record-action]');
+        if (!el || !activeUserId) return;
+        const id = el.dataset.recordId;
+        const row = allData.find(r => String(r.id) === id);
+        if (!row) return;
+        const actions = {
+            edit: () => editRecord(id), duplicate: () => duplicateRecord(id),
+            delete: () => deleteRecord(id), toggle: () => toggleField(id, el.dataset.field),
+            contract: () => viewContract(row.contractImage), upload: () => promptContractUpload(id)
+        };
+        actions[el.dataset.recordAction]?.();
+    });
+    document.getElementById('tableBody').addEventListener('change', event => {
+        const el = event.target.closest('[data-select-id]');
+        if (el) toggleRowSelect(el.dataset.selectId, el.checked, el);
+    });
+}
+// 單一寫入鎖：避免連點、批次與表單寫入互相交錯；所有例外均還原控制項。
+async function runMutation(action, allowEditing = false) {
+    if (mutationBusy) { showToast('資料處理中，請稍候', 'info'); return; }
+    if (!activeUserId || !dataReady) { showToast('請先成功載入完整資料後再操作', 'warn'); return; }
+    if (!allowEditing && document.getElementById('editId').value) { showToast('請先儲存或取消編輯', 'warn'); return; }
+    mutationBusy = true;
+    loadSequence++; // 已在途的舊讀取不可蓋回此次寫入結果。
+    const controls = [...document.querySelectorAll('#app-container button, #app-container input, #app-container select, #batchToolbar button')];
+    const states = controls.map(el => el.disabled);
+    controls.forEach(el => el.disabled = true);
+    try { return await action(); }
+    catch (err) {
+        // 請求拋例外時結果可能不確定，重新讀取以撤銷樂觀畫面，且不自動重送寫入。
+        await loadData();
+        updateSync(false, '操作失敗，請核對資料');
+        showToast('操作失敗：' + (err.message || err) + '。請核對目前資料後再操作。', 'error', 6000);
+    }
+    finally {
+        mutationBusy = false;
+        controls.forEach((el,i) => el.disabled = states[i]);
+        if (reloadPending) queueReload();
+    }
+}
 
 // 週首日(週一)
 function startOfWeek(d) {
@@ -563,8 +688,7 @@ function calcProgress(row) {
 }
 function progressDotsHTML(row) {
     const { done, total, steps } = calcProgress(row);
-    const today = new Date(); today.setHours(0,0,0,0);
-    const diff  = row.date ? (new Date(row.date)-today)/86400000 : Infinity;
+    const diff  = daysFromToday(row.date);
     let cls = '';
     if (done === total) cls = 'full';
     else if (diff>=0 && diff<=3) cls = 'danger';
@@ -583,9 +707,10 @@ function showToast(msg, type = 'success', duration = 3000) {
 }
 
 function updateSync(loading, msg = '已同步') {
-    document.getElementById('syncStatus').innerHTML = loading
-        ? `<i class="fas fa-spinner fa-spin"></i> ${msg}`
-        : `<i class="fas fa-check-circle text-success"></i> ${msg}`;
+    const el = document.getElementById('syncStatus');
+    const icon = document.createElement('i');
+    icon.className = loading ? 'fas fa-spinner fa-spin' : (/失敗|不完整|離線/.test(msg) ? 'fas fa-exclamation-circle text-danger' : 'fas fa-check-circle text-success');
+    el.replaceChildren(icon, document.createTextNode(' ' + msg));
 }
 
 // ══════════════════════════════════════════════
@@ -593,13 +718,23 @@ function updateSync(loading, msg = '已同步') {
 // ══════════════════════════════════════════════
 window.onload = async function() {
     initColToggle();
-    const { data: { session } } = await sb.auth.getSession();
-    if (session) { showApp(session.user.email); initApp(); }
-    else          { showLogin(); }
+    wireRecordActions();
+    let authRevision = 0;
     sb.auth.onAuthStateChange((event, session) => {
-        if      (event === 'SIGNED_IN')  { showApp(session.user.email); initApp(); }
-        else if (event === 'SIGNED_OUT') { showLogin(); }
+        authRevision++;
+        // 離開 Auth callback 後再執行資料請求。
+        setTimeout(() => acceptSession(session), 0);
     });
+    const revision = authRevision;
+    try {
+        const { data: { session }, error } = await sb.auth.getSession();
+        if (error) throw error;
+        if (revision === authRevision) await acceptSession(session);
+    } catch (err) { showLogin(); document.getElementById('login-error').textContent = '登入狀態讀取失敗：' + err.message; }
+    setInterval(() => {
+        if (!activeUserId || !dataReady || todayYMD() === lastToday) return;
+        lastToday = todayYMD(); applyFilters(); fetchNotifications();
+    }, 60000);
 };
 
 function showLogin() {
@@ -635,7 +770,12 @@ async function handleLogin() {
         btn.disabled = false; btn.textContent = '登入';
     }
 }
-async function handleLogout() { if(confirm('確定登出？')) await sb.auth.signOut(); }
+async function handleLogout() {
+    if (mutationBusy) { showToast('請等待資料儲存完成後再登出', 'warn'); return; }
+    if (!confirm('確定登出？未儲存的內容將清除。')) return;
+    try { const { error } = await sb.auth.signOut(); if (error) throw error; await acceptSession(null); }
+    catch (err) { showToast('登出失敗：' + err.message, 'error'); }
+}
 
 let appInited = false;
 function initApp() {
@@ -646,10 +786,10 @@ function initApp() {
         document.getElementById('recordForm').addEventListener('input', () => {
             if (!document.getElementById('editId').value) saveDraft();
         });
-        setupRealtime();
     }
-    loadData().then(() => restoreDraft());
-    fetchNotifications();
+    setupRealtime();
+    const epoch = sessionEpoch;
+    loadData().then(ok => { if (ok && epoch === sessionEpoch) restoreDraft(); });
 }
 
 // ══════════════════════════════════════════════
@@ -658,7 +798,7 @@ function initApp() {
 function initColToggle() {
     // 清掉 localStorage 殘留的已移除欄位 key(contractUploaded / simCard),避免 colspan 與選單算錯
     hiddenCols = new Set([...hiddenCols].filter(k => TOGGLEABLE_COLS.some(c => c.key === k)));
-    localStorage.setItem('hiddenCols', JSON.stringify([...hiddenCols]));
+    writeStored(localStorage, 'hiddenCols', JSON.stringify([...hiddenCols]));
     const menu = document.getElementById('colToggleMenu');
     menu.innerHTML = TOGGLEABLE_COLS.map(col => `
         <div class="col-toggle-item">
@@ -670,7 +810,7 @@ function initColToggle() {
 
 function toggleCol(key, visible) {
     if (visible) hiddenCols.delete(key); else hiddenCols.add(key);
-    localStorage.setItem('hiddenCols', JSON.stringify([...hiddenCols]));
+    writeStored(localStorage, 'hiddenCols', JSON.stringify([...hiddenCols]));
     applyColVisibility();
 }
 
@@ -683,19 +823,55 @@ function applyColVisibility() {
 //  資料層
 // ══════════════════════════════════════════════
 async function loadData(showStatus = false) {
-    if (showStatus) updateSync(true, '讀取中...');
-    const { data, error } = await sb.from(TABLE_NAME).select('*').order('date', { ascending: true });
-    if (error) { updateSync(false, '載入失敗'); showToast('❌ 資料載入失敗：'+error.message,'error'); return; }
-    allData = data || [];
-    renderTabs();
-    applyFilters();
-    updateSync(false);
+    if (!activeUserId) return false;
+    dataReady = false;
+    const epoch = sessionEpoch, request = ++loadSequence;
+    const valid = () => epoch === sessionEpoch && request === loadSequence;
+    updateSync(true, '讀取中...');
+    try {
+        // 按實際回傳筆數前進，可兼容後台小於 500 筆的回傳上限。
+        // 穩定排序與總筆數／重複 ID 檢查，避免把截斷資料當成完整資料。
+        for (let attempt = 0; attempt < 2; attempt++) {
+            const records = [], ids = new Set();
+            let expected = null, inconsistent = false;
+            while (true) {
+                const {data, error, count} = await sb.from(TABLE_NAME)
+                    .select('*', {count:'exact'}).order('id', {ascending:true})
+                    .range(records.length, records.length + 499);
+                if (!valid()) return false;
+                if (error) throw error;
+                if (!Number.isInteger(count) || count < 0) throw new Error('無法確認資料總筆數，請重新整理');
+                if (expected === null) expected = count;
+                if (expected !== count) { inconsistent = true; break; }
+                const page = data || [];
+                for (const row of page) {
+                    if (row.id == null || ids.has(String(row.id))) { inconsistent = true; break; }
+                    ids.add(String(row.id)); records.push(row);
+                }
+                if (inconsistent || records.length > expected) { inconsistent = true; break; }
+                if (records.length === expected) break;
+                if (!page.length) { inconsistent = true; break; }
+            }
+            if (inconsistent) continue;
+            allData = records; dataReady = true;
+            renderTabs(); applyFilters(); fetchNotifications();
+            updateSync(false, '已同步 ' + records.length + ' 筆');
+            return true;
+        }
+        throw new Error('載入期間資料有變動，尚未取得完整資料，請重新整理');
+    } catch (err) {
+        if (!valid()) return false;
+        dataReady = false;
+        clearSelection(false);
+        updateSync(false, '載入失敗／資料未確認完整');
+        showToast('資料載入失敗：' + err.message + '。暫停儲存與匯出，請按刷新重試。', 'error', 6000);
+        return false;
+    }
 }
 
 // 純前端篩選 + 排序
 function applyFilters() {
     const q = searchQuery.toLowerCase();
-    const today = new Date(); today.setHours(0,0,0,0);
 
     let filtered = allData.filter(r => {
         // Tab 篩選
@@ -704,7 +880,7 @@ function applyFilters() {
         if (q && ![(r.tour||''),(r.name||'')].some(s=>s.toLowerCase().includes(q))) return false;
         // 狀態快速篩選
         if (statusFilter) {
-            const diff = r.date ? (new Date(r.date)-today)/86400000 : Infinity;
+            const diff = daysFromToday(r.date);
             if (statusFilter==='no_deposit'  && r.deposit      === true) return false;
             if (statusFilter==='no_balance'  && r.balance       === true) return false;
             if (statusFilter==='no_pretrip'  && r.preTripNotify === true) return false;
@@ -723,6 +899,9 @@ function applyFilters() {
     });
 
     currentData = filtered;
+    const visible = new Set(filtered.map(r => String(r.id)));
+    selectedIds = new Set([...selectedIds].filter(id => visible.has(id)));
+    updateBatchToolbar();
     renderAll();
     calculateSummary();
     if (currentView === 'week') renderWeekView();
@@ -732,7 +911,7 @@ function applyFilters() {
 //  Tabs（從 allData 推算，不打 DB）
 // ══════════════════════════════════════════════
 function renderTabs() {
-    const dates  = allData.map(r=>r.date).filter(x=>x);
+    const dates  = allData.map(r=>r.date).filter(x=>Number.isFinite(dayNumber(x)));
     const months = [...new Set(dates.map(d=>d.substring(0,7)))].sort().reverse();
     const years  = [...new Set(dates.map(d=>d.substring(0,4)))].sort().reverse();
 
@@ -741,6 +920,7 @@ function renderTabs() {
     dates.forEach(d => { const m=d.substring(0,7); countByMonth[m]=(countByMonth[m]||0)+1; });
 
     const container = document.getElementById('monthTabs');
+    if (currentTab !== 'ALL' && !months.includes(currentTab)) currentTab = 'ALL';
     let html = `<li class="nav-item"><button class="nav-link ${currentTab==='ALL'?'active':''}" onclick="switchTab('ALL')">全部<span class="tab-count">${allData.length}</span></button></li>`;
     months.forEach(m => {
         html += `<li class="nav-item"><button class="nav-link ${currentTab===m?'active':''}" onclick="switchTab('${m}')">${m}<span class="tab-count">${countByMonth[m]||0}</span></button></li>`;
@@ -789,7 +969,6 @@ function calculateSummary() {
 function renderAll() {
     const tbody  = document.getElementById('tableBody');
     const mCards = document.getElementById('mobileCards');
-    const today  = new Date(); today.setHours(0,0,0,0);
 
     updateSortIcons();
     renderPerformanceDashboard();
@@ -799,23 +978,24 @@ function renderAll() {
         const visibleCols = 22 - hiddenCols.size;  // 22 = 表頭總欄數(含 checkbox + 進度欄)
         tbody.innerHTML  = `<tr><td colspan="${visibleCols}" class="text-center p-5 text-muted">此月份無資料或查無結果</td></tr>`;
         mCards.innerHTML = '<div class="text-center p-5 text-muted">無資料</div>';
+        syncSelectAllState();
         return;
     }
 
     const tRows = [], mCardArr = [];
     currentData.forEach(row => {
         const e = escapeHtml;
-        const diff   = row.date ? (new Date(row.date)-today)/86400000 : Infinity;
+        const diff   = daysFromToday(row.date);
         const urgent = diff>=0 && diff<=3;
 
         // ── PC 列 ──
         const isSel = selectedIds.has(String(row.id));
         tRows.push(`<tr class="${urgent?'highlight-row':''} ${isSel?'row-selected':''}">
-            <td><input type="checkbox" class="row-chk" ${isSel?'checked':''} onclick="event.stopPropagation()" onchange="toggleRowSelect('${e(row.id)}',this.checked,this)"></td>
+            <td><input type="checkbox" class="row-chk" ${isSel?'checked':''} data-select-id="${e(row.id)}"></td>
             <td>
-                <button class="btn btn-sm btn-outline-primary p-1 px-2" title="編輯"   onclick="editRecord('${e(row.id)}')"><i class="fas fa-edit"></i></button>
-                <button class="btn btn-sm btn-outline-success p-1 px-2" title="複製"   onclick="duplicateRecord('${e(row.id)}')"><i class="fas fa-copy"></i></button>
-                <button class="btn btn-sm btn-outline-danger  p-1 px-2" title="刪除"   onclick="deleteRecord('${e(row.id)}','${e(row.name)}')"><i class="fas fa-trash"></i></button>
+                <button class="btn btn-sm btn-outline-primary p-1 px-2" title="編輯"   data-record-action="edit" data-record-id="${e(row.id)}"><i class="fas fa-edit"></i></button>
+                <button class="btn btn-sm btn-outline-success p-1 px-2" title="複製"   data-record-action="duplicate" data-record-id="${e(row.id)}"><i class="fas fa-copy"></i></button>
+                <button class="btn btn-sm btn-outline-danger  p-1 px-2" title="刪除"   data-record-action="delete" data-record-id="${e(row.id)}"><i class="fas fa-trash"></i></button>
             </td>
             <td>${e(row.date)}</td>
             <td class="text-left fw-bold text-truncate" style="max-width:240px;" title="${e(row.tour)}">${e(row.tour)}</td>
@@ -829,13 +1009,13 @@ function renderAll() {
             <td class="text-danger small fw-bold">${e(row.ticketingDate)}</td>
             <td class="col-contract">${e(row.contract)}</td>
             <td class="col-contractImage">${contractCellHTML(row)}</td>
-            <td class="col-paperSent toggleable-cell" onclick="toggleField('${e(row.id)}','paperSent')" title="點擊切換"><span class="${statusV(row.paperSent)}">${boolStr(row.paperSent)}</span></td>
-            <td class="toggleable-cell" onclick="toggleField('${e(row.id)}','deposit')" title="點擊切換"><span class="${statusV(row.deposit)}">${boolStr(row.deposit)}</span></td>
-            <td class="toggleable-cell" onclick="toggleField('${e(row.id)}','balance')" title="點擊切換"><span class="${statusV(row.balance)}">${boolStr(row.balance)}</span></td>
-            <td class="toggleable-cell" onclick="toggleField('${e(row.id)}','preTripNotify')" title="點擊切換"><span class="${statusV(row.preTripNotify)}">${boolStr(row.preTripNotify)}</span></td>
-            <td class="col-billSent toggleable-cell" onclick="toggleField('${e(row.id)}','billSent')" title="點擊切換"><span class="${statusV(row.billSent)}">${boolStr(row.billSent)}</span></td>
-            <td class="toggleable-cell" onclick="toggleField('${e(row.id)}','list')" title="點擊切換"><span class="${statusV(row.list)}">${boolStr(row.list)}</span></td>
-            <td class="col-room toggleable-cell" onclick="toggleField('${e(row.id)}','room')" title="點擊切換"><span class="${statusV(row.room)}">${boolStr(row.room)}</span></td>
+            <td class="col-paperSent toggleable-cell" data-record-action="toggle" data-record-id="${e(row.id)}" data-field="paperSent" title="點擊切換"><span class="${statusV(row.paperSent)}">${boolStr(row.paperSent)}</span></td>
+            <td class="toggleable-cell" data-record-action="toggle" data-record-id="${e(row.id)}" data-field="deposit" title="點擊切換"><span class="${statusV(row.deposit)}">${boolStr(row.deposit)}</span></td>
+            <td class="toggleable-cell" data-record-action="toggle" data-record-id="${e(row.id)}" data-field="balance" title="點擊切換"><span class="${statusV(row.balance)}">${boolStr(row.balance)}</span></td>
+            <td class="toggleable-cell" data-record-action="toggle" data-record-id="${e(row.id)}" data-field="preTripNotify" title="點擊切換"><span class="${statusV(row.preTripNotify)}">${boolStr(row.preTripNotify)}</span></td>
+            <td class="col-billSent toggleable-cell" data-record-action="toggle" data-record-id="${e(row.id)}" data-field="billSent" title="點擊切換"><span class="${statusV(row.billSent)}">${boolStr(row.billSent)}</span></td>
+            <td class="toggleable-cell" data-record-action="toggle" data-record-id="${e(row.id)}" data-field="list" title="點擊切換"><span class="${statusV(row.list)}">${boolStr(row.list)}</span></td>
+            <td class="col-room toggleable-cell" data-record-action="toggle" data-record-id="${e(row.id)}" data-field="room" title="點擊切換"><span class="${statusV(row.room)}">${boolStr(row.room)}</span></td>
             <td class="col-note text-muted text-truncate" style="max-width:120px;" title="${e(row.note)}">${e(row.note)}</td>
         </tr>`);
 
@@ -868,11 +1048,11 @@ function renderAll() {
             </div>
             <div class="text-end mt-2 d-flex justify-content-end gap-1">
                 ${row.contractImage
-                    ? `<button class="btn btn-sm btn-outline-success" onclick="viewContract('${e(row.contractImage)}')"><i class="fas fa-image"></i> 合約</button>`
-                    : (contractDone(row) ? '' : `<button class="btn btn-sm btn-outline-secondary" onclick="promptContractUpload('${e(row.id)}')"><i class="fas fa-upload"></i> 合約</button>`)}
-                <button class="btn btn-sm btn-outline-danger"  onclick="deleteRecord('${e(row.id)}','${e(row.name)}')"><i class="fas fa-trash"></i></button>
-                <button class="btn btn-sm btn-outline-success" onclick="duplicateRecord('${e(row.id)}')"><i class="fas fa-copy"></i></button>
-                <button class="btn btn-sm btn-primary"         onclick="editRecord('${e(row.id)}')"><i class="fas fa-edit"></i> 編輯</button>
+                    ? `<button class="btn btn-sm btn-outline-success" data-record-action="contract" data-record-id="${e(row.id)}"><i class="fas fa-image"></i> 合約</button>`
+                    : (contractDone(row) ? '' : `<button class="btn btn-sm btn-outline-secondary" data-record-action="upload" data-record-id="${e(row.id)}"><i class="fas fa-upload"></i> 合約</button>`)}
+                <button class="btn btn-sm btn-outline-danger"  data-record-action="delete" data-record-id="${e(row.id)}"><i class="fas fa-trash"></i></button>
+                <button class="btn btn-sm btn-outline-success" data-record-action="duplicate" data-record-id="${e(row.id)}"><i class="fas fa-copy"></i></button>
+                <button class="btn btn-sm btn-primary"         data-record-action="edit" data-record-id="${e(row.id)}"><i class="fas fa-edit"></i> 編輯</button>
             </div>
         </div>`);
     });
@@ -922,9 +1102,10 @@ function clearSelection(rerender = true) {
 }
 
 async function batchUpdate(field, value) {
-    const ids = [...selectedIds];
+    const ids = visibleSelectedIds();
     if (!ids.length) return;
-    const fieldLabel = FIELD_LABELS[field] || field;
+    if (!Object.hasOwn(FIELD_LABELS, field)) return;
+    const fieldLabel = FIELD_LABELS[field];
     if (!confirm(`要將 ${ids.length} 筆紀錄的「${fieldLabel}」設為 ${value?'V':'空'} 嗎?`)) return;
 
     updateSync(true, '批次更新中...');
@@ -935,12 +1116,13 @@ async function batchUpdate(field, value) {
     });
     applyFilters();
 
-    const { error } = await sb.from(TABLE_NAME).update({ [field]: value }).in('id', ids);
+    const { data: changed, error } = await sb.from(TABLE_NAME).update({ [field]: value }).in('id', ids).select('id');
     if (error) {
         showToast(`❌ 批次更新失敗:${error.message}`, 'error');
         await loadData();  // 失敗就重抓回正確狀態
         return;
     }
+    if (changed?.length !== ids.length) { await loadData(); showToast('部分紀錄未更新，可能已刪除或無更新權限；請核對後重試', 'warn', 6000); clearSelection(); return; }
     updateSync(false);
     showToast(`✅ 已更新 ${ids.length} 筆「${fieldLabel}」`);
     clearSelection();
@@ -948,20 +1130,20 @@ async function batchUpdate(field, value) {
 }
 
 async function batchDelete() {
-    const ids = [...selectedIds];
+    const ids = visibleSelectedIds();
     if (!ids.length) return;
     if (!confirm(`⚠️ 確定要刪除 ${ids.length} 筆紀錄?此操作不可復原。`)) return;
 
     updateSync(true, '刪除中...');
-    const imgPaths = allData.filter(r => selectedIds.has(String(r.id))).map(r => r.contractImage).filter(Boolean);
-    const { error } = await sb.from(TABLE_NAME).delete().in('id', ids);
+    const { data: deleted, error } = await sb.from(TABLE_NAME).delete().in('id', ids).select('id');
     if (error) {
         showToast(`❌ 批次刪除失敗:${error.message}`, 'error');
         updateSync(false, '失敗');
         return;
     }
-    removeContractFiles(imgPaths);   // 一併清 Storage 檔
-    showToast(`🗑️ 已刪除 ${ids.length} 筆紀錄`, 'info');
+    const deletedIds = new Set((deleted || []).map(r => String(r.id)));
+    removeContractFiles(allData.filter(r => deletedIds.has(String(r.id))).map(r => r.contractImage));
+    showToast(`已刪除 ${deletedIds.size} / ${ids.length} 筆紀錄` + (deletedIds.size !== ids.length ? '，部分紀錄已不存在或無刪除權限' : ''), deletedIds.size === ids.length ? 'info' : 'warn', 6000);
     clearSelection(false);
     await loadData();
     fetchNotifications();
@@ -1018,9 +1200,24 @@ async function saveRecord() {
     record.contractImage = contractPath;
 
     const editId = getV('editId');
-    const { error } = editId
-        ? await sb.from(TABLE_NAME).update(record).eq('id', editId)
-        : await sb.from(TABLE_NAME).insert([record]);
+    let error = null;
+    if (editId) {
+        if (!editSnapshot || String(editSnapshot.id) !== String(editId)) {
+            error = new Error('編輯資料已失效，請重新開啟紀錄');
+        } else {
+            let query = sb.from(TABLE_NAME).update(record).eq('id', editId);
+            for (const key of Object.keys(record)) {
+                const original = editSnapshot[key];
+                if (original === undefined) continue;
+                query = original === null ? query.is(key, null) : query.eq(key, original);
+            }
+            const result = await query.select('id');
+            error = result.error;
+            if (!error && result.data?.length !== 1) error = new Error('這筆資料已被他人修改、刪除或無權更新。請保留需要的內容，按重置、刷新後重新編輯');
+        }
+    } else {
+        ({error} = await sb.from(TABLE_NAME).insert([record]));
+    }
 
     if (!error) {
         showToast(editId ? '✅ 紀錄已更新！' : '✅ 新增成功！');
@@ -1035,14 +1232,17 @@ async function saveRecord() {
     } else {
         // 存檔失敗但新檔已上傳 → 清掉避免孤兒檔
         if (uploadedNew) removeContractFiles(uploadedNew);
-        showToast('❌ 儲存失敗：'+error.message, 'error');
+        updateSync(false, '儲存失敗');
+        showToast('❌ 儲存失敗：'+error.message, 'error', 6000);
     }
     btn.disabled = false;
 }
 
 function editRecord(id) {
-    const row = currentData.find(r=>String(r.id)===String(id));
+    if (mutationBusy) return;
+    const row = allData.find(r=>String(r.id)===String(id));
     if (!row) return;
+    editSnapshot = {...row};
     document.getElementById('editId').value = row.id;
     FORM_FIELD_IDS.forEach(fid => {
         const key = fid.replace('f_','');
@@ -1065,7 +1265,8 @@ function editRecord(id) {
 
 // 複製紀錄：帶入行程資訊，清空客人資料與狀態欄位
 function duplicateRecord(id) {
-    const row = currentData.find(r=>String(r.id)===String(id));
+    if (mutationBusy) return;
+    const row = allData.find(r=>String(r.id)===String(id));
     if (!row) return;
     resetForm();
     document.getElementById('f_date').value    = row.date    || '';
@@ -1078,10 +1279,12 @@ function duplicateRecord(id) {
     showToast('📋 已複製行程資料，請填入客人資訊', 'info');
 }
 
-async function deleteRecord(id, name) {
+async function deleteRecord(id) {
+    const name = allData.find(r => String(r.id) === String(id))?.name || '';
     if (!confirm(`確定刪除「${name}」的紀錄？`)) return;
     const imgPath = allData.find(r => String(r.id) === String(id))?.contractImage;
-    const { error } = await sb.from(TABLE_NAME).delete().eq('id', id);
+    const { data: deleted, error } = await sb.from(TABLE_NAME).delete().eq('id', id).select('id');
+    if (!error && deleted?.length !== 1) { showToast('紀錄已不存在或無刪除權限，未刪除附件', 'warn'); await loadData(); return; }
     if (!error) {
         removeContractFiles(imgPath);   // 一併清 Storage 檔,避免孤兒檔
         showToast(`🗑️ 已刪除「${name}」的紀錄`, 'info');
@@ -1101,6 +1304,8 @@ async function toggleField(id, field) {
     }
     const row = allData.find(r => String(r.id) === String(id));
     if (!row) return;
+    if (!Object.hasOwn(FIELD_LABELS, field)) return;
+    const storedValue = row[field];
     const oldVal = row[field] === true;
     const newVal = !oldVal;
 
@@ -1109,9 +1314,12 @@ async function toggleField(id, field) {
     applyFilters();
     updateSync(true, '更新中...');
 
-    const { error } = await sb.from(TABLE_NAME).update({ [field]: newVal }).eq('id', id);
+    let query = sb.from(TABLE_NAME).update({ [field]: newVal }).eq('id', id);
+    query = storedValue == null ? query.is(field, null) : query.eq(field, storedValue);
+    const result = await query.select('id');
+    const error = result.error || (result.data?.length !== 1 ? new Error('資料已被修改或無更新權限，請刷新後重試') : null);
     if (error) {
-        row[field] = oldVal;  // 回滾
+        row[field] = storedValue;  // 回滾
         applyFilters();
         updateSync(false, '更新失敗');
         showToast(`❌ 更新失敗:${error.message}`, 'error');
@@ -1166,9 +1374,9 @@ async function viewContract(path) {
 // 表格「合約截圖」儲存格:有圖 → 查看;無圖但舊勾選 → V;都沒有 → 就地上傳
 function contractCellHTML(row) {
     const e = escapeHtml;
-    if (row.contractImage) return `<button class="btn btn-sm btn-outline-success p-1 px-2" title="查看合約截圖" onclick="viewContract('${e(row.contractImage)}')"><i class="fas fa-image"></i> 查看</button>`;
+    if (row.contractImage) return `<button class="btn btn-sm btn-outline-success p-1 px-2" title="查看合約截圖" data-record-action="contract" data-record-id="${e(row.id)}"><i class="fas fa-image"></i> 查看</button>`;
     if (row.contractUploaded === true) return `<span class="status-v" title="舊制勾選(無截圖),可從編輯補上傳">V</span>`;
-    return `<button class="btn btn-sm btn-outline-secondary p-1 px-2" title="上傳合約截圖" onclick="promptContractUpload('${e(row.id)}')"><i class="fas fa-upload"></i></button>`;
+    return `<button class="btn btn-sm btn-outline-secondary p-1 px-2" title="上傳合約截圖" data-record-action="upload" data-record-id="${e(row.id)}"><i class="fas fa-upload"></i></button>`;
 }
 
 function promptContractUpload(id) {
@@ -1193,7 +1401,10 @@ async function handleInlineContractUpload(input) {
     updateSync(true, '上傳截圖中...');
     try {
         const path = await uploadContractFile(file);
-        const { error } = await sb.from(TABLE_NAME).update({ contractImage: path }).eq('id', id);
+        let query = sb.from(TABLE_NAME).update({ contractImage: path }).eq('id', id);
+        query = row.contractImage == null ? query.is('contractImage', null) : query.eq('contractImage', row.contractImage);
+        const result = await query.select('id');
+        const error = result.error || (result.data?.length !== 1 ? new Error('紀錄已變更或無更新權限，請刷新後重試') : null);
         if (error) { removeContractFiles(path); throw error; }
         const old = row.contractImage;
         row.contractImage = path;
@@ -1225,86 +1436,67 @@ function removeContractImage() {
 // ══════════════════════════════════════════════
 //  表單草稿（sessionStorage）
 // ══════════════════════════════════════════════
+function draftKey() { return activeUserId ? 'formDraft:' + activeUserId : null; }
 function saveDraft() {
+    const key = draftKey(); if (!key) return;
     const draft = {};
     FORM_FIELD_IDS.forEach(id => { draft[id] = document.getElementById(id)?.value || ''; });
-    sessionStorage.setItem('formDraft', JSON.stringify(draft));
+    writeStored(sessionStorage, key, JSON.stringify(draft));
 }
-
 function restoreDraft() {
-    if (document.getElementById('editId').value) return;
-    const draft = JSON.parse(sessionStorage.getItem('formDraft') || 'null');
-    if (!draft) return;
-    const hasContent = draft.f_tour || draft.f_name;
-    if (!hasContent) return;
-    FORM_FIELD_IDS.forEach(id => { const el=document.getElementById(id); if(el && draft[id]) el.value=draft[id]; });
+    if (!activeUserId || document.getElementById('editId').value) return;
+    const draft = readStoredJSON(sessionStorage, draftKey(), null, x => x && typeof x === 'object' && !Array.isArray(x));
+    if (!draft || !(draft.f_tour || draft.f_name)) return;
+    FORM_FIELD_IDS.forEach(id => { const el = document.getElementById(id); if (el && typeof draft[id] === 'string') el.value = draft[id]; });
     document.querySelector('#formBody').classList.add('show');
-    showToast('📝 已還原上次未儲存的草稿，如不需要請按「重置」', 'info', 5000);
+    showToast('已還原此帳號未儲存的草稿，如不需要請按重置', 'info', 5000);
 }
-
-function clearDraft() { sessionStorage.removeItem('formDraft'); }
+function clearDraft() { const key = draftKey(); if (key) removeStored(sessionStorage, key); }
 
 function resetForm() {
     document.getElementById('recordForm').reset();
     document.getElementById('editId').value = '';
     _editingOriginalImage = '';
+    editSnapshot = null;
     setContractImageUI('');
     document.getElementById('submitBtn').textContent = '儲存紀錄';
     document.getElementById('submitBtn').classList.replace('btn-warning','btn-primary');
     clearDraft();
+    if (reloadPending) queueReload();
 }
 
 // ══════════════════════════════════════════════
 //  待辦通知
 // ══════════════════════════════════════════════
-async function fetchNotifications() {
-    const today = new Date();
-    const todayStr = today.toISOString().split('T')[0];
-    const d3 = new Date(today); d3.setDate(today.getDate()+3);
-    const d3Str = d3.toISOString().split('T')[0];
-
-    const { data, error } = await sb.from(TABLE_NAME)
-        .select('name,tour,date,ticketingDate,deposit,balance,preTripNotify,list,contractImage,contractUploaded')
-        .or(`and(date.gte.${todayStr},date.lte.${d3Str},or(deposit.is.false,balance.is.false,preTripNotify.is.false,and(contractImage.is.null,contractUploaded.not.is.true))),and(ticketingDate.gte.${todayStr},ticketingDate.lte.${d3Str},list.is.false)`);
-    if (error) { console.error('待辦讀取失敗:', error); return; }
-
+function notificationIssues(row, today = todayYMD()) {
+    const issues = [];
+    const depDiff = daysFromToday(row.date, today), ticketDiff = daysFromToday(row.ticketingDate, today);
+    if (depDiff >= 0 && depDiff <= 3) {
+        if (row.deposit !== true) issues.push('未收訂金');
+        if (row.balance !== true) issues.push('未收尾款');
+        if (row.preTripNotify !== true) issues.push('未發行前通知');
+        if (!contractDone(row)) issues.push('合約截圖未上傳');
+    }
+    if (ticketDiff >= 0 && ticketDiff <= 3 && row.list !== true && (!row.date || depDiff >= 0)) issues.push('需入名單（開票預警）');
+    return issues;
+}
+function fetchNotifications() {
+    if (!activeUserId || !dataReady) return;
     const list = document.getElementById('notifList');
-    list.innerHTML = '';
+    list.replaceChildren();
     let count = 0;
-    const todayDate = new Date(todayStr);
-
-    (data||[]).forEach(row => {
-        const issues = [];
-        const depDate  = row.date          ? new Date(row.date)          : null;
-        const tickDate = row.ticketingDate ? new Date(row.ticketingDate) : null;
-        if (depDate) {
-            const diff = (depDate-todayDate)/86400000;
-            if (diff>=0&&diff<=3) {
-                if (!row.deposit)                    issues.push('未收訂金');
-                if (!row.balance)                    issues.push('未收尾款');
-                if (!row.preTripNotify)              issues.push('未發行前通知');
-                if (!contractDone(row))              issues.push('合約截圖未上傳');
-            }
-        }
-        if (tickDate) {
-            const tDiff = (tickDate-todayDate)/86400000;
-            if (tDiff>=0&&tDiff<=3&&!row.list&&(!depDate||depDate>=todayDate)) issues.push('需入名單（開票預警）');
-        }
+    allData.forEach(row => {
+        const issues = notificationIssues(row);
         if (!issues.length) return;
         count++;
         const li = document.createElement('li');
         li.className = 'list-group-item p-3';
-        li.innerHTML = `
-            <div class="d-flex justify-content-between align-items-center">
-                <div><b>${escapeHtml(row.name)}</b> <small class="text-muted">${escapeHtml(row.tour)}</small></div>
-                <span class="badge bg-danger rounded-pill">${issues.length}</span>
-            </div>
-            <div class="small text-danger mt-1 fw-bold">${escapeHtml(issues.join('、'))}</div>`;
+        li.innerHTML = '<div class="d-flex justify-content-between align-items-center"><div><b>' + escapeHtml(row.name) + '</b> <small class="text-muted">' + escapeHtml(row.tour) + '</small></div><span class="badge bg-danger rounded-pill">' + issues.length + '</span></div><div class="small text-danger mt-1 fw-bold">' + escapeHtml(issues.join('、')) + '</div>';
         list.appendChild(li);
     });
-    document.getElementById('notifBadge').textContent  = count;
-    document.getElementById('notifBadge').style.display = count>0?'block':'none';
-    document.getElementById('noNotifMsg').style.display  = count===0?'block':'none';
+    document.getElementById('notifBadge').textContent = count;
+    document.getElementById('notifBadge').style.display = count > 0 ? 'block' : 'none';
+    document.getElementById('noNotifMsg').style.display = count === 0 ? 'block' : 'none';
 }
 
 // ══════════════════════════════════════════════
@@ -1343,7 +1535,7 @@ function renderPerformanceDashboard() {
 }
 
 function renderCustomerAnalysis() {
-    const map = {};
+    const map = Object.create(null);
     // 用 allData 取全局客戶排行,與業績圖表行為一致(不受 Tab / chips 篩選影響)
     allData.forEach(r => {
         if (!r.name) return;
@@ -1380,7 +1572,7 @@ function renderCustomerAnalysis() {
 // ══════════════════════════════════════════════
 function debounceSearch() {
     clearTimeout(_debounceTimer);
-    _debounceTimer = setTimeout(()=>{ searchQuery=document.getElementById('searchInput').value.trim(); applyFilters(); }, 300);
+    _debounceTimer = setTimeout(()=>{ clearSelection(false); searchQuery=document.getElementById('searchInput').value.trim(); applyFilters(); }, 300);
 }
 
 function updateSortIcons() {
@@ -1397,20 +1589,22 @@ function sortData(col) {
 function openNotificationModal() { new bootstrap.Modal(document.getElementById('notificationModal')).show(); }
 
 function setupRealtime() {
-    sb.channel('public:sales_records')
-      .on('postgres_changes',{event:'*',schema:'public',table:TABLE_NAME},()=>{
-          if (!document.getElementById('editId').value) {
-              loadData().then(()=>fetchNotifications());
-          }
-      }).subscribe();
+    if (realtimeChannel) return;
+    realtimeChannel = sb.channel('sales-records-' + activeUserId)
+      .on('postgres_changes', {event:'*',schema:'public',table:TABLE_NAME}, queueReload)
+      .subscribe(status => {
+          if (status === 'SUBSCRIBED') queueReload();
+          else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') updateSync(false, '即時同步失敗，請按刷新');
+      });
 }
 
 // ══════════════════════════════════════════════
 //  視圖切換(列表 / 週曆)
 // ══════════════════════════════════════════════
 function switchView(view) {
+    clearSelection();
     currentView = view;
-    localStorage.setItem('currentView', view);
+    writeStored(localStorage, 'currentView', view);
     document.body.classList.toggle('view-week', view === 'week');
     document.body.classList.toggle('view-list', view === 'list');
     document.querySelectorAll('.view-toggle-btn').forEach(b => b.classList.toggle('active', b.dataset.view === view));
@@ -1424,7 +1618,7 @@ function navWeek(deltaDays) {
 }
 
 function gotoThisWeek() {
-    weekStart = startOfWeek(new Date());
+    weekStart = startOfWeek(localCalendarDate(todayYMD()));
     renderWeekView();
 }
 
@@ -1439,7 +1633,6 @@ function renderWeekView() {
         d.setDate(d.getDate() + i);
         days.push(d);
     }
-    const today = new Date(); today.setHours(0,0,0,0);
 
     // 該週每天的團(用字串日期比對,避開 timezone)
     const dayMap = {};
@@ -1466,9 +1659,9 @@ function renderWeekView() {
 
     days.forEach((d, idx) => {
         const dStr = fmtYMD(d);
-        const isToday   = d.getTime() === today.getTime();
+        const isToday   = dStr === todayYMD();
         const isWeekend = idx >= 5;
-        const isPast    = d.getTime() < today.getTime();
+        const isPast    = dStr < todayYMD();
         const events   = dayMap[dStr] || [];
         const cls = ['week-cell'];
         if (isToday) cls.push('today');
@@ -1479,7 +1672,7 @@ function renderWeekView() {
             const color = categoryColor(r.category) || '#0d6efd';
             const { done, total } = calcProgress(r);
             const e = escapeHtml;
-            return `<div class="week-event" style="background:${color}" onclick="editRecord('${e(r.id)}')" title="${e(r.tour)} - ${e(r.name)} (進度 ${done}/${total})">
+            return `<div class="week-event" style="background:${color}" data-record-action="edit" data-record-id="${e(r.id)}" title="${e(r.tour)} - ${e(r.name)} (進度 ${done}/${total})">
                 <div class="week-event-tour">${e(r.tour)}</div>
                 <div class="week-event-meta">${e(r.name)} · ${e(r.pax)}人 · ${done}/${total}</div>
             </div>`;
@@ -1505,6 +1698,7 @@ function renderWeekView() {
 }
 
 function exportToCSV() {
+    if (!dataReady) { showToast('請先刷新並成功載入完整資料再匯出', 'warn'); return; }
     const esc = v => `"${String(v==null?'':v).replace(/"/g,'""')}"`;
     const headers = ['出發日期','分類','行程','客人代表','人數','訂編','團費','預估業績','實際業績','開票日','合約狀態','合約截圖','寄紙本','行前通知','訂金','尾款','繳帳單','名單','分房','備註'];
     const rows = currentData.map(r=>[
@@ -1518,9 +1712,22 @@ function exportToCSV() {
     const csv  = '\uFEFF'+[headers.map(esc).join(','),...rows].join('\r\n');
     const link = document.createElement('a');
     link.href  = URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8;'}));
-    link.download = `業務出團表_${new Date().toISOString().slice(0,10)}.csv`;
+    link.download = `業務出團表_${todayYMD()}.csv`;
     link.click();
+    setTimeout(() => URL.revokeObjectURL(link.href), 1000);
 }
+const saveRecordImpl = saveRecord;
+saveRecord = () => runMutation(saveRecordImpl, true);
+const batchUpdateImpl = batchUpdate;
+batchUpdate = (field, value) => runMutation(() => batchUpdateImpl(field, value));
+const batchDeleteImpl = batchDelete;
+batchDelete = () => runMutation(batchDeleteImpl);
+const deleteRecordImpl = deleteRecord;
+deleteRecord = id => runMutation(() => deleteRecordImpl(id));
+const toggleFieldImpl = toggleField;
+toggleField = (id, field) => runMutation(() => toggleFieldImpl(id, field));
+const inlineUploadImpl = handleInlineContractUpload;
+handleInlineContractUpload = input => runMutation(() => inlineUploadImpl(input));
 </script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
