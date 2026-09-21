@@ -25,7 +25,8 @@ const mock = createServer(async (req, res) => {
     calls.scan++;
     const start = Number(url.searchParams.get('offset') ?? 0);
     const limit = Number(url.searchParams.get('limit') ?? 1000);
-    data = rows.slice(start, start + limit);
+    const selected = url.searchParams.has("score_total") ? rows.filter(row => row.score_total >= 80) : rows;
+    data = selected.slice(start, start + limit);
   } else if (route === 'price_daily') data = [{ trade_date: '2026-09-21' }];
   else if (route === 'trade_plans') calls.plans++;
   else if (route === 'v_plan_risk_context') { calls.risk++; data = null; }
@@ -57,7 +58,7 @@ try {
       if (boardMs == null && html.includes('Fixture 0')) boardMs = Date.now() - start;
     }
     assert.ok(html.includes('Fixture 0'), 'candidate renders');
-    assert.ok(html.includes('1001 檔'), 'count includes second page');
+    assert.ok(html.replace(/<!--.*?-->/g, '').includes('1001 檔'), 'count includes second page');
     assert.ok(!html.includes('Fixture 1<'), 'low-score stocks stay excluded');
     assert.ok(html.includes('前向追蹤載入失敗'), 'failed statistics are explicit and contained');
     assert.ok(!/"digest":"\d+"/.test(html), 'no page-level render failure');

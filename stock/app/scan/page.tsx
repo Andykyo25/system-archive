@@ -6,6 +6,7 @@ import type { ScanRow } from "@/lib/scan";
 import { Suspense } from "react";
 import { unstable_cache } from "next/cache";
 import { ObservationSummary } from "./ObservationSummary";
+import { ScanCoverage } from "./ScanCoverage";
 import { taipeiDate, type TradePlan } from "@/lib/trade-plan";
 import { ScanBoard } from "./ScanBoard";
 import { PlanItem, type PlanSettings } from "./PlanForms";
@@ -14,15 +15,14 @@ import type { RiskContext } from "@/lib/plan-risk";
 export const dynamic = "force-dynamic";
 
 // Cache only daily market research. Plans, settings and account risk stay fresh.
-// Read the view once: a separate exact HEAD count can time out even when rows succeed.
+// Keep the candidate query selective; coverage is streamed independently.
 const loadScan = unstable_cache(async () => {
   const sb = createClient();
   const result = await readAll<ScanRow>((from, to) => sb
-    .from("v_breakout_scan").select("*")
+    .from("v_breakout_scan").select("*").gte("score_total", 80)
     .order("score_total", { ascending: false }).order("symbol").range(from, to));
-  const allRows = unwrap(result, "起漲掃描") ?? [];
-  return { rows: allRows.filter((row) => Number(row.score_total) >= 80), total: allRows.length };
-}, ["scan:market:v1"], { revalidate: 60 });
+  return unwrap(result, "起漲掃描") ?? [];
+}, ["scan:candidates:v2"], { revalidate: 60 });
 
 export default async function ScanPage() {
   const sb = createClient();
@@ -48,7 +48,7 @@ export default async function ScanPage() {
         .select("key,value")
         .in("key", ["atr_stop_multiple", "plan_slippage_pct"]),
     ]);
-  const { rows, total } = scan;
+  const rows = scan;
   const date = unwrap(dateR, "價格資料日")?.[0]?.trade_date ?? null;
   const today = taipeiDate();
   const plans = (plansR.data ?? []) as TradePlan[];
@@ -96,11 +96,11 @@ export default async function ScanPage() {
         <div className="mt-6 grid grid-cols-2 gap-4 border-t border-white/10 pt-5 sm:grid-cols-4">
           {[
             ["價格資料日", date ?? "尚無資料"],
-            ["掃描範圍", `${total} 檔`],
+            ["掃描範圍", <Suspense key="coverage" fallback={<span>統計中…</span>}><ScanCoverage /></Suspense>],
             ["五條件全過", `${passed} 檔`],
             ["高分待確認", `${rows.length - passed} 檔`],
           ].map(([label, value]) => (
-            <div key={label}>
+            <div key={String(label)}>
               <p className="text-xs text-slate-400">{label}</p>
               <p className="mt-1.5 text-lg font-semibold text-slate-100">
                 {value}
