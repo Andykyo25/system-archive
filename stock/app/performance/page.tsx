@@ -15,20 +15,12 @@ interface SummaryRow {
   count_holdings: number | string;
 }
 
-// v_account_equity_daily(2026-08-17):每日 MTM。階梯曲線持股期間是平的,回撤看不出來;
-// 這條才是風險曲線。coverage_ok=false 的日子無法 MTM,不參與回撤統計。
-// 2026-08-28:08 月現金轉負是**加碼入金**造成的。做法(Andy 決定)是直接把入金加進
-// app_settings.initial_capital,不另外維護資金流水表。
-// 取捨:等於視同「這筆錢從第一天就在帳戶裡」,早期報酬率會被低估、peak/drawdown 會位移;
-// 換來零額外維護。capital_incomplete 是唯一會提醒「本金設得不夠」的機制。
 interface DailyEquityRow {
   trade_date: string;
   equity: number | string;
   peak_equity: number | string;
   drawdown_pct: number | string | null;
   coverage_ok: boolean;
-  cash: number | string;
-  capital_incomplete: boolean;
 }
 
 export default async function PerformancePage() {
@@ -45,7 +37,7 @@ export default async function PerformancePage() {
     sb
       .from("v_account_equity_daily")
       .select(
-        "trade_date, equity, peak_equity, drawdown_pct, coverage_ok, cash, capital_incomplete",
+        "trade_date, equity, peak_equity, drawdown_pct, coverage_ok",
       )
       .order("trade_date", { ascending: true }),
   ]);
@@ -66,11 +58,6 @@ export default async function PerformancePage() {
         : worst,
     null,
   );
-  // 現金為負 = initial_capital 設得比實際投入本金少(加碼入金後忘了加上去)
-  const incompleteDays = daily.filter((d) => d.capital_incomplete);
-  const capitalIncomplete = incompleteDays.length > 0;
-  const minCash =
-    daily.length > 0 ? Math.min(...daily.map((d) => Number(d.cash))) : 0;
   const lastDaily = covered.length > 0 ? covered[covered.length - 1] : null;
   const peakEquity = lastDaily != null ? Number(lastDaily.peak_equity) : null;
 
@@ -88,36 +75,7 @@ export default async function PerformancePage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-xl font-semibold">績效 · 權益曲線</h1>
-        <p className="mt-1 text-xs text-zinc-500">
-          下方曲線是<b>階梯式</b>(每次平倉跳升已實現損益,持股期間不含未實現浮動)=
-          落袋節奏。「最大回撤 / 峰值」則來自 <code>v_account_equity_daily</code> 的
-          <b>每日 mark-to-market</b> = 風險曲線。兩者刻意分開:階梯曲線只會在實現虧損時下降,
-          用它算回撤會嚴重低估。
-        </p>
       </div>
-
-      {capitalIncomplete && (
-        <div className="rounded-2xl border border-amber-800/50 bg-amber-950/30 px-4 py-3">
-          <p className="text-sm font-medium text-amber-300">
-            ⚠ 初始本金設得不夠 —— 有 {incompleteDays.length} 個交易日的現金算成負數,本頁報酬率不可引用
-          </p>
-          <p className="mt-1 text-xs leading-relaxed text-amber-200/70">
-            現金算式是「初始本金 + 交易現金流 + 當沖損益」,會變負數只有一種原因:
-            <b>加碼入金之後沒有把它加進初始本金</b>。最深是 {incompleteDays[0].trade_date} 起的{" "}
-            <b>{fmtMoney(minCash)}</b>。
-            <br />
-            到 <code>/settings</code> → 初始本金,至少要設到{" "}
-            <b className="text-amber-200">
-              {((initialCapital - minCash) / 10000).toFixed(4)} 萬
-              （{fmtMoney(initialCapital - minCash)}）
-            </b>
-            ,警告才會消失。
-            <span className="text-amber-200/50">
-              {" "}在那之前,系統寧可標記「不知道」也不顯示一個看起來合理的錯數字。
-            </span>
-          </p>
-        </div>
-      )}
 
       {/* Summary 卡 */}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
@@ -259,16 +217,6 @@ export default async function PerformancePage() {
         </TableShell>
       </div>
 
-      <p className="text-xs text-zinc-600">
-        ⚠ 假設單一初始本金、期間無額外存提。本金可於「設定」調整。
-        {covered.length < daily.length && (
-          <>
-            {" "}
-            回撤統計排除 {daily.length - covered.length} 個無法 MTM 的交易日
-            (該日持股在 <code>price_daily</code> 無報價 — 不用成本價假裝)。
-          </>
-        )}
-      </p>
     </div>
   );
 }
