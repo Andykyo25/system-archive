@@ -17,10 +17,10 @@ export default function GlobalError({
     <div className="flex min-h-[60vh] flex-col items-center justify-center gap-4 px-4 text-center">
       <h2 className="text-lg font-semibold text-red-400">頁面載入失敗</h2>
       <p className="max-w-xl break-words text-sm text-zinc-400">
-        {error.message || "發生未預期的錯誤"}
+        {error.digest ? "資料暫時無法載入，請稍後重試。若持續發生，請提供下方錯誤代碼。" : "頁面發生未預期的錯誤，請重新整理或稍後重試。"}
       </p>
       {error.digest && (
-        <p className="text-xs text-zinc-600">digest: {error.digest}</p>
+        <p className="text-xs text-zinc-600">錯誤代碼：{error.digest}</p>
       )}
       <button
         onClick={reset}
