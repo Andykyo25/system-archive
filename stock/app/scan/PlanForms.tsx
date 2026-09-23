@@ -174,7 +174,9 @@ export function PlanForm({
             step="0.01"
             required
           />
-          <span className={hint}>收盤 +3%，且不超過月線 +15%</span>
+          <span className={hint}>
+            {evidence == null ? "收盤 +3%，且不超過月線 +15%" : "收盤 +3%"}
+          </span>
         </label>
         <label className="text-xs text-slate-400">
           初始停損
