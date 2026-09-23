@@ -124,7 +124,23 @@ function ContextPanel({ ctx }: { ctx: BuyContext }) {
   const boxes: React.ReactNode[] = [];
   const rz = ctx.regimeRet != null ? regimeZoneLabel(ctx.regimeRet) : null;
 
-  if (!ctx.covered) {
+  // 今日看多的盤中閘門放最上面:停止 = 系統明確說不要進場
+  if (ctx.verdict?.state === "block") {
+    boxes.push(
+      <WarnBox key="verdict" tone="red">
+        🔴 <b>系統停止進場</b>:{ctx.verdict.reason}
+      </WarnBox>,
+    );
+  } else if (ctx.verdict?.state === "ok") {
+    boxes.push(
+      <WarnBox key="verdict" tone="green">
+        🟢 <b>今日看多 · 可進場</b>(盤中每 5 分鐘檢查停損與上方套牢)
+      </WarnBox>,
+    );
+  }
+
+  // 看多名單的股票系統有資料(v_scan_verdict),不是盲區
+  if (!ctx.covered && ctx.verdict == null) {
     boxes.push(
       <WarnBox key="blind" tone="zinc">
         ❓ <b>{ctx.symbol} 不在追蹤池</b>(universe / industry / watchlist 皆無)

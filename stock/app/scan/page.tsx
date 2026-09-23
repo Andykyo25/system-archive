@@ -2,7 +2,7 @@ import Link from "next/link";
 import { unstable_cache } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { readAll, unwrap } from "@/lib/db";
-import type { VerdictRow } from "@/lib/scan";
+import type { VerdictLive, VerdictRow } from "@/lib/scan";
 import { taipeiDate, type TradePlan } from "@/lib/trade-plan";
 import { VerdictBoard } from "./VerdictBoard";
 import { PlanItem, type PlanSettings } from "./PlanForms";
@@ -19,13 +19,15 @@ const loadVerdict = unstable_cache(async () => {
     .order("up10_pct", { ascending: false }).order("day_pct", { ascending: false })
     .order("symbol").range(from, to));
   return unwrap(result, "今日看多") ?? [];
-}, ["scan:verdict:v1"], { revalidate: 60 });
+}, ["scan:verdict:v2"], { revalidate: 60 });
 
 export default async function ScanPage() {
   const sb = createClient();
-  const [rows, dateR, plansR, riskR, settingsR] =
+  const [rows, liveR, dateR, plansR, riskR, settingsR] =
     await Promise.all([
       loadVerdict(),
+      // 盤中閘門不快取:報價每分鐘更新,狀態要即時
+      sb.from("v_verdict_live").select("symbol,state,reason,price_now,quoted_at"),
       sb
         .from("price_daily")
         .select("trade_date")
@@ -67,6 +69,9 @@ export default async function ScanPage() {
     slippagePct: setting("plan_slippage_pct"),
   };
   const cash = riskContext?.cash == null ? null : Number(riskContext.cash);
+  const live = new Map(
+    ((liveR.data ?? []) as VerdictLive[]).map((l) => [l.symbol, l] as const),
+  );
   return (
     <div className="space-y-6">
       <header className="flex flex-wrap items-end justify-between gap-3">
@@ -87,6 +92,7 @@ export default async function ScanPage() {
       )}
       <VerdictBoard
         rows={rows}
+        live={live}
         today={today}
         plansAvailable={!plansR.error}
         riskContext={riskContext}

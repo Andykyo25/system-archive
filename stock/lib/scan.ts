@@ -86,21 +86,35 @@ export function summarizeObservations(rows: Observation[]) {
 
 // v_scan_verdict:今日候選中,型態歷史 T+10 上漲比例達門檻者(2026-09-23)。
 export interface VerdictRow extends ScanRow {
-  pattern: "A" | "B" | "C";
+  pattern: "A" | "B" | "C" | "D";
   confidence: "高" | "中高";
   up10_pct: number | string;
   beat10_pct: number | string | null;
   med_ret10: number | string | null;
   n10: number;
+  // 過去 120 日在「收盤價~+20%」的成交量佔比(上方套牢量),0~1
+  supply_share: number | string | null;
 }
 
 export const PATTERN_LABEL: Record<VerdictRow["pattern"], string> = {
   A: "跌深後漲停反彈",
   B: "強勢突破",
   C: "一般突破",
+  D: "跌深反彈但上方套牢重",
 };
+
+// v_verdict_live:盤中閘門(verdict_watch_tick 每 5 分鐘同步推 Telegram)
+export interface VerdictLive {
+  symbol: string;
+  state: "ok" | "block" | "wait";
+  reason: string | null;
+  price_now: number | string | null;
+  quoted_at: string | null;
+}
 
 // 寫進交易計畫的進場理由:型態 + 歷史勝率(資料會隨成績單每日更新)。
 export function verdictEvidence(r: VerdictRow): string {
-  return `系統看多（信心${r.confidence}）：${PATTERN_LABEL[r.pattern]}，同型態 10 個交易日內上漲 ${Number(r.up10_pct).toFixed(0)}%（${r.n10} 筆）。`;
+  const supply =
+    r.supply_share == null ? "" : `上方套牢 ${(Number(r.supply_share) * 100).toFixed(0)}%，`;
+  return `系統看多（信心${r.confidence}）：${PATTERN_LABEL[r.pattern]}，${supply}同型態 10 個交易日內上漲 ${Number(r.up10_pct).toFixed(0)}%（${r.n10} 筆）。`;
 }

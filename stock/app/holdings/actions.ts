@@ -257,6 +257,8 @@ export interface BuyContext {
   chaseLossRegimeBand: [number, number] | null;
   // 未來 14 天內事件(法說會/除權息/股東會,stock_events)
   upcomingEvents: { type: string; date: string }[];
+  // 今日看多名單的盤中閘門(v_verdict_live,2026-09-23);不在名單 = null
+  verdict: { state: "ok" | "block" | "wait"; reason: string | null } | null;
 }
 
 // ATR 部位管理(拍板規畫② 2026-07-10):建議張數 = 風險預算 ÷ (k×ATR14×1000)。
@@ -291,7 +293,7 @@ export async function checkBuyContext(symbol: string): Promise<BuyContext | null
   const since = new Date(Date.now() - 10 * 86400000).toISOString().slice(0, 10);
   const today = new Date().toISOString().slice(0, 10);
   const eventHorizon = new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10);
-  const [eq, pf, rt, sells, behavior, bars, sizingSettings, summary, pnl, regimeBars, events] = await Promise.all([
+  const [eq, pf, rt, sells, behavior, bars, sizingSettings, summary, pnl, regimeBars, events, verdict] = await Promise.all([
     sb
       .from("v_entry_quality")
       .select("entry_zone, dev_ma20_pct, off_high_pct")
@@ -344,6 +346,7 @@ export async function checkBuyContext(symbol: string): Promise<BuyContext | null
       .gte("event_date", today)
       .lte("event_date", eventHorizon)
       .order("event_date", { ascending: true }),
+    sb.from("v_verdict_live").select("state, reason").eq("symbol", s).maybeSingle(),
   ]);
 
   let chaseWins = 0,
@@ -487,6 +490,7 @@ export async function checkBuyContext(symbol: string): Promise<BuyContext | null
     upcomingEvents: (
       (events.data as { event_type: string; event_date: string }[] | null) ?? []
     ).map((e) => ({ type: e.event_type, date: e.event_date })),
+    verdict: (verdict.data as BuyContext["verdict"]) ?? null,
   };
 }
 

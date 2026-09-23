@@ -76,12 +76,15 @@ Deno.serve(async (req: Request) => {
   // - 若 symbol 同時出現在 universe 跟其他表,以 universe 為準
   // B2:持股改讀 v_holdings_current(當前淨持股)取代舊 holdings 表 + holdings_transactions
   //   (後者含已平倉,過度收料;且舊 holdings 表可能與 v_holdings_current 不一致)
-  const [universe, holdingsCurrent, watchlist, industry, etf] = await Promise.all([
+  // 2026-09-23:加入「今日看多」名單(verdict_watch 最新一日),供 v_verdict_live 盤中閘門用。
+  //   不塞進 watchlist:watchlist 被 10 支收料 EF 共用,會連帶擴大基本面/籌碼收料([[L68]])。
+  const [universe, holdingsCurrent, watchlist, industry, etf, verdict] = await Promise.all([
     supabase.from("stock_universe").select("symbol, market"),
     supabase.from("v_holdings_current").select("symbol"),
     supabase.from("watchlist").select("symbol"),
     supabase.from("industry_stocks").select("symbol"),
     supabase.from("etf_metadata").select("symbol"),
+    supabase.from("v_verdict_watch_symbols").select("symbol"),
   ]);
 
   const symbolToMarket = new Map<string, string>();
@@ -105,6 +108,7 @@ Deno.serve(async (req: Request) => {
   for (const r of watchlist.data ?? []) addIfMissing(r.symbol);
   for (const r of industry.data ?? []) addIfMissing(r.symbol);
   for (const r of etf.data ?? []) addIfMissing(r.symbol);
+  for (const r of verdict.data ?? []) addIfMissing(r.symbol);
 
   if (symbolToMarket.size === 0) {
     return Response.json({ skipped: "no_target_symbols" });

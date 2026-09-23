@@ -32,7 +32,7 @@ const loadPatterns = unstable_cache(async () => {
     .select("pattern,n10,up10_pct,confidence")
     .order("pattern");
   return (unwrap(res, "型態勝率") ?? []) as PatternStat[];
-}, ["track:patterns:v1"], { revalidate: 300 });
+}, ["track:patterns:v2"], { revalidate: 300 });
 
 // mv_pick_scorecard 平日 15:30 / 22:30 刷新,頁面快取 5 分鐘足夠。
 const loadPicks = unstable_cache(async () => {
