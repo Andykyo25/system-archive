@@ -83,3 +83,24 @@ export function summarizeObservations(rows: Observation[]) {
     ).length,
   };
 }
+
+// v_scan_verdict:今日候選中,型態歷史 T+10 上漲比例達門檻者(2026-09-23)。
+export interface VerdictRow extends ScanRow {
+  pattern: "A" | "B" | "C";
+  confidence: "高" | "中高";
+  up10_pct: number | string;
+  beat10_pct: number | string | null;
+  med_ret10: number | string | null;
+  n10: number;
+}
+
+export const PATTERN_LABEL: Record<VerdictRow["pattern"], string> = {
+  A: "跌深後漲停反彈",
+  B: "強勢突破",
+  C: "一般突破",
+};
+
+// 寫進交易計畫的進場理由:型態 + 歷史勝率(資料會隨成績單每日更新)。
+export function verdictEvidence(r: VerdictRow): string {
+  return `系統看多（信心${r.confidence}）：${PATTERN_LABEL[r.pattern]}，同型態 10 個交易日內上漲 ${Number(r.up10_pct).toFixed(0)}%（${r.n10} 筆）。`;
+}

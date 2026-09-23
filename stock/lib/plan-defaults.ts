@@ -42,8 +42,14 @@ export function planDefaults(
     atrStopMultiple: number | null;
     // Supplied by the caller (lib/scan conditions) so this stays import-free.
     checks: { label: string; pass: boolean }[];
+    // 月線 +15% 防追高上限。v_scan_verdict 的看多型態本身常在上限之外
+    // (2026-09-23 成績單:乖離 ≥15% 反而較好),結論卡傳 false 關閉。
+    antiChase?: boolean;
+    // 有資料支撐的進場理由(型態 + 歷史勝率),取代「分數不是上漲機率」那句。
+    evidence?: string;
   },
 ): PlanDefaults | null {
+  const antiChase = opts.antiChase ?? true;
   const close = num(row.close);
   if (close == null || close <= 0) return null;
   const ma20 = num(row.ma20);
@@ -52,7 +58,8 @@ export function planDefaults(
   const notes: string[] = [];
 
   // --- 買入區間 -------------------------------------------------------
-  const gapCap = ma20 == null ? null : ma20 * (1 + MAX_MA20_GAP_PCT / 100);
+  const gapCap =
+    ma20 == null || !antiChase ? null : ma20 * (1 + MAX_MA20_GAP_PCT / 100);
   let entryMin = round2(close * (1 - ENTRY_BAND_PCT / 100));
   const entryMax = round2(
     gapCap == null ? close * (1 + ENTRY_BAND_PCT / 100)
@@ -65,7 +72,7 @@ export function planDefaults(
       `現價已超出月線 +${MAX_MA20_GAP_PCT}% 的防追高上限，買入價收斂為單一價位 ${entryMax.toFixed(2)}；不回落就不進場。`,
     );
   }
-  if (ma20 == null)
+  if (ma20 == null && antiChase)
     notes.push("缺月線資料，買入上限只用訊號收盤 +3%，沒有防追高約束。");
 
   // --- 停損:ATR×N 與月線取較緊(價格較高)者 --------------------------
@@ -117,7 +124,9 @@ export function planDefaults(
     gapCap == null
       ? "取訊號收盤 ±3%。"
       : `取訊號收盤 ±3% 並以月線 +${MAX_MA20_GAP_PCT}% 為上限防追高。`,
-    "區間外不追價。分數描述型態符合程度，不是上漲機率。",
+    opts.evidence
+      ? `區間外不追價。${opts.evidence}`
+      : "區間外不追價。分數描述型態符合程度，不是上漲機率。",
   ]
     .filter(Boolean)
     .join("");

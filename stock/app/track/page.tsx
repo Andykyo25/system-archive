@@ -17,8 +17,22 @@ import {
   type TrackSystem,
   type Verdict,
 } from "@/lib/track";
+import { PATTERN_LABEL, type VerdictRow } from "@/lib/scan";
 
 export const dynamic = "force-dynamic";
+
+type PatternStat = Pick<VerdictRow, "pattern" | "n10" | "up10_pct"> & {
+  confidence: VerdictRow["confidence"] | null;
+};
+
+const loadPatterns = unstable_cache(async () => {
+  const sb = createClient();
+  const res = await sb
+    .from("v_scan_pattern_stats")
+    .select("pattern,n10,up10_pct,confidence")
+    .order("pattern");
+  return (unwrap(res, "型態勝率") ?? []) as PatternStat[];
+}, ["track:patterns:v1"], { revalidate: 300 });
 
 // mv_pick_scorecard 平日 15:30 / 22:30 刷新,頁面快取 5 分鐘足夠。
 const loadPicks = unstable_cache(async () => {
@@ -80,7 +94,7 @@ export default async function TrackPage({
   const vf = pick(sp.v, ["all", "win", "lag", "up", "loss", "pending"] as const, "all");
   const sort = pick(sp.sort, ["recent", "best", "worst"] as const, "recent");
 
-  const all = await loadPicks();
+  const [all, patterns] = await Promise.all([loadPicks(), loadPatterns()]);
   const refreshedAt = all[0]?.refreshed_at ?? null;
   const bySys = new Map<TrackSystem, PickRow[]>(
     SYSTEM_KEYS.map((k) => [k, all.filter((r) => r.system === k)]),
@@ -97,18 +111,15 @@ export default async function TrackPage({
     <div className="space-y-6">
       <div>
         <h1 className="text-xl font-semibold">選股成績單</h1>
-        <p className="mt-1 text-sm text-zinc-400">
-          系統挑出來的股票，後來是真的漲了，還是判斷錯誤跌了。
-          {refreshedAt && (
-            <span className="ml-2 text-xs text-zinc-500">
-              資料更新於{" "}
-              {new Date(refreshedAt).toLocaleString("zh-TW", {
-                timeZone: "Asia/Taipei",
-                hour12: false,
-              })}
-            </span>
-          )}
-        </p>
+        {refreshedAt && (
+          <p className="mt-1 text-xs text-zinc-500">
+            更新於{" "}
+            {new Date(refreshedAt).toLocaleString("zh-TW", {
+              timeZone: "Asia/Taipei",
+              hour12: false,
+            })}
+          </p>
+        )}
       </div>
 
       {/* 四套系統總覽:點卡片切換 */}
@@ -143,18 +154,15 @@ export default async function TrackPage({
       {/* 所選系統:分天期統計 */}
       <section className="surface-card rounded-2xl p-4">
         <h2 className="text-sm font-semibold">{cfg.label} · 分天期表現</h2>
-        <p className="mt-1 text-xs leading-5 text-zinc-500">{cfg.note}</p>
         <div className="mt-3 overflow-x-auto">
-          <table className="w-full min-w-[560px] text-sm">
+          <table className="w-full min-w-[420px] text-sm">
             <THead>
               <tr>
                 <th className="py-2 pr-3 font-medium">天期</th>
-                <th className="py-2 pr-3 text-right font-medium">已結算</th>
+                <th className="py-2 pr-3 text-right font-medium">樣本</th>
                 <th className="py-2 pr-3 text-right font-medium">上漲比例</th>
-                <th className="py-2 pr-3 text-right font-medium">贏大盤比例</th>
-                <th className="py-2 pr-3 text-right font-medium">報酬中位數</th>
-                <th className="py-2 pr-3 text-right font-medium">超額中位數</th>
-                <th className="py-2 text-right font-medium">超額平均</th>
+                <th className="py-2 pr-3 text-right font-medium">贏大盤</th>
+                <th className="py-2 text-right font-medium">報酬中位數</th>
               </tr>
             </THead>
             <tbody className="divide-y divide-line">
@@ -164,24 +172,19 @@ export default async function TrackPage({
                   <tr key={h}>
                     <td className="py-2 pr-3">T+{h}</td>
                     {s == null ? (
-                      <td colSpan={6} className="py-2 text-right text-zinc-500">
+                      <td colSpan={4} className="py-2 text-right text-zinc-500">
                         尚無到期樣本
                       </td>
                     ) : (
                       <>
+                        <td className="py-2 pr-3 text-right tabular-nums">{s.n}</td>
                         <td className="py-2 pr-3 text-right tabular-nums">
-                          {s.n}
-                          <span className="ml-1 text-xs text-zinc-500">/ {s.days} 日</span>
+                          {s.upPct == null ? "—" : `${s.upPct.toFixed(0)}%`}
                         </td>
                         <td className="py-2 pr-3 text-right tabular-nums">
-                          {s.upPct == null ? "—" : `${s.upPct.toFixed(1)}%`}
+                          {s.beatPct == null ? "—" : `${s.beatPct.toFixed(0)}%`}
                         </td>
-                        <td className="py-2 pr-3 text-right tabular-nums">
-                          {s.beatPct == null ? "—" : `${s.beatPct.toFixed(1)}%`}
-                        </td>
-                        <td className="py-2 pr-3 text-right tabular-nums"><Pct v={s.medianRet} /></td>
-                        <td className="py-2 pr-3 text-right tabular-nums"><Pct v={s.medianExc} /></td>
-                        <td className="py-2 text-right tabular-nums"><Pct v={s.meanExc} /></td>
+                        <td className="py-2 text-right tabular-nums"><Pct v={s.medianRet} /></td>
                       </>
                     )}
                   </tr>
@@ -190,11 +193,44 @@ export default async function TrackPage({
             </tbody>
           </table>
         </div>
-        <p className="mt-3 text-xs leading-5 text-zinc-500">
-          平均數會被少數大漲股拉高，中位數才是「典型的一檔」。同一天挑出的多檔股票高度相關、
-          視窗也互相重疊，目前樣本只涵蓋單一行情，方向可參考，不能當成結論。報酬未扣交易成本。
-        </p>
       </section>
+
+      {/* 起漲掃描:型態勝率 → 決定「今日看多」上榜與否 */}
+      {sys === "scan" && patterns.length > 0 && (
+        <section className="surface-card rounded-2xl p-4">
+          <h2 className="text-sm font-semibold">型態勝率 · 決定今日看多</h2>
+          <div className="mt-3 overflow-x-auto">
+            <table className="w-full min-w-[420px] text-sm">
+              <THead>
+                <tr>
+                  <th className="py-2 pr-3 font-medium">型態</th>
+                  <th className="py-2 pr-3 text-right font-medium">樣本</th>
+                  <th className="py-2 pr-3 text-right font-medium">10 日上漲</th>
+                  <th className="py-2 text-right font-medium">結論</th>
+                </tr>
+              </THead>
+              <tbody className="divide-y divide-line">
+                {patterns.map((p) => (
+                  <tr key={p.pattern}>
+                    <td className="py-2 pr-3">{PATTERN_LABEL[p.pattern]}</td>
+                    <td className="py-2 pr-3 text-right tabular-nums">{p.n10}</td>
+                    <td className="py-2 pr-3 text-right tabular-nums">
+                      {Number(p.up10_pct).toFixed(0)}%
+                    </td>
+                    <td className="py-2 text-right">
+                      {p.confidence ? (
+                        <span className="text-rose-300">看多 · 信心{p.confidence}</span>
+                      ) : (
+                        <span className="text-zinc-500">不列入</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
 
       {/* 逐檔清單 */}
       <section className="space-y-3">
@@ -293,9 +329,7 @@ export default async function TrackPage({
           </table>
         </TableShell>
         <p className="text-xs leading-5 text-zinc-500">
-          共 {filtered.length} 筆{filtered.length > LIST_LIMIT && `，顯示前 ${LIST_LIMIT} 筆`}。
-          判定取已到期的最長天期（T+20 優先，其次 T+10、T+5）：報酬 &gt; 0 且超額 &gt; 0 為 ✅，
-          報酬 &gt; 0 但超額 ≤ 0 為 ⚠️，報酬 ≤ 0 為 ❌。
+          共 {filtered.length} 筆{filtered.length > LIST_LIMIT && `，顯示前 ${LIST_LIMIT} 筆`}
         </p>
       </section>
     </div>

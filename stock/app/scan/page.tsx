@@ -1,34 +1,31 @@
 import Link from "next/link";
-import { Crosshair, ArrowRight } from "lucide-react";
+import { unstable_cache } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { readAll, unwrap } from "@/lib/db";
-import type { ScanRow } from "@/lib/scan";
-import { Suspense } from "react";
-import { unstable_cache } from "next/cache";
-import { ObservationSummary } from "./ObservationSummary";
-import { ScanCoverage } from "./ScanCoverage";
+import type { VerdictRow } from "@/lib/scan";
 import { taipeiDate, type TradePlan } from "@/lib/trade-plan";
-import { ScanBoard } from "./ScanBoard";
+import { VerdictBoard } from "./VerdictBoard";
 import { PlanItem, type PlanSettings } from "./PlanForms";
 import type { RiskContext } from "@/lib/plan-risk";
 
 export const dynamic = "force-dynamic";
 
-// Cache only daily market research. Plans, settings and account risk stay fresh.
-// Keep the candidate query selective; coverage is streamed independently.
-const loadScan = unstable_cache(async () => {
+// v_scan_verdict 已完成所有判讀(型態 × 成績單勝率 × 信心門檻),頁面只負責呈現。
+// Plans, settings and account risk stay fresh.
+const loadVerdict = unstable_cache(async () => {
   const sb = createClient();
-  const result = await readAll<ScanRow>((from, to) => sb
-    .from("v_breakout_scan").select("*").gte("score_total", 80)
-    .order("score_total", { ascending: false }).order("symbol").range(from, to));
-  return unwrap(result, "起漲掃描") ?? [];
-}, ["scan:candidates:v2"], { revalidate: 60 });
+  const result = await readAll<VerdictRow>((from, to) => sb
+    .from("v_scan_verdict").select("*")
+    .order("up10_pct", { ascending: false }).order("day_pct", { ascending: false })
+    .order("symbol").range(from, to));
+  return unwrap(result, "今日看多") ?? [];
+}, ["scan:verdict:v1"], { revalidate: 60 });
 
 export default async function ScanPage() {
   const sb = createClient();
-  const [scan, dateR, plansR, riskR, settingsR] =
+  const [rows, dateR, plansR, riskR, settingsR] =
     await Promise.all([
-      loadScan(),
+      loadVerdict(),
       sb
         .from("price_daily")
         .select("trade_date")
@@ -48,7 +45,6 @@ export default async function ScanPage() {
         .select("key,value")
         .in("key", ["atr_stop_multiple", "plan_slippage_pct"]),
     ]);
-  const rows = scan;
   const date = unwrap(dateR, "價格資料日")?.[0]?.trade_date ?? null;
   const today = taipeiDate();
   const plans = (plansR.data ?? []) as TradePlan[];
@@ -56,7 +52,7 @@ export default async function ScanPage() {
     (p) => p.status === "watching" && p.valid_until >= today,
   );
   const past = plans.filter((p) => !active.includes(p));
-  const passed = rows.filter((r) => r.passes_all).length;
+  const riskContext = riskR.error ? null : (riskR.data as RiskContext | null);
   // Plan defaults reuse existing settings; a missing key means "no suggestion",
   // never a made-up number.
   const setting = (key: string) => {
@@ -70,79 +66,42 @@ export default async function ScanPage() {
     atrStopMultiple: setting("atr_stop_multiple"),
     slippagePct: setting("plan_slippage_pct"),
   };
+  const cash = riskContext?.cash == null ? null : Number(riskContext.cash);
   return (
     <div className="space-y-6">
-      <header className="relative overflow-hidden rounded-3xl border border-sky-400/15 bg-gradient-to-br from-sky-400/10 via-surface-1 to-surface-1 p-5 sm:p-7">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <p className="flex items-center gap-2 text-xs font-medium tracking-wider text-sky-300">
-              <Crosshair size={15} aria-hidden /> 起漲研究 · 交易決策
-            </p>
-            <h1 className="mt-3 text-2xl font-semibold tracking-tight sm:text-3xl">
-              先找型態，再訂進退
-            </h1>
-            <p className="mt-3 max-w-xl text-sm leading-6 text-slate-400">
-              從突破候選中挑選值得追蹤的股票。進場前寫下條件，成交後保留依據，讓每一次決策都能回頭檢驗。
-            </p>
-          </div>
-          <Link
-            href="#plans"
-            className="inline-flex items-center gap-2 rounded-xl border border-sky-300/20 bg-sky-400/10 px-4 py-2.5 text-sm text-sky-200"
-          >
-            我的計畫 <span>{active.length}</span>
-            <ArrowRight size={15} aria-hidden />
-          </Link>
+      <header className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">今日看多</h1>
+          <p className="mt-1 text-sm text-slate-400">
+            {date ?? "尚無資料"} 收盤 · {rows.length} 檔
+          </p>
         </div>
-        <div className="mt-6 grid grid-cols-2 gap-4 border-t border-white/10 pt-5 sm:grid-cols-4">
-          {[
-            ["價格資料日", date ?? "尚無資料"],
-            ["掃描範圍", <Suspense key="coverage" fallback={<span>統計中…</span>}><ScanCoverage /></Suspense>],
-            ["五條件全過", `${passed} 檔`],
-            ["高分待確認", `${rows.length - passed} 檔`],
-          ].map(([label, value]) => (
-            <div key={String(label)}>
-              <p className="text-xs text-slate-400">{label}</p>
-              <p className="mt-1.5 text-lg font-semibold text-slate-100">
-                {value}
-              </p>
-            </div>
-          ))}
-        </div>
-        <p className="mt-4 text-xs text-slate-400">
-          盤後收盤掃描 · 分數為條件符合程度，非上漲機率 ·{" "}
-          <Link
-            href="/health"
-            className="text-sky-300 underline underline-offset-4"
-          >
-            檢查資料健康
-          </Link>
-        </p>
+        <Link href="/track" className="text-sm text-sky-300">
+          成績單 →
+        </Link>
       </header>
-      <ScanBoard
+      {cash != null && cash <= 0 && (
+        <p className="rounded-xl border border-amber-400/25 bg-amber-400/5 px-4 py-3 text-sm text-amber-200">
+          資金已全數投入，新計畫股數會是 0。
+        </p>
+      )}
+      <VerdictBoard
         rows={rows}
         today={today}
         plansAvailable={!plansR.error}
-        riskContext={riskR.error ? null : (riskR.data as RiskContext | null)}
+        riskContext={riskContext}
         settings={planSettings}
       />
       <section id="plans" className="scroll-mt-6 space-y-4">
         <div className="flex items-center justify-between gap-3">
-          <div>
-            <h2 className="text-lg font-semibold">我的交易計畫</h2>
-            <p className="mt-1 text-sm text-slate-400">
-              保存條件，記錄實際成交；已買入的部位請至持股管理處理。
-            </p>
-          </div>
+          <h2 className="text-lg font-semibold">我的交易計畫</h2>
           <Link href="/holdings" className="shrink-0 text-sm text-sky-300">
             持股管理 →
           </Link>
         </div>
         {plansR.error ? (
-          <p
-            role="alert"
-            className="rounded-xl border border-amber-400/20 bg-amber-400/5 p-4 text-sm text-amber-200"
-          >
-            交易計畫載入失敗，這不代表沒有計畫。請確認資料庫更新與連線狀態。
+          <p role="alert" className="text-sm text-amber-200">
+            交易計畫載入失敗
           </p>
         ) : active.length ? (
           <div className="grid gap-4 xl:grid-cols-2">
@@ -151,14 +110,12 @@ export default async function ScanPage() {
             ))}
           </div>
         ) : (
-          <p className="rounded-2xl border border-dashed border-line-strong p-6 text-sm text-slate-400">
-            尚無有效計畫。從候選卡片展開「查看依據與建立計畫」開始。
-          </p>
+          <p className="text-sm text-slate-500">尚無有效計畫</p>
         )}
         {past.length > 0 && (
           <details>
             <summary className="cursor-pointer text-sm text-slate-400">
-              已成交、到期與取消的計畫（{past.length}）
+              已結束的計畫（{past.length}）
             </summary>
             <div className="mt-4 grid gap-4 xl:grid-cols-2">
               {past.map((p) => (
@@ -168,9 +125,6 @@ export default async function ScanPage() {
           </details>
         )}
       </section>
-      <Suspense fallback={<div className="rounded-2xl border border-line p-5 text-sm text-slate-400" role="status">策略觀察統計載入中…</div>}>
-        <ObservationSummary />
-      </Suspense>
     </div>
   );
 }

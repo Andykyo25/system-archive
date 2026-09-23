@@ -106,3 +106,15 @@ test("valid_until is 14 calendar days out and never before today", () => {
   assert.equal(addDays("2026-12-25", 14), "2027-01-08"); // year boundary
   assert.equal(addDays("2026-02-28", 1), "2026-03-01"); // non-leap year
 });
+
+test("antiChase:false removes the MA20 +15% cap; evidence replaces the score disclaimer", () => {
+  // close 132 is 20% above MA20 110 → default collapses entry to the cap 126.5
+  const hot = row({ close: 132, ma20: 110, atr14: 4 });
+  const capped = planDefaults(hot, opts());
+  assert.equal(capped.entryMax, 126.5);
+  const open = planDefaults(hot, opts({ antiChase: false, evidence: "同型態 10 日上漲 63%。" }));
+  assert.equal(open.entryMin, 128.04); // 132 × 0.97
+  assert.equal(open.entryMax, 135.96); // 132 × 1.03, no cap
+  assert.match(open.entryReason, /同型態 10 日上漲 63%/);
+  assert.doesNotMatch(open.entryReason, /不是上漲機率/);
+});

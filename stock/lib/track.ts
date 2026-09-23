@@ -30,30 +30,19 @@ export interface PickRow {
   refreshed_at: string;
 }
 
+// 口徑(詳見 migration 20260923000002 註解;報酬皆未扣成本):
+//   scan  隔一交易日收盤進場、還原價,基準 = 同日收盤 ≥20 元全市場等權
+//   swing 同上但未還原價
+//   rank  凍結 top10,20 交易日結算,基準 = 同批 0050(8/15、9/12 兩批混入 ETF)
+//   mine  實際成交價起算(非賣出損益),基準同 scan
 export const SYSTEMS: Record<
   TrackSystem,
-  { label: string; horizons: Horizon[]; note: string }
+  { label: string; horizons: Horizon[] }
 > = {
-  scan: {
-    label: "起漲掃描",
-    horizons: [5, 10, 20],
-    note: "每日凍結 score ≥ 80 的候選。隔一交易日收盤進場、還原價計算，基準 = 同日收盤 ≥ 20 元全市場等權。",
-  },
-  swing: {
-    label: "回檔波段",
-    horizons: [5, 20],
-    note: "每日凍結的回檔候選。隔一交易日收盤進場（未還原價），基準同起漲掃描。",
-  },
-  rank: {
-    label: "多因子排名",
-    horizons: [20],
-    note: "每 20 交易日凍結排名 top10，20 交易日後結算，基準 = 同批 0050。8/15、9/12 兩批混入 ETF（排名污染，9/23 已修）。",
-  },
-  mine: {
-    label: "我的買進",
-    horizons: [5, 10, 20],
-    note: "每筆實際買進，以成交價起算（非實際賣出損益），基準 = 買進日收盤 ≥ 20 元全市場等權。",
-  },
+  scan: { label: "起漲掃描", horizons: [5, 10, 20] },
+  swing: { label: "回檔波段", horizons: [5, 20] },
+  rank: { label: "多因子排名", horizons: [20] },
+  mine: { label: "我的買進", horizons: [5, 10, 20] },
 };
 
 export const VERDICT: Record<Verdict, { label: string; icon: string }> = {

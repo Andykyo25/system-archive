@@ -38,17 +38,22 @@ export function PlanForm({
   today,
   riskContext,
   settings,
+  evidence,
 }: {
   row: ScanRow;
   today: string;
   riskContext: RiskContext | null;
   settings: PlanSettings;
+  // 系統結論卡傳入:關閉防追高上限、進場理由改寫為型態勝率
+  evidence?: string;
 }) {
   const [state, action, pending] = useActionState(savePlan, {});
   const suggested = planDefaults(row, {
     today,
     atrStopMultiple: settings.atrStopMultiple,
     checks: conditions(row),
+    antiChase: evidence == null,
+    evidence,
   });
   const defaultSlippage = String(settings.slippagePct ?? 0.3);
   // Prefilled from the signal row and existing settings; every field stays editable.
