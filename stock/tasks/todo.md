@@ -3489,3 +3489,55 @@ Rollback:重新套用 supabase/migrations/20260906000002_scan_track_v2.sql(該�
 注意:/scan 策略證據面板 filter strategy_version='breakout-v3-adjusted',新版樣本目前 0 筆,
 要等 freeze-scan-picks-daily(jobid 33,每日 15:00 TW)累積後才會顯示,面板短期仍是尚無結果。
 
+
+---
+
+## 2026-09-23 — 選股策略重新檢視 + 「選股成績單」頁(待 Andy 拍板,尚未動工)
+
+Andy 需求:重新檢視選股策略;要有地方看「系統挑的股票後來真的漲,還是判斷錯誤跌了」。
+
+### 檢視結果(前向凍結資料,2026-09-23 實查)
+
+| 系統 | 資料 | 結果 |
+|---|---|---|
+| **多因子排名 /rank**(paper_picks top5) | 5 批 | 🔴 **8 月起被 ETF 污染**:`v_stock_rank` 對無基本面/籌碼的 ETF 只用動能 2/2 維計分 → 75 分;現在 top30 有 **23 檔 ETF**。8/15 批 top5 全是 ETF(含反向 00632R/00664R),9/12 批 3/5 是 ETF。污染前 3 批 top5 alpha:+1.81 / −2.78 / −17.10 |
+| **起漲掃描 /scan**(scan_picks,score≥80) | 430 筆 T+5、101 筆 T+20,23 個掃描日 | 🟠 T+5 只有 **36.5%** 上漲、T+20 **40.6%**;超額**中位數各天期皆負**,平均為正全靠右尾。**分數反向**:80-84 分 T+20 超額 +6.85;85-89 −1.25;90+ −2.60;`passes_all` T+20 勝率 **14%** |
+| **回檔波段 /swing**(swing_scan_snapshot) | 非熱股 69 筆 T+20、25 個掃描日 | 🟢 唯一中位數為正:T+20 超額平均 **+4.58 / 中位 +4.03 / 勝率 68%**。熱股版 T+20 中位 −5.46 |
+
+**紀律([[L57]]/[[L60]])**:全部是 7-9 月單一 regime、視窗重疊,**方向可參考,不可下結論、不重新調權重**。
+
+### 計畫
+
+- [x] **1. 修 /rank ETF 污染**(先做,排名現在實際不可用)
+      - pre-check:grep 所有讀 `v_stock_rank` / `mv_factor_scores` 的 view / EF / 前端([[L68]])
+      - 做法:`pg_get_viewdef` 定點加「排除 ETF(`^00` / etf_metadata)」([[L69]]);ETF 已有 `v_etf_picks` 另一條路
+      - verify:top30 ETF 數 23 → 0;`v_holdings_advice` 持股列數不變
+      - rollback:重跑舊 viewdef(migration 內保留)
+      - 8/15、9/12 兩批 paper_picks **不刪**(append-only [[L37]]),成績單上標「⚠ ETF 污染批」
+- [x] **2. 新頁 `/track` 選股成績單**
+      - 上方:三套系統各一張成績卡 — 已結算筆數 / **上漲比例** / **贏大盤比例** / 中位數超額 / 獨立視窗進度
+      - 下方:逐檔清單 — 日期、代號名稱、當時分數、進場價、T+5 / T+10 / T+20 報酬、同期大盤、判定
+        ✅ 漲且贏大盤 / ⚠ 漲但輸大盤 / ❌ 跌;可篩系統、判定、分數段;可排序最好 / 最差
+      - 資料全部來自既有 view(`v_scan_track_v2` / `v_swing_track` / `paper_picks`),**不新增 cron、不新增表**
+      - verify:頁面數字可由 SQL 重現(同上表);Railway 部署後實看([[L50]])
+      - rollback:刪 route + sidebar 連結
+- [x] **3.(選做)你自己的買進也放上去**:`holdings_transactions.signal_source` 已有,可並列「系統挑的 vs 自己挑的」勝率
+- [ ] **4.(選做)/scan 標示分數反向**:85+ / passes_all 列加「歷史前向偏弱」提示(資訊非指令)
+
+### Review — 2026-09-23(Andy 選 1+2+3,判定 = 絕對漲跌為主、另列贏輸大盤)
+
+| # | 產出 | verify |
+|---|---|---|
+| 1 | `20260923000001_stock_rank_fund_first`:`expected_rank` 排序鍵前置 `(fund_count_total > 0) DESC`([[L69]] 定點替換) | 8 個下游 view 列數全不變;top30 ETF **23 → 0**;`weighted_score` 漂移 0;個股間相對排序變動 0。新 top5 = 達發/GOGOLOOK/矽格/台積電/南茂 |
+| 2 | `20260923000002_mv_pick_scorecard` + cron `refresh-mv-pick-scorecard`(平日 15:30/22:30 Taipei)+ `app/track/page.tsx` + `lib/track.ts` + 側欄 / TopBar | mv 對來源 view 逐項對帳:scan T+20 101/3.78/3.43、swing 97/3.54 **完全一致**;rank −3.32 vs `v_paper_performance` −3.62 差 0.3 = 後者扣成本(成績單統一不扣,頁面已註明)。preview 頁面數字 = SQL(T+5 上漲 36.5% / 贏大盤 41.9%);375px 無橫向捲動 |
+| 3 | `mine` 來源:每筆 BUY 以成交價算 T+5/10/20(還原係數比)+ 買進日全市場等權基準 | 4958 @500 → pending(T+5 未到);3236 −53% 經 price_daily 核對為真實跌幅 |
+
+**計畫外的決定**:計畫寫「不新增 cron/表」,實作改成物化 view + 1 支 cron。理由:`v_scan_track_v2` 單次 7.9 秒,
+PostgREST `statement_timeout` 8 秒,頁面直查會隨樣本成長必然逾時。`refreshed_at` 顯示在頁面標題下,cron 停了看得到([[L65]])。
+
+**驗證**:`tsc` / eslint / `next build` 通過;`tests/track.test.mjs` 4/4。`npm test` 另有 3 個既有失敗
+(`database` / `plan-risk-db` / `quote-provenance`:本機缺 `@electric-sql/pglite`,stash 本次改動後同樣失敗,與本次無關)。
+
+**已知限制(未處理)**:`v_swing_track` 用未還原價(除權息會低估報酬);`mine` 的報酬是「買進後 N 日」而非實際賣出損益。
+
+**狀態**:DB migration 已套用到正式庫;前端**未 commit / 未部署**。

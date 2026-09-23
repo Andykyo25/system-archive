@@ -8,6 +8,7 @@ const pageDescriptions: Record<string, string> = {
   "/holdings": "部位、成本與交易紀錄",
   "/performance": "資產曲線與已實現績效",
   "/scan": "突破候選、交易計畫與證據追蹤",
+  "/track": "系統挑的股票後來漲了還是跌了",
   "/backtest": "策略樣本與歷史驗證",
   "/health": "來源時效、涵蓋率與排程狀態",
   "/settings": "資金與策略參數",

@@ -7,6 +7,7 @@ import {
   Activity,
   BarChart3,
   Briefcase,
+  ClipboardCheck,
   Crosshair,
   FlaskConical,
   LayoutDashboard,
@@ -38,6 +39,7 @@ const navGroups: { label: string; items: NavItem[] }[] = [
     label: "研究工具",
     items: [
       { href: "/scan", label: "起漲掃描", icon: Crosshair },
+      { href: "/track", label: "選股成績單", icon: ClipboardCheck },
       { href: "/backtest", label: "策略回測", icon: FlaskConical },
     ],
   },
