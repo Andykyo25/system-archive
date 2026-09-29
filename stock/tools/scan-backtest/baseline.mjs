@@ -1,0 +1,14 @@
+import { SIG, byYear, liveGate, sim, prodStopSig } from "./lib.mjs";
+const cand = SIG.filter((s) => s.score >= 80);
+console.log("=== score>=80 candidates by pattern (T+1 close entry, T+10 exit, no stop; win = ret>0) ===");
+console.log(byYear("ALL cand", cand));
+for (const p of ["A", "B", "C", "D"]) console.log(byYear("pattern " + p, cand.filter((s) => s.pattern === p)));
+console.log("\n=== LIVE mechanism: rolling 60 scan-day confidence gate (>=55% & n>=30) ===");
+const live = liveGate(cand);
+console.log(byYear("live 今日看多", live));
+console.log("patterns taken:", Object.entries(live.reduce((m, s) => ((m[s.pattern] = (m[s.pattern] || 0) + 1), m), {})));
+console.log("\n=== live + production stop & entry block (T+1 low <= stop -> skip) ===");
+const liveOk = live.filter((s) => s.l1 != null && s.l1 / 100 + 1 > prodStopSig(s));
+console.log("blocked by entry-day stop:", live.length - liveOk.length);
+console.log(byYear("live+stop", liveOk, (s) => sim(s, { H: 10, stop: prodStopSig(s) })));
+console.log(byYear("pattern A + stop", cand.filter((s) => s.pattern === "A" && s.l1 != null && s.l1 / 100 + 1 > prodStopSig(s)), (s) => sim(s, { H: 10, stop: prodStopSig(s) })));

@@ -118,3 +118,21 @@ test("antiChase:false removes the MA20 +15% cap; evidence replaces the score dis
   assert.match(open.entryReason, /同型態 10 日上漲 63%/);
   assert.doesNotMatch(open.entryReason, /不是上漲機率/);
 });
+
+test("verdict mode (R2p): ATR-only stop, take-profit and max-hold in the exit rule", () => {
+  const verdict = { atrStopMultiple: 3, antiChase: false, evidence: "系統看多。", ma20Stop: false,
+    exit: { takeProfitPct: 10, maxHoldDays: 20 } };
+  // 123 − 3 × 5.46 = 106.62; MA20 114.95 is tighter but must be ignored
+  const d = planDefaults(row(), opts(verdict));
+  assert.equal(d.stopPrice, 106.62);
+  assert.match(d.stopBasis, /ATR14×3/);
+  assert.doesNotMatch(d.stopBasis, /月線/);
+  assert.match(d.exitRule, /成交價 \+10%/);
+  assert.match(d.exitRule, /135\.30/); // 123 × 1.10
+  assert.match(d.exitRule, /最長持有 20 個交易日/);
+  assert.doesNotMatch(d.exitRule, /月線/);
+  assert.ok(d.exitRule.length <= 1000);
+  // no ATR → fixed % below entry_min (same fallback as verdict_plan_levels), never MA20
+  const noAtr = planDefaults(row({ atr14: null }), opts(verdict));
+  assert.equal(noAtr.stopPrice, 109.77);
+});

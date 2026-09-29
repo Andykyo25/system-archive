@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { ArrowUpRight } from "lucide-react";
 import {
-  PATTERN_LABEL,
+  VERDICT_EXIT,
   conditions,
   verdictEvidence,
   type VerdictLive,
@@ -18,8 +18,8 @@ const BADGE = {
   block: "bg-slate-400/10 text-slate-300 ring-slate-300/20",
 } as const;
 
-// 系統結論卡:只呈現「看多 + 信心 + 依據一句 + 怎麼做」,判讀都在 v_scan_verdict 算完;
-// 盤中狀態來自 v_verdict_live(每 5 分鐘由 verdict_watch_tick 同步推 Telegram)。
+// 系統結論卡:只呈現「看多 + 依據一句 + 怎麼做」,判讀都在 v_scan_verdict(R2p)算完;
+// 盤中狀態來自 v_verdict_live(每次載入即時計算;只看今日是否曾跌破停損,套牢量於上榜時已判定)。
 export function VerdictBoard({
   rows,
   live,
@@ -38,7 +38,7 @@ export function VerdictBoard({
   if (!rows.length) {
     return (
       <p className="rounded-2xl border border-dashed border-line-strong p-10 text-center text-slate-300">
-        今日沒有中高信心標的
+        今日沒有看多標的
       </p>
     );
   }
@@ -52,13 +52,15 @@ export function VerdictBoard({
           checks: conditions(r),
           antiChase: false,
           evidence,
+          ma20Stop: false,
+          exit: VERDICT_EXIT,
         });
         const close = Number(r.close);
         const stopPct = plan && close > 0 ? (plan.stopPrice / close - 1) * 100 : null;
         const lv = live.get(r.symbol);
         const state = lv?.state ?? "wait";
         const badge =
-          state === "block" ? "停止進場" : state === "ok" ? "看多 · 可進場" : `看多 · 信心${r.confidence}`;
+          state === "block" ? "停止進場" : state === "ok" ? "看多 · 可進場" : "看多";
         return (
           <article
             key={r.symbol}
@@ -89,13 +91,9 @@ export function VerdictBoard({
               )}
             </div>
             <p className="mt-2 text-sm text-slate-300">
-              {PATTERN_LABEL[r.pattern]}
+              貼近 60 日高（{Number(r.off_hi60).toFixed(1)}%）
               {r.supply_share != null &&
                 ` · 上方套牢 ${(Number(r.supply_share) * 100).toFixed(0)}%`}
-              {" · "}同型態 10 日內上漲{" "}
-              <span className="font-semibold text-slate-100">
-                {Number(r.up10_pct).toFixed(0)}%
-              </span>
             </p>
             {state === "block" && (
               <p className="mt-3 rounded-lg border border-amber-400/25 bg-amber-400/5 px-3 py-2 text-sm text-amber-200">
@@ -122,8 +120,10 @@ export function VerdictBoard({
                   </dd>
                 </div>
                 <div>
-                  <dt className="text-xs text-slate-500">持有</dt>
-                  <dd className="mt-1">10 個交易日</dd>
+                  <dt className="text-xs text-slate-500">出場</dt>
+                  <dd className="mt-1">
+                    +{VERDICT_EXIT.takeProfitPct}% 或 {VERDICT_EXIT.maxHoldDays} 日
+                  </dd>
                 </div>
               </dl>
             )}

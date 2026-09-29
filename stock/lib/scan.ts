@@ -84,26 +84,22 @@ export function summarizeObservations(rows: Observation[]) {
   };
 }
 
-// v_scan_verdict:今日候選中,型態歷史 T+10 上漲比例達門檻者(2026-09-23)。
+// v_scan_verdict:R2p(2026-09-29)—— 候選 score ≥ 80 中,距 60 日收盤高 > −5%、上方套牢 ≤ 10%、
+// 0050 在季線上,依分數取前 3 檔。依據 tools/scan-backtest/r2p.mjs(2023–2026 勝率 56%)。
+// 原本的型態 A + 滾動 60 掃描日信心標籤已移除:型態 A 3.7 年僅 47.5%,滾動勝率對下一段無預測力。
 export interface VerdictRow extends ScanRow {
-  pattern: "A" | "B" | "C" | "D";
-  confidence: "高" | "中高";
-  up10_pct: number | string;
-  beat10_pct: number | string | null;
-  med_ret10: number | string | null;
-  n10: number;
+  // 收盤距 60 日最高收盤的 %(≤ 0)
+  off_hi60: number | string | null;
   // 過去 120 日在「收盤價~+20%」的成交量佔比(上方套牢量),0~1
   supply_share: number | string | null;
+  // 0050 還原價距季線 %
+  market_ma60_pct: number | string | null;
 }
 
-export const PATTERN_LABEL: Record<VerdictRow["pattern"], string> = {
-  A: "跌深後漲停反彈",
-  B: "強勢突破",
-  C: "一般突破",
-  D: "跌深反彈但上方套牢重",
-};
+// 回測的出場規格;停損倍數在 app_settings.verdict_atr_stop_multiple(資料庫凍結價位也讀它)。
+export const VERDICT_EXIT = { takeProfitPct: 10, maxHoldDays: 20 } as const;
 
-// v_verdict_live:盤中閘門(verdict_watch_tick 每 5 分鐘同步推 Telegram)
+// v_verdict_live:盤中閘門(今日曾跌破停損 → 當日持續停止;2026-09-24 起不再推播)
 export interface VerdictLive {
   symbol: string;
   state: "ok" | "block" | "wait";
@@ -112,9 +108,9 @@ export interface VerdictLive {
   quoted_at: string | null;
 }
 
-// 寫進交易計畫的進場理由:型態 + 歷史勝率(資料會隨成績單每日更新)。
+// 寫進交易計畫的進場理由:R2p 三條件的實際數值 + 回測出處。
 export function verdictEvidence(r: VerdictRow): string {
   const supply =
     r.supply_share == null ? "" : `上方套牢 ${(Number(r.supply_share) * 100).toFixed(0)}%，`;
-  return `系統看多（信心${r.confidence}）：${PATTERN_LABEL[r.pattern]}，${supply}同型態 10 個交易日內上漲 ${Number(r.up10_pct).toFixed(0)}%（${r.n10} 筆）。`;
+  return `系統看多：距 60 日高 ${Number(r.off_hi60).toFixed(1)}%，${supply}0050 在季線上（2023–2026 回測勝率 56%）。`;
 }

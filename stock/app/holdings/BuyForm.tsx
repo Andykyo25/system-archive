@@ -134,7 +134,7 @@ function ContextPanel({ ctx }: { ctx: BuyContext }) {
   } else if (ctx.verdict?.state === "ok") {
     boxes.push(
       <WarnBox key="verdict" tone="green">
-        🟢 <b>今日看多 · 可進場</b>(盤中每 5 分鐘檢查停損與上方套牢)
+        🟢 <b>今日看多 · 可進場</b>(今日未跌破停損)
       </WarnBox>,
     );
   }

@@ -17,22 +17,8 @@ import {
   type TrackSystem,
   type Verdict,
 } from "@/lib/track";
-import { PATTERN_LABEL, type VerdictRow } from "@/lib/scan";
 
 export const dynamic = "force-dynamic";
-
-type PatternStat = Pick<VerdictRow, "pattern" | "n10" | "up10_pct"> & {
-  confidence: VerdictRow["confidence"] | null;
-};
-
-const loadPatterns = unstable_cache(async () => {
-  const sb = createClient();
-  const res = await sb
-    .from("v_scan_pattern_stats")
-    .select("pattern,n10,up10_pct,confidence")
-    .order("pattern");
-  return (unwrap(res, "型態勝率") ?? []) as PatternStat[];
-}, ["track:patterns:v2"], { revalidate: 300 });
 
 // mv_pick_scorecard 平日 15:30 / 22:30 刷新,頁面快取 5 分鐘足夠。
 const loadPicks = unstable_cache(async () => {
@@ -94,7 +80,7 @@ export default async function TrackPage({
   const vf = pick(sp.v, ["all", "win", "lag", "up", "loss", "pending"] as const, "all");
   const sort = pick(sp.sort, ["recent", "best", "worst"] as const, "recent");
 
-  const [all, patterns] = await Promise.all([loadPicks(), loadPatterns()]);
+  const all = await loadPicks();
   const refreshedAt = all[0]?.refreshed_at ?? null;
   const bySys = new Map<TrackSystem, PickRow[]>(
     SYSTEM_KEYS.map((k) => [k, all.filter((r) => r.system === k)]),
@@ -194,43 +180,6 @@ export default async function TrackPage({
           </table>
         </div>
       </section>
-
-      {/* 起漲掃描:型態勝率 → 決定「今日看多」上榜與否 */}
-      {sys === "scan" && patterns.length > 0 && (
-        <section className="surface-card rounded-2xl p-4">
-          <h2 className="text-sm font-semibold">型態勝率 · 決定今日看多</h2>
-          <div className="mt-3 overflow-x-auto">
-            <table className="w-full min-w-[420px] text-sm">
-              <THead>
-                <tr>
-                  <th className="py-2 pr-3 font-medium">型態</th>
-                  <th className="py-2 pr-3 text-right font-medium">樣本</th>
-                  <th className="py-2 pr-3 text-right font-medium">10 日上漲</th>
-                  <th className="py-2 text-right font-medium">結論</th>
-                </tr>
-              </THead>
-              <tbody className="divide-y divide-line">
-                {patterns.map((p) => (
-                  <tr key={p.pattern}>
-                    <td className="py-2 pr-3">{PATTERN_LABEL[p.pattern]}</td>
-                    <td className="py-2 pr-3 text-right tabular-nums">{p.n10}</td>
-                    <td className="py-2 pr-3 text-right tabular-nums">
-                      {Number(p.up10_pct).toFixed(0)}%
-                    </td>
-                    <td className="py-2 text-right">
-                      {p.confidence ? (
-                        <span className="text-rose-300">看多 · 信心{p.confidence}</span>
-                      ) : (
-                        <span className="text-zinc-500">不列入</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      )}
 
       {/* 逐檔清單 */}
       <section className="space-y-3">

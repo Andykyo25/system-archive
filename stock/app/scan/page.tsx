@@ -10,16 +10,16 @@ import type { RiskContext } from "@/lib/plan-risk";
 
 export const dynamic = "force-dynamic";
 
-// v_scan_verdict 已完成所有判讀(型態 × 成績單勝率 × 信心門檻),頁面只負責呈現。
+// v_scan_verdict 已完成所有判讀(R2p 前 3 檔),頁面只負責呈現。
 // Plans, settings and account risk stay fresh.
 const loadVerdict = unstable_cache(async () => {
   const sb = createClient();
   const result = await readAll<VerdictRow>((from, to) => sb
     .from("v_scan_verdict").select("*")
-    .order("up10_pct", { ascending: false }).order("day_pct", { ascending: false })
+    .order("score_total", { ascending: false }).order("day_pct", { ascending: false })
     .order("symbol").range(from, to));
   return unwrap(result, "今日看多") ?? [];
-}, ["scan:verdict:v2"], { revalidate: 60 });
+}, ["scan:verdict:v3"], { revalidate: 60 });
 
 export default async function ScanPage() {
   const sb = createClient();
@@ -45,7 +45,7 @@ export default async function ScanPage() {
       sb
         .from("app_settings")
         .select("key,value")
-        .in("key", ["atr_stop_multiple", "plan_slippage_pct"]),
+        .in("key", ["verdict_atr_stop_multiple", "plan_slippage_pct"]),
     ]);
   const date = unwrap(dateR, "價格資料日")?.[0]?.trade_date ?? null;
   const today = taipeiDate();
@@ -65,7 +65,8 @@ export default async function ScanPage() {
     return raw != null && Number.isFinite(n) ? n : null;
   };
   const planSettings: PlanSettings = {
-    atrStopMultiple: setting("atr_stop_multiple"),
+    // 今日看多專用(3);持股部位建議用的 atr_stop_multiple 不受影響
+    atrStopMultiple: setting("verdict_atr_stop_multiple"),
     slippagePct: setting("plan_slippage_pct"),
   };
   const cash = riskContext?.cash == null ? null : Number(riskContext.cash);

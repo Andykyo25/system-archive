@@ -1,0 +1,15 @@
+import { SIG, stats, dstats, IS, OOS, sim } from "./lib.mjs";
+const cand = SIG.filter((s) => s.score >= 80);
+const f = (x) => (x == null ? "  - " : x.toFixed(1).padStart(5));
+const ys = ["2023", "2024", "2025", "2026"];
+const show = (k, p) => { const r = cand.filter(p); const st = stats(r);
+  const tp = (s) => sim(s, { H: 20, tp: 10, stop: 1 - 3 * s.atrPct / 100 }); const r20 = r.filter((s) => s.path?.length >= 20);
+  console.log(`${k.padEnd(30)} n=${String(st.n).padStart(5)} dIS ${f(dstats(r.filter(IS)).dwin)} dOOS ${f(dstats(r.filter(OOS)).dwin)} yrs ${ys.map((y) => f(dstats(r.filter((s) => s.d.startsWith(y))).dwin)).join("")} mNet ${f(st.mean)} | tp10/20d/3ATR win ${f(stats(r20, tp).win)} mNet ${f(stats(r20, tp).mean)} yrs ${ys.map((y) => f(stats(r20.filter((s) => s.d.startsWith(y)), tp).win)).join("")}`); };
+console.log("corr check: days where sign(TAIEX>MA60) == sign(0050>MA60):", (() => { const m = new Map(cand.map((s) => [s.d, s])); let a = 0, n = 0; for (const s of m.values()) if (s.mkt_ma60 != null && s.e50_ma60 != null) { n++; if ((s.mkt_ma60 > 0) === (s.e50_ma60 > 0)) a++; } return `${a}/${n}`; })());
+show("base all ≥80", () => true);
+show("R2 (hi250, sup120, TAIEX)", (s) => s.offHi250 > -5 && s.supply <= 0.1 && s.mkt_ma60 > 0);
+show("hi60, sup120, TAIEX", (s) => s.offHi60 > -5 && s.supply <= 0.1 && s.mkt_ma60 > 0);
+show("hi60, sup90, TAIEX", (s) => s.offHi60 > -5 && s.supply90 <= 0.1 && s.mkt_ma60 > 0);
+show("R2p hi60, sup90, 0050", (s) => s.offHi60 > -5 && s.supply90 <= 0.1 && s.e50_ma60 > 0);
+console.log("plateau R2p:");
+for (const h of [-3, -5, -8]) for (const sp of [0.05, 0.1, 0.2]) show(`  hi60>${h} sup90<=${sp}`, (s) => s.offHi60 > h && s.supply90 <= sp && s.e50_ma60 > 0);

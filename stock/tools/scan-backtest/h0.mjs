@@ -1,0 +1,10 @@
+import { SIG, stats, line } from "./lib.mjs";
+const x = SIG.filter((s) => s.dayPct >= 9.5 && s.offHi60 < -15 && s.supply <= 0.3 && s.score < 70);
+const byM = {}; for (const s of x) (byM[s.d.slice(0, 7)] ??= []).push(s);
+const rows = Object.entries(byM).map(([m, a]) => [m, a.length, stats(a).win]).sort((a, b) => b[1] - a[1]).slice(0, 8);
+console.log("top months by count:", rows.map((r) => `${r[0]}:${r[1]}(${r[2]?.toFixed(0)}%)`).join(" "));
+const byD = {}; for (const s of x) (byD[s.d] ??= []).push(s);
+console.log("top days:", Object.entries(byD).sort((a, b) => b[1].length - a[1].length).slice(0, 6).map(([d, a]) => `${d}:${a.length}`).join(" "));
+const ex = x.filter((s) => !(s.d >= "2025-04-01" && s.d <= "2025-05-15"));
+console.log(line("low-score A-like excl 2025-04/05", stats(ex)));
+for (const y of ["2023", "2024", "2025", "2026"]) console.log(line("  " + y, stats(ex.filter((s) => s.d.startsWith(y)))));

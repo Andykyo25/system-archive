@@ -47,9 +47,15 @@ export function planDefaults(
     antiChase?: boolean;
     // 有資料支撐的進場理由(型態 + 歷史勝率),取代「分數不是上漲機率」那句。
     evidence?: string;
+    // 停損是否與月線取較緊者。今日看多傳 false:回測(tools/scan-backtest)顯示
+    // 緊停損讓勝率 −7pp 且期望值下降,改只用 ATR×N。
+    ma20Stop?: boolean;
+    // 今日看多的出場規則(停利 % 以成交價計、最長持有交易日),寫進出場規則文字。
+    exit?: { takeProfitPct: number; maxHoldDays: number };
   },
 ): PlanDefaults | null {
   const antiChase = opts.antiChase ?? true;
+  const ma20Stop = opts.ma20Stop ?? true;
   const close = num(row.close);
   if (close == null || close <= 0) return null;
   const ma20 = num(row.ma20);
@@ -80,14 +86,19 @@ export function planDefaults(
   const candidates: { price: number; label: string }[] = [];
   if (atrStop != null && atrStop > 0)
     candidates.push({ price: atrStop, label: `ATR14×${mult}` });
-  if (ma20 != null && ma20 > 0) candidates.push({ price: ma20, label: "月線" });
+  if (ma20Stop && ma20 != null && ma20 > 0)
+    candidates.push({ price: ma20, label: "月線" });
 
   let stopPrice: number;
   let stopBasis: string;
   if (candidates.length === 0) {
     stopPrice = entryMin * (1 - FALLBACK_STOP_PCT / 100);
     stopBasis = `買入下限 −${FALLBACK_STOP_PCT}%`;
-    notes.push("缺 ATR 與月線資料，停損退回固定百分比，請自行確認是否合適。");
+    notes.push(
+      ma20Stop
+        ? "缺 ATR 與月線資料，停損退回固定百分比，請自行確認是否合適。"
+        : "缺 ATR 資料，停損退回固定百分比，請自行確認是否合適。",
+    );
   } else {
     const tightest = candidates.reduce((a, b) => (b.price > a.price ? b : a));
     stopPrice = tightest.price;
@@ -130,11 +141,21 @@ export function planDefaults(
   ]
     .filter(Boolean)
     .join("");
-  const exitRule = [
-    `停損 ${stopPrice.toFixed(2)}（依據：${stopBasis}），以收盤跌破為準，不往下調整。`,
-    `有效期限 ${addDays(opts.today, PLAN_DAYS)} 前若未進入買入區間，計畫作廢不順延。`,
-    "進場後若跌破停損或原始進場理由消失（如跌回月線之下），依此規則出場。",
-  ].join("");
+  const exit = opts.exit;
+  const exitRule = (
+    exit
+      ? [
+          `停損 ${stopPrice.toFixed(2)}（依據：${stopBasis}），盤中觸及即出場，不往下調整。`,
+          `停利：成交價 +${exit.takeProfitPct}%（以訊號收盤計約 ${(close * (1 + exit.takeProfitPct / 100)).toFixed(2)}），盤中觸及即出場。`,
+          `最長持有 ${exit.maxHoldDays} 個交易日，到期以收盤出場。`,
+          `有效期限 ${addDays(opts.today, PLAN_DAYS)} 前若未進入買入區間，計畫作廢不順延。`,
+        ]
+      : [
+          `停損 ${stopPrice.toFixed(2)}（依據：${stopBasis}），以收盤跌破為準，不往下調整。`,
+          `有效期限 ${addDays(opts.today, PLAN_DAYS)} 前若未進入買入區間，計畫作廢不順延。`,
+          "進場後若跌破停損或原始進場理由消失（如跌回月線之下），依此規則出場。",
+        ]
+  ).join("");
 
   return {
     entryMin,

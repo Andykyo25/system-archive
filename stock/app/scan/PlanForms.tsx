@@ -2,7 +2,7 @@
 
 import { useActionState, useState } from "react";
 import { cancelPlan, recordPlanFill, savePlan } from "./actions";
-import { conditions, type ScanRow } from "@/lib/scan";
+import { VERDICT_EXIT, conditions, type ScanRow } from "@/lib/scan";
 import type { ActionResult, TradePlan } from "@/lib/trade-plan";
 import { planDefaults } from "@/lib/plan-defaults";
 import {
@@ -44,16 +44,19 @@ export function PlanForm({
   today: string;
   riskContext: RiskContext | null;
   settings: PlanSettings;
-  // 系統結論卡傳入:關閉防追高上限、進場理由改寫為型態勝率
+  // 系統結論卡傳入:關閉防追高上限、停損只用 ATR、出場改停利 / 最長持有,進場理由改寫為 R2p 依據
   evidence?: string;
 }) {
   const [state, action, pending] = useActionState(savePlan, {});
+  const verdict = evidence != null;
   const suggested = planDefaults(row, {
     today,
     atrStopMultiple: settings.atrStopMultiple,
     checks: conditions(row),
-    antiChase: evidence == null,
+    antiChase: !verdict,
     evidence,
+    ma20Stop: !verdict,
+    exit: verdict ? VERDICT_EXIT : undefined,
   });
   const defaultSlippage = String(settings.slippagePct ?? 0.3);
   // Prefilled from the signal row and existing settings; every field stays editable.
