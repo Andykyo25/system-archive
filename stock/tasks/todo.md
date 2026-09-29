@@ -3738,10 +3738,26 @@ p 一動區間邊緣就吃進 / 吐出大量日)。茂矽 2342:48.8 → 26.2%、
 改用 **R2p** = 距 **60 日**收盤高 > −5% + 上方套牢 ≤10% + **0050 還原價 > 季線**(兩個函式已在正式庫)。回測:按日勝率 IS 46.3 / OOS 50.1(R2 47.2 / 49.9),門檻高原;0050 與加權報酬指數季線判斷 921/953 天一致。
 正式規格(每日前 3 檔,分數 → 當日漲幅;停損 = 訊號收盤 − 3×ATR14,進場日曾觸及停損不進;停利 +10%;最長 20 日):勝率 **56.1%**(55.3 / 50.5 / 58.6 / 64.4),淨期望值 +0.9%(2024 −0.2%),P5 −16.8%。舊 A 同期 42.8%。
 
-- [ ] 1. migration `20260929000001_verdict_r2p`:`scan_supply_share` 無上方量回 0(原回 NULL → 創新高股被排除);app_settings `verdict_atr_stop_multiple`=3(持股部位用的 `atr_stop_multiple`=2 不動);`verdict_plan_levels` 改 ATR-only;`v_scan_verdict` 改 R2p 前 3;drop `v_scan_pattern_stats`;`freeze_verdict_watch` 讀新設定、pattern 記 `R2p`
+- [x] 1. migration `20260929000001_verdict_r2p`:`scan_supply_share` 無上方量回 0(原回 NULL → 創新高股被排除);app_settings `verdict_atr_stop_multiple`=3(持股部位用的 `atr_stop_multiple`=2 不動);`verdict_plan_levels` 改 ATR-only;`v_scan_verdict` 改 R2p 前 3;drop `v_scan_pattern_stats`;`freeze_verdict_watch` 讀新設定、pattern 記 `R2p`
       → verify:9/24 上榜 = AMAX-KY / 晶心科 / 雙鴻;freeze 價位 = 前端 planDefaults 逐分一致;mv_pick_scorecard 型態 A/D 計數不變
-- [ ] 2. 前端:VerdictBoard(看多 / 貼近 60 日高 · 套牢 % / 買入·停損·出場「+10% 或 20 日」)、plan-defaults(ATR-only 停損 + 出場文字)、page 讀新設定與排序、/track 刪型態勝率表、lib/scan 型別
+- [x] 2. 前端:VerdictBoard(看多 / 貼近 60 日高 · 套牢 % / 買入·停損·出場「+10% 或 20 日」)、plan-defaults(ATR-only 停損 + 出場文字)、page 讀新設定與排序、/track 刪型態勝率表、lib/scan 型別
       → verify:tsc / eslint / build / npm test;preview /scan、/track
-- [ ] 3. `tools/scan-backtest/`:抓取 / 引擎 / 驗證 / 研究 / 正式規格腳本(資料不入 repo)→ verify:`node r2p.mjs` 重現上面數字
+- [x] 3. `tools/scan-backtest/`:抓取 / 引擎 / 驗證 / 研究 / 正式規格腳本(資料不入 repo)→ verify:`node r2p.mjs` 重現上面數字
 - rollback:migration 內附舊定義重建步驟(20260923000004 的 v_scan_pattern_stats / v_scan_verdict / verdict_plan_levels / freeze 定義);前端 git revert
 - 部署順序:本機檢查通過 → 套 migration → commit / push(同一時間點,避免舊前端讀新 view)
+
+### Review — 2026-09-29 上線(commit `9861775` + 本次效能修正)
+
+| # | 產出 | verify |
+|---|---|---|
+| 1 | `20260929000001_verdict_r2p`(套用前實查:型態 A/D 受 NULL 修正影響 0 筆) | 9/29 上榜 = 晶心科 / 研華 / GIS-KY(皆貼近 60 日高、套牢 0–0.7%、0050 季線 +5.67%);`verdict_plan_levels` 與前端 planDefaults 三檔逐分一致(停損 255.83 / 653.29 / 76.26,月線被忽略);設定 3 生效、`atr_stop_multiple` 仍 2;`v_scan_pattern_stats` 已刪 |
+| 1b | **`20260929000002_verdict_r2p_materialize`**:上線後線上 /scan「頁面載入失敗」—— 加 `LIMIT 3` 後 planner 先對 ~900 檔跑逐檔函式,view 11.2 s > PostgREST 8 s。score ≥ 80 改 MATERIALIZED CTE | 11.2 s → 4.1 s(舊版看多 4.4 s);線上 /scan 恢復 |
+| 2 | 前端(VerdictBoard / PlanForms / page / track / lib) | tsc、next build 通過;npm test 38/41(3 個既有 pglite 失敗);eslint 改動檔 0 問題;線上 /scan 卡片「看多 · 貼近 60 日高 · 套牢 0% · 出場 +10% 或 20 日」、計畫文字含 ATR14×3 / 停利 333.85 / 最長 20 日;/track 無型態表 |
+| 3 | `tools/scan-backtest/`(資料 gitignore) | repo 內重跑 `validate.mjs` / `r2p.mjs` 與研究時數字一致 |
+
+**教訓**:view 改動要在正式庫量「PostgREST 實際會跑的那條查詢」耗時再上線 —— 預覽時只量了分開的子查詢(7.3 s 冷快取)就判斷 OK,沒量加上 ORDER BY / LIMIT 的最終定義。(已併入 lessons L76)
+
+**上線後的已知影響(未處理)**
+- 3ATR 停損較寬 → 單筆風險預算下股數變少:晶心科 303.5 元只算得出 **90 股**(< 1 張;Andy 不買零股)。高價股多半會落在 1 張以下
+- `mv_pick_scorecard` 的 scan 型態 / 套牢量每次 refresh 用現存日線重算,但 `cleanup_market_prices` 每天刪池外股 135 天前資料 → 舊選股的 120 日套牢量分母縮水,型態會漂移(本次 refresh A 65→64 / D 26→27)。非本次造成,屬既有非 PIT 問題
+- verdict_watch 今天 15:45 排程第一次凍結 R2p(pattern = `R2p`);9/24 的 A 名單紀錄未覆寫
