@@ -143,7 +143,7 @@ export default async function BacktestPage() {
           <RunNotice />
         </form>
         <p className="mt-2 text-xs text-zinc-500">
-          ⚠ EF 同步執行,依資料量可能需 30s~2min。
+          送出後回測在背景執行,結果頁會自動更新。
           資料不足會 graceful 回 failed + reason=insufficient_data,不會 crash。
         </p>
       </section>

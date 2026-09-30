@@ -4,15 +4,13 @@ import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
-// 新增一筆 backtest run 並 fire-and-forget 觸發 EF。
-// 注意:EF 可能跑 30s~120s,直接 await 會卡住 form。
+// 新增一筆 backtest run 並觸發 EF(async:true)。
 // 流程:
-//   1. server action 呼叫 EF(supabase-js functions.invoke)
-//   2. EF 內部會建 backtest_runs row (status=running) → 跑完 → status=finished/failed
-//   3. 我們 await 完拿 run_id,redirect 去詳情頁
-//
-// 若希望非同步(form submit 立刻返回),可改成 fetch 不 await。但因為 EF 內已會建 row
-// + 寫 fetch_log,等 EF 完成是合理 UX(避免使用者看不到 row)。
+//   1. server action 呼叫 EF(supabase-js functions.invoke,body.async=true)
+//   2. EF 先建 backtest_runs row (status=running) 並立刻回 202 + run_id,回測在 EF 背景
+//      執行(EdgeRuntime.waitUntil)→ 跑完寫回 status=finished/failed
+//   3. 我們拿到 run_id 就 redirect 去詳情頁;running 時詳情頁每 5 秒自動刷新
+// 不給 async 時 EF 仍是舊的同步行為(等完整結果,可能撞 EF 150 s 上限而 504),UI 不再使用。
 export async function createBacktestRun(formData: FormData): Promise<void> {
   const name = String(formData.get("name") ?? "").trim();
   const startDate = String(formData.get("start_date") ?? "").trim();
@@ -43,6 +41,7 @@ export async function createBacktestRun(formData: FormData): Promise<void> {
     top_n: topN,
     weight_strategy: "equal",
     benchmark_symbol: benchmark,
+    async: true,
   };
 
   const sb = createClient();

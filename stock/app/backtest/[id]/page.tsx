@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { fmtMoney, fmtPct, pctColor } from "@/app/_components/Format";
 import { readAll, unwrap } from "@/lib/db";
 import { monthlyEquityReturns, type CurveSummary } from "@/lib/backtest-view";
+import { AutoRefresh } from "../_components/AutoRefresh";
 
 export const dynamic = "force-dynamic";
 
@@ -101,6 +102,11 @@ export default async function BacktestDetailPage({
   if (!run) return notFound();
   const r = run as BacktestRun;
   const tradeRows = (trades as BacktestTrade[] | null) ?? [];
+  // 背景工作被平台終止(EF wall clock 上限 Free 150 s)時 row 會停在 running;超過 10 分鐘視為中斷
+  const stale =
+    r.status === "running" &&
+    r.started_at != null &&
+    Date.now() - new Date(r.started_at).getTime() > 10 * 60 * 1000;
 
   return (
     <div className="space-y-6">
@@ -140,7 +146,7 @@ export default async function BacktestDetailPage({
       {r.status === "failed" ? (
         <FailedReason run={r} />
       ) : r.status === "running" ? (
-        <RunningCard />
+        <RunningCard stale={stale} />
       ) : (
         <FinishedView run={r} trades={tradeRows} />
       )}
@@ -205,10 +211,19 @@ function FailedReason({ run }: { run: BacktestRun }) {
   );
 }
 
-function RunningCard() {
+function RunningCard({ stale }: { stale: boolean }) {
+  if (stale) {
+    return (
+      <div className="rounded-lg border border-red-900/40 bg-red-950/30 p-4 text-sm text-red-200">
+        這筆回測超過 10 分鐘沒有完成,背景工作可能已被中斷(Edge Function 執行上限 150 秒)。
+        請回列表刪除後重跑,或縮短區間。
+      </div>
+    );
+  }
   return (
     <div className="rounded-lg border border-yellow-900/40 bg-yellow-950/20 p-4 text-sm text-yellow-200">
-      回測執行中… 重新整理頁面查看進度。
+      <AutoRefresh />
+      回測在背景執行中,本頁每 5 秒自動更新;完成後會直接顯示結果。
     </div>
   );
 }

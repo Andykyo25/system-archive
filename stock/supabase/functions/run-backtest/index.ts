@@ -4,6 +4,11 @@
 // exits remain open positions. Previously stored runs are never rewritten.
 // Adjusted fractional units, no slippage; close remains a diagnostic model.
 //
+// 2026-09-30:回測結果位元不變,只改執行方式 —— (1) 交易日曆改 price_trade_dates RPC
+//   (原逐頁掃 price_daily 全表,平方級,30 萬列 ≈ 100 s);(2) 各換股日的 score_universe_at
+//   以有限並行預取;(3) body.async=true 時先回 202 + run_id,回測交給 EdgeRuntime.waitUntil
+//   在背景跑(未給 = 舊行為,同步等完並回 summary;既有批次呼叫方不受影響)。
+//
 // 流程:
 //   1. 比對可信 service/cron secret + 驗證參數
 //   2. 插入 backtest_runs row(status=running)
@@ -65,6 +70,9 @@ interface RunReq {
   //   未給/immediate → 直接採預定開盤價
   entry_model?: "immediate" | "pullback_ma20";
   entry_wait_days?: number; // pullback 等待窗(交易日),預設 10,1-40
+  // true = 先回 202 + run_id,回測在背景執行(UI 用,結果寫回 backtest_runs);
+  //   未給 = 同步等完並回 summary(舊行為)
+  async?: boolean;
 }
 
 interface ScoreRow {
@@ -113,30 +121,58 @@ function isEtf(symbol: string): boolean {
   return /^00\d/.test(symbol);
 }
 
+// 交易日 = 區間內 price_daily 任一檔出現過的日期。由 DB 端 DISTINCT(price_trade_dates)一次取回;
+// 原本逐頁掃全部價格列(OFFSET 成本隨頁數線性成長 → 平方級,30 萬列 ≈ 100 s)。
+// PostgREST 單次最多回 1000 筆,超過 1000 個交易日(> 4 年)才會走到第二頁。
 async function getTradeDates(
   sb: SupabaseClient,
   start: string,
   end: string,
 ): Promise<string[]> {
   const dates = new Set<string>();
-  let offset = 0;
   const pageSize = 1000;
-  while (true) {
+  for (let offset = 0; ; offset += pageSize) {
     const { data, error } = await sb
-      .from("price_daily")
-      .select("trade_date")
-      .gte("trade_date", start)
-      .lte("trade_date", end)
-      .order("trade_date", { ascending: true })
-      .order("symbol", { ascending: true })
+      .rpc("price_trade_dates", { p_start: start, p_end: end })
       .range(offset, offset + pageSize - 1);
     if (error) throw new Error(`getTradeDates: ${error.message}`);
-    if (!data || data.length === 0) break;
-    for (const r of data as { trade_date: string }[]) dates.add(r.trade_date);
-    if (data.length < pageSize) break;
-    offset += pageSize;
+    const rows = (data as string[] | null) ?? [];
+    for (const d of rows) dates.add(d);
+    if (rows.length < pageSize) break;
   }
   return Array.from(dates).sort();
+}
+
+// 各換股日的 score_universe_at 互相獨立(每次約 3~4 s),以有限並行預取,省下 N 次串行等待。
+// 回測本體仍依 period 順序消費結果,邏輯與輸出不變。任一失敗 → 回傳第一個錯誤與該換股日。
+const RANK_CONCURRENCY = 3;
+async function prefetchRanks(
+  sb: SupabaseClient,
+  rankDates: string[],
+  topN: number,
+): Promise<{ rows: ScoreRow[][] } | { error: string; rebalance_date: string }> {
+  const rows: ScoreRow[][] = new Array(rankDates.length);
+  let next = 0;
+  let failure: { error: string; rebalance_date: string } | undefined;
+  const worker = async () => {
+    while (failure === undefined) {
+      const i = next++;
+      if (i >= rankDates.length) return;
+      const { data, error } = await sb
+        .rpc("score_universe_at", { as_of_date: rankDates[i] })
+        .order("expected_rank", { ascending: true })
+        .limit(topN);
+      if (error) {
+        failure ??= { error: error.message, rebalance_date: rankDates[i] };
+        return;
+      }
+      rows[i] = (data as ScoreRow[] | null) ?? [];
+    }
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(RANK_CONCURRENCY, rankDates.length) }, worker),
+  );
+  return failure ?? { rows };
 }
 
 // 取一組 symbol 在 [start,end] 的 bar(adj 套用 o/h/l/c),每 symbol 一個
@@ -375,6 +411,8 @@ Deno.serve(async (req: Request) => {
     return Response.json({ run_id: runId, status: "failed", reason, ...extra });
   }
 
+  // 以下是回測本體;維持原縮排以縮小 diff。async 與同步模式共用同一段,結果相同。
+  const runBacktest = async (): Promise<Response> => {
   let tradeDates: string[];
   try {
     tradeDates = await getTradeDates(sb, body.start_date, endDate);
@@ -420,16 +458,15 @@ Deno.serve(async (req: Request) => {
   let entryLimitNa = 0;
 
   try {
+    const prefetched = await prefetchRanks(sb, points.map((pt) => tradeDates[pt.rankIdx]), topN);
+    if ("error" in prefetched) {
+      return await failRun("score_universe_at_error: " + prefetched.error, { rebalance_date: prefetched.rebalance_date });
+    }
     for (const [period, pt] of points.entries()) {
       const rankDate = tradeDates[pt.rankIdx];
       const entryExecDate = tradeDates[pt.entryIdx];
       const exitExecDate = tradeDates[pt.exitIdx];
-      const { data: ranks, error: rankErr } = await sb
-        .rpc("score_universe_at", { as_of_date: rankDate })
-        .order("expected_rank", { ascending: true })
-        .limit(topN);
-      if (rankErr) return await failRun("score_universe_at_error: " + rankErr.message, { rebalance_date: rankDate });
-      const rankRows = (ranks as ScoreRow[] | null) ?? [];
+      const rankRows = prefetched.rows[period];
       const allSyms = Array.from(new Set([...rankRows.map((r) => r.symbol), benchmarkSymbol]));
       const missingSymbols = allSyms.filter((symbol) => !barsBySymbol.has(symbol));
       // Load through the valuation horizon once per newly encountered symbol.
@@ -656,4 +693,18 @@ Deno.serve(async (req: Request) => {
   } catch (error) {
     return await failRun("daily_ledger_error: " + (error instanceof Error ? error.message : String(error)));
   }
+  };
+
+  // async:true(UI 用):先回 202 + run_id,回測交給背景。任何未預期例外都寫回 run row,不會卡在
+  // running;例外 = 平台強制終止 worker(EF wall clock 上限 Free 150 s / Paid 400 s),
+  // 詳情頁對逾時的 running 有提示。
+  if (body.async === true) {
+    EdgeRuntime.waitUntil(
+      runBacktest().catch((e) =>
+        failRun("unhandled_error: " + (e instanceof Error ? e.message : String(e)))
+      ),
+    );
+    return Response.json({ run_id: runId, status: "running" }, { status: 202 });
+  }
+  return await runBacktest();
 });
