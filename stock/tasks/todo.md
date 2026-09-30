@@ -3791,3 +3791,23 @@ p 一動區間邊緣就吃進 / 吐出大量日)。茂矽 2342:48.8 → 26.2%、
       → 限制(免費方案 EF wall clock 150 s):非同步只解「前端等待/504」,不延長 EF 上限;三年區間仍需壓低單次成本
 
 **環境限制**:本機無 Node(README 的 WinGet 路徑是舊的)→ 無法本機跑 tsc / eslint / build / npm test;驗證靠 Railway build(Next 內含 TS 檢查)+ 線上實測,並在報告誠實標示。
+
+### Review — 2026-09-30(#1 ~ #4 全部完成並驗證)
+
+| # | 產出 | verify |
+|---|---|---|
+| 1 | `RunButton` / `RunNotice`(useFormStatus),commit `fc82d51` | Railway build success;線上送出後按鈕變「執行中…」+ 提示,完成自動導向詳情頁(N20 / N15 / N25 三次) |
+| 2 | migration `20260930000001_score_universe_at_fund_first_rank`:expected_rank 補 `(fund_count_total > 0) DESC` | 11 日的分數指紋 / 有基本面·無基本面相對排序指紋逐日不變;2023 兩日(全體無基本面)整體排序不變;僅 2026-08-21 Top10 由 10 檔 ETF 變回股票;反向 replace 逐位元還原(md5 `2990a427…`);ACL 僅 postgres / service_role 不變;新 run 全無 ETF |
+| 3 | 3 個 clean run(2026-05-01 ~ 09-30,Top10,N = 15 / 20 / 25) | 策略 +43.8 / +68.7 / +52.4% vs 0050 +15.7 / +19.4 / +19.4%;從第二次換股日起(rank 日全在股票池凍結日 05-12 後)+24.9 / +35.1 / +34.5% vs +8.4 / +6.8 / +11.6%;方向 3/3 一致 |
+| 4 | migration `20260930000002_price_trade_dates_rpc` + EF run-backtest v9(commit `afea6f0`):交易日曆改 RPC、排名並行 3 預取、`async:true` 背景執行;前端自動刷新 + 逾時提示 | 同參數重跑 N20:66.1 s → 10.0 s,summary / 54 筆交易 / 權益曲線逐位元相同;UI 走 async:4 s 內導向詳情頁、running → finished 自動更新;三年區間(36 次換股、298 筆)24.4 s(舊引擎估 ~300 s = 必 504) |
+
+**根因**:「按了沒反應」= 9/6 v8(逐日帳戶版)的 `getTradeDates` 逐頁(OFFSET)掃 price_daily 全部價格列,成本平方級;M10 是 v8 之後的第一個 run,價格表又因 2026-05 全市場入庫長到 30 萬列 → 141.5 s,離 EF idle timeout 150 s 只差 8.5 s,而「執行」鈕完全無回饋。
+**偏離先前提案**:#2 原提案「排除 ETF + 最低維度門檻」→ 改為對齊線上排序(歷史 run 本來就選過 ETF、絕對門檻會誤殺 2023 上半年,見上方計畫)。
+**限制 / 未做**:
+- 本機無 Node → tsc / eslint / build / npm test 未跑,以 Railway build + 線上實測為準;EF 是 Deno 且部署不做型別檢查,以同步 / 非同步兩條路徑實測 + 逐位元回歸為準
+- L39 錨點指紋(fp_2025 / fp_2024)算法無紀錄、無法還原,改用自建指紋
+- 逾時提示分支(running > 10 分鐘)未以真實逾時驗證
+- 新版三年結果(+31.3% vs 0050 +155.4%,v8 逐日帳戶 + 本次排序)與舊 v7 run(alpha −58 ~ −81 pp)不可直接比;未做 A/B 歸因
+- `stock_universe` 非 PIT 仍在(clean run 的第一窗 rank 日 2026-05-04 仍早於凍結日 05-12);長期解 = 用 `universe_snapshot`(2026-05-16 起)做 PIT 池
+- 測試 run 留在 DB(未刪):M10-clean-N15 / N20 / N25、M10-clean-N20-v9sync、PERF-3yr-async-check
+- rollback:EF → 重新部署 git `fc82d51` 的 v8,再 drop function price_trade_dates;函式排序 → migration 檔頭的反向 replace;前端 git revert
