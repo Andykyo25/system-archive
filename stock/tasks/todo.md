@@ -3761,3 +3761,33 @@ p 一動區間邊緣就吃進 / 吐出大量日)。茂矽 2342:48.8 → 26.2%、
 - 3ATR 停損較寬 → 單筆風險預算下股數變少:晶心科 303.5 元只算得出 **90 股**(< 1 張;Andy 不買零股)。高價股多半會落在 1 張以下
 - `mv_pick_scorecard` 的 scan 型態 / 套牢量每次 refresh 用現存日線重算,但 `cleanup_market_prices` 每天刪池外股 135 天前資料 → 舊選股的 120 日套牢量分母縮水,型態會漂移(本次 refresh A 65→64 / D 26→27)。非本次造成,屬既有非 PIT 問題
 - verdict_watch 今天 15:45 排程第一次凍結 R2p(pattern = `R2p`);9/24 的 A 名單紀錄未覆寫
+
+---
+
+## 2026-09-30 — 回測系統修復(Andy:「回測系統沒有用,按了沒反應」→ 看 M10 分析 → 「先做 1 和 2,再做 3,4」)
+
+**起因**:M10 回測(2025-05-01~2026-09-30,Top10 / N=20)跑了 **141.5 s**(其餘 76 筆平均 ~11 s),按「執行」後畫面 2 分多鐘無任何回饋 =「按了沒反應」;離 Supabase EF idle timeout(150 s)只差 8.5 s,免費方案 wall clock 也是 150 s。
+**M10 分析結論**:+191.97% / Sharpe 3.36 / MDD −10.3% / 勝率 67.5%(0050 +158.71%)**不可引用** —— 到 2026-05-27 為止仍落後 0050(+110.9% vs +139.9%),超額報酬全來自 5/28 之後 3 個選股窗(+30.7% vs +1.8%,5 檔佔 87%);另有 (a) chip 覆蓋自 2026-04 才有 (b) stock_universe 2026-05-12 凍結、非 PIT(13/17 次換股早於此) (c) A 段平均現金 41.5% (d) 最後一窗 10 檔全是 ETF。
+
+- [ ] 1. 前端:`/backtest`「執行」鈕加載入狀態 + 防重複送出(`useFormStatus`,React 19)
+      → verify:push 後 Railway build 成功;線上送出一次,按鈕變「執行中…」且 disabled,完成後導向詳情頁
+      → rollback:git revert
+- [ ] 2. DB:`score_universe_at` 排名補上線上 `v_stock_rank` 早已有的 `(fund_count_total > 0) DESC`(L32 同步)
+      **設計修正(相對先前提案「排除 ETF + 最低維度門檻」)**,查證後發現:
+      (a) 線上 `v_stock_rank` 的 `expected_rank` = `ORDER BY (fund_count_total > 0) DESC, weighted_score DESC, symbol`,函式只按分數 → 漏同步。2026-08-21 起 332 檔新上市/新入庫 ETF 只有 1 條動能 + 1 條反轉可評,拿滿分 100 → 佔滿回測 Top10(線上今天 Top10 無 ETF、無滿分)
+      (b) 歷史 run 本來就會選 ETF(HONEST-v2 2023 top5 7/55、B3-base-3yr-t10 15/351;皆 0050/0056/00878 等長歷史 ETF)→ 整個排除 ETF 會讓舊基準無法重現、新舊不可比
+      (c) 任何「絕對最低維度」門檻都會誤殺 2023 上半年(全市場尚無基本面、歷史不足);對齊線上排序則不會(全體 fund_count_total=0 時該項為常數)
+      → pre-check:備份現行定義;修改前 9 個日期(含 L39 錨點 2024-06-28 / 2025-06-30)的「分數指紋 / 有基本面標的相對排序指紋 / Top10」
+      → apply:機械替換(專案既有模式:pg_get_functiondef + replace + 斷言恰 1 次 + execute;idempotent)。migration `20260930000001_score_universe_at_fund_first_rank.sql`
+      → verify(與 apply 分兩次呼叫,L35):分數指紋逐日相同(僅 expected_rank 可變);有基本面標的相對排序不變;2026-08-21 Top10 不含 ETF;2023-01~05(全體無基本面)排序不變;ACL(僅 service_role)與 body 其餘位元組不變
+      → rollback:反向 replace(migration 檔頭附);範圍僅「新 run 的排名」,已存 run 不改寫
+      → **L32 註記**:線上 view 已是這個排序,本次是函式追上;線上 v_stock_rank 對「新上市 ETF 滿分」的潛在曝險靠同一排序已擋住(fund_count_total=0 排最後)
+- [ ] 3. 重跑乾淨版 M10:start 2026-05-01(chip 覆蓋齊備)/ end 2026-09-30,N=15 / 20 / 25 各一次,Top10,其餘同 M10
+      → verify:三組 rebalance 相位敏感度;Top10 不含 ETF;對照 0050;涵蓋起點 ≥ 2026-05-01 的 run 不再被標「不可引用」的前提是 stock_universe 凍結日 2026-05-12 仍為偏誤(3 檔以上 5/1~5/12 之間換股的窗要註記)
+- [ ] 4. EF `run-backtest` 非同步:opt-in `async:true`(舊呼叫方零影響)+ 詳情頁 running 自動刷新 + 逾時(>10 分鐘無更新)提示
+      → verify:送出立即回 run_id;running → finished 自動更新;前端請求不再等 EF
+      → rollback:redeploy 部署前備份的 EF 版本(先 get_edge_function 存檔);前端 git revert
+      → 待量測後決定是否一併做:`getTradeDates` 逐頁掃 price_daily 全部列(區間 30 萬列 = 304 頁,每頁 ORDER BY + OFFSET)改 DISTINCT RPC —— 懷疑是 141 s 的主因
+      → 限制(免費方案 EF wall clock 150 s):非同步只解「前端等待/504」,不延長 EF 上限;三年區間仍需壓低單次成本
+
+**環境限制**:本機無 Node(README 的 WinGet 路徑是舊的)→ 無法本機跑 tsc / eslint / build / npm test;驗證靠 Railway build(Next 內含 TS 檢查)+ 線上實測,並在報告誠實標示。

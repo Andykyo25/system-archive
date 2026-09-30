@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { createBacktestRun } from "./actions";
 import { RunsTableClient } from "./_components/RunsTableClient";
+import { RunButton, RunNotice } from "./_components/RunButton";
 
 export const dynamic = "force-dynamic";
 
@@ -137,10 +138,9 @@ export default async function BacktestPage() {
             />
           </div>
           <div className="flex items-end">
-            <button className={btnCls} type="submit">
-              執行
-            </button>
+            <RunButton className={btnCls} />
           </div>
+          <RunNotice />
         </form>
         <p className="mt-2 text-xs text-zinc-500">
           ⚠ EF 同步執行,依資料量可能需 30s~2min。
