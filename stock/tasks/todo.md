@@ -3811,3 +3811,31 @@ p 一動區間邊緣就吃進 / 吐出大量日)。茂矽 2342:48.8 → 26.2%、
 - `stock_universe` 非 PIT 仍在(clean run 的第一窗 rank 日 2026-05-04 仍早於凍結日 05-12);長期解 = 用 `universe_snapshot`(2026-05-16 起)做 PIT 池
 - 測試 run 留在 DB(未刪):M10-clean-N15 / N20 / N25、M10-clean-N20-v9sync、PERF-3yr-async-check
 - rollback:EF → 重新部署 git `fc82d51` 的 v8,再 drop function price_trade_dates;函式排序 → migration 檔頭的反向 replace;前端 git revert
+
+## 2026-10-01 — 盤中即時分析頁 /intraday(Andy:把 tools/intraday 腳本帶進系統,UI 看、不用手動觸發,反覆提升到滿意)
+
+背景:tools/intraday/snapshot.mjs 已可用(盤面/五檔/均線支撐/上方套牢/操作參考,與上次快照比對)。要變成 UI 常駐。
+設計取捨:
+- 即時源 = Next server route 直接打 TWSE MIS(與 EF 同來源);price_intraday_cache 沒有五檔,不能只靠它。MIS 失敗 → 退回 cache 價格並標示「五檔暫缺」。
+- 分析邏輯放 `lib/intraday.ts`(純函式、零 runtime import,可被 node test 與 CLI 共用),不在 route / component 內各寫一份。
+- 快照比對:前端每次輪詢存 localStorage(同日、同代號),可選「對比基準」(預設約 10 分鐘前)。不加 DB 表(第二階段才考慮跨裝置)。
+- 輪詢:盤中(09:00–13:35 Taipei)且分頁可見才每 30 秒;收盤後只抓一次。
+- 不新增買賣規則:操作參考只換算既有設定(atr_stop_multiple、v_verdict_live、MA20)。
+- 五檔買賣比只當參考,不做訊號(掛單可撤)。
+
+步驟(每步附 verify):
+- [x] 1. lib/intraday.ts + tests/intraday.test.mjs → verify: `npm test` 通過(均線/ATR/套牢區/MIS 解析/比對文字)
+- [x] 2. app/api/intraday/[symbol]/route.ts → verify: curl 4958 回 JSON;錯誤代號 404;MIS 掛掉退 cache
+- [x] 3. app/intraday/page.tsx + IntradayLive.tsx(輪詢、快照、基準選擇)+ Sidebar/TopBar 入口 → verify: preview 實際載入、輪詢更新、console 無錯、手機寬度
+- [x] 4. 快選:持股 + 今日看多名單 → verify: 點選切換代號
+- [x] 5. CLI 改為薄包裝共用 lib → verify: 內容與網頁等價(文字由 lib 產生,格式略有不同)
+- [~] 6. 迭代品質(視覺、邊界:盤前/收盤後/停牌/無五檔/ETF)→ verify: 各情境截圖
+rollback:刪 app/intraday、app/api/intraday、lib/intraday.ts、Sidebar 一行;無 DB 變更。
+
+### Review(2026-10-01)
+- 新增:lib/intraday.ts(純函式)、lib/intraday-server.ts、app/api/intraday/[symbol]/route.ts、app/intraday/{page,IntradayLive}.tsx、Sidebar「盤中分析」、tests/intraday.test.mjs(8 項)。CLI tools/intraday/snapshot.mjs 改共用 lib。**無 DB 變更**。
+- 驗證:intraday 測試 8/8、tsc、eslint、next build 通過;preview 實測 4958 / 6196(看多名單)/ 0050(ETF)/ 9999(404)/ 格式錯誤(400);桌面與手機寬度(無橫向溢出);注入 10 筆快照驗證基準對比、走勢圖、量縮判斷;MIS 失敗時保留舊畫面並標示。
+- 既有失敗(與本次無關):database / plan-risk-db / quote-provenance 3 檔缺 devDependency @electric-sql/pglite。
+- 發現:MIS 偶發 ECONNRESET(連續密集請求時集中出現,standalone Node 與 server 內各種連線方式事後都正常)→ server 重試 3 次 + 前端保留上一筆成功資料。**尚未驗證 Railway 出口 IP 能否連 MIS**,部署後第一件事就是在 /intraday 看有沒有「即時五檔暫缺」。
+- 已知限制:快照存瀏覽器 localStorage(換裝置 / 清除即遺失,且需盤中開著頁面才累積);套牢區用日線收盤價近似;五檔買賣比只供參考。
+- 未做(第二階段,視使用情況):快照存 DB 供跨裝置與盤中背景累積;/stocks/[symbol] 內嵌;條件提醒。

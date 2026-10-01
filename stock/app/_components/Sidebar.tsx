@@ -12,6 +12,7 @@ import {
   FlaskConical,
   LayoutDashboard,
   Menu,
+  Radar,
   Settings,
   Star,
   TrendingUp,
@@ -39,6 +40,7 @@ const navGroups: { label: string; items: NavItem[] }[] = [
     label: "研究工具",
     items: [
       { href: "/scan", label: "今日看多", icon: Crosshair },
+      { href: "/intraday", label: "盤中分析", icon: Radar },
       { href: "/track", label: "選股成績單", icon: ClipboardCheck },
       { href: "/backtest", label: "策略回測", icon: FlaskConical },
     ],
