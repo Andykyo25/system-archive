@@ -3839,3 +3839,85 @@ rollback:刪 app/intraday、app/api/intraday、lib/intraday.ts、Sidebar 一行;
 - 發現:MIS 偶發 ECONNRESET(連續密集請求時集中出現,standalone Node 與 server 內各種連線方式事後都正常)→ server 重試 3 次 + 前端保留上一筆成功資料。**尚未驗證 Railway 出口 IP 能否連 MIS**,部署後第一件事就是在 /intraday 看有沒有「即時五檔暫缺」。
 - 已知限制:快照存瀏覽器 localStorage(換裝置 / 清除即遺失,且需盤中開著頁面才累積);套牢區用日線收盤價近似;五檔買賣比只供參考。
 - 未做(第二階段,視使用情況):快照存 DB 供跨裝置與盤中背景累積;/stocks/[symbol] 內嵌;條件提醒。
+---
+
+## 2026-10-06 — 富邦 Trade API 串接 階段 1(Andy:「先做階段 1 / 確定富邦證券、有申請 API / 放 Railway」)
+
+**目的**:把券商端「實際庫存」每日讀進 Supabase,與 `holdings_transactions` 對帳,抓漏記 / 錯記。**唯讀;不下單;不寫 `holdings_transactions`。**
+
+**調查結論(2026-10-06,以下都會改變設計)**
+1. **npm 上的 `fubon-neo`(2.2.2)不是官方**:發布者是個人帳號 `chatflowdev`、2026-02 上傳、版本落後(官方 v2.4.0)、32 MB 原生二進位,而且會接手 API Key 與憑證 → **禁用**。官方來源:`https://www.fbs.com.tw/TradeAPI_SDK/fubon_binary/fubon-neo-2.4.0.nodejs.zip`(19,428,829 bytes,Last-Modified 2026-09-30)。版本鎖 2.4.0,不主動升級。
+2. **唯讀 key 讀不到成交明細**:第三方實作(nestegg PR #12)回報 `stock.filledHistory` 需「證券下單」權限,唯讀 key 會得到「此 API KEY 未授權該功能」。官方文件未載明權限範圍 → **未驗證**。可讀:`accounting.inventories` / `unrealizedGainsAndLoses` / `querySettlement`。所以階段 1 = **庫存快照對帳**,不是成交匯入。
+3. 官方 prepare 頁:憑證用 Windows 的 TCEM.exe 申請(存 `C:\CAFubon\<ID>`);API 風險預告書是**線上簽署**(更正我先前「要去分公司簽」的說法)。API Key 登入我推斷仍需 `.pfx`(nestegg 用 `apikeyLogin`)—— 未驗證。
+4. **Alpine 很可能載不進 SDK**:2.2.2 的 napi triples 只額外列 aarch64 musl,x64 預設只有 gnu(推論,step 0 拆 zip 驗證)。→ worker 用 `node:24-slim`(Debian / glibc),**不動 web 的 Alpine Dockerfile**。
+5. 官方 accounting 頁:查詢上限 **5 次 / 秒**;nestegg 另遇「業務系統流量控管」,需 backoff。
+6. 網站無 Auth(README)→ 憑證只放 worker,**絕不進 Next.js / server actions**。Railway 預設無固定出口 IP;富邦是否綁 IP 官方未載明,step 4 實測。
+7. repo 是 public(`Andykyo25/system-archive`)→ SDK 二進位、`.pfx`、密碼都不進 repo;Dockerfile build 時從官方 URL 下載並驗 sha256。
+
+**設計**
+- 位置 `stock/workers/broker-sync/`:純 `.mjs` + 獨立 Dockerfile。web 的 `tsconfig.json` include 只認 `.ts/.tsx/.mts`,所以 **web 設定零改動**。
+- Railway:同 project 新增第二個 service,root directory `stock/workers/broker-sync`,Cron Schedule 平日收盤後跑一次(提案 Taipei 18:00 = UTC `0 10 * * 1-5`),跑完即 exit。
+- 流程:login → inventories + unrealizedGainsAndLoses(限流 ≤ 5/s,backoff 2/4/8/16 s)→ upsert → logout → 寫 `fetch_log`(source=`broker-sync`,[[L07]];自動出現在 `/health` 的 `v_data_health`,web 不用改)。
+- 新表 `broker_inventory_snapshot`:`snapshot_date, symbol, order_type(整股/零股), qty, tradable_qty, cost_price, unrealized_pnl, raw jsonb, fetched_at`;PK `(snapshot_date, symbol, order_type)`;RLS enable,僅 service_role。
+- 新 view `v_broker_recon`:最新快照 vs `v_holdings_current`;status = `match / qty_diff / cost_diff / missing_in_system / missing_at_broker`。
+- 防呆:回傳空、或「查無 / 無資料」→ 視為失敗,不寫快照(避免「全部持股消失」);一次消失 ≥ 50% 持股 → 失敗並保留舊快照。
+- 不寫 `holdings_transactions` 的理由:唯讀 key 沒有成交價 / 手續費 / 稅,用庫存差推算會污染已實現損益,以及進場當下的訊號歸因(`signal_source`,[[L45]])。
+
+**步驟**
+- [ ] 0. 下載官方 zip 到 scratchpad **只拆檢、不執行**(需 Andy 同意):確認內含 tgz、Linux x64 的 glibc / musl `.node`、版本號;記錄 sha256
+      → verify:清單與 sha256 記在本檔;據此定 base image
+- [ ] 1. migration `20261006000001_broker_inventory_snapshot.sql`:表 + `v_broker_recon`
+      → pre-check:`list_tables` 確認無同名;apply 後與驗證分兩次呼叫([[L35]])
+      → verify:空表時 view 回 `missing_at_broker` = 目前全部持股;`v_holdings_current` 逐位元不變
+      → rollback:`drop view v_broker_recon; drop table broker_inventory_snapshot;`(無其他物件依賴)
+- [ ] 2. worker 程式 + Dockerfile(`DRY_RUN=1` 預設:只登入 + 抓 + 記 `fetch_log`,不寫快照)
+      → verify:本機無 Node([[stock-local-no-node]])跑不了 → 靜態檢查 import / env 名稱;實證靠 step 4
+      → rollback:git revert
+- [ ] 3. **Andy 在 Railway 建 service 並設 env**(我沒有 Railway CLI / token / MCP,無法代勞):`FUBON_ID` `FUBON_API_KEY` `FUBON_CERT_B64`(`.pfx` 做 base64)`FUBON_CERT_PASSWORD` `SUPABASE_URL` `SUPABASE_SERVICE_ROLE_KEY` `DRY_RUN=1`;**這些值不要貼進對話**
+      → verify:Railway 部署成功(讀 GitHub commit status)
+      → rollback:刪該 service
+- [ ] 4. DRY_RUN 首跑 → verify:用 MCP 查 `fetch_log where source='broker-sync'`:success、庫存檔數(記在 `rows_skipped`)、失敗訊息即診斷(權限 / IP 綁定 / musl / 憑證)
+- [ ] 5. `DRY_RUN=0` → verify:筆數與富邦 App 庫存一致;`v_broker_recon` 的差異逐檔人工核對,確認是「真漏記」還是 worker 欄位語意問題(`todayQty` 是否含零股未驗證)
+- [ ] 6. (可選,另行確認)`/holdings` 顯示對帳狀態
+
+**不做(本階段)**:下單 / 條件單 / 成交明細匯入 / 即時行情 / 自動寫 `holdings_transactions` / 改 web 的 Dockerfile 與 tsconfig。
+
+**整體 rollback**:刪 Railway worker service → git revert worker 目錄 → drop `v_broker_recon` / `broker_inventory_snapshot` → 富邦端撤銷該 API Key。web 路徑全程不受影響。
+
+**待 Andy 決定**
+- (a) API Key 的權限範圍:只有「證券業務」,還是含「證券下單」?(含下單的 key 放 Railway 風險高,建議階段 1 用只有「證券業務」的 key)
+- (b) 是否同意 step 0 下載官方 zip(19.4 MB)到 scratchpad 拆檢
+- (c) Cron 時間 18:00 Taipei 是否 OK
+
+### 進度 — 2026-10-06(Andy 回覆後;step 0、1、2 完成,3~6 待做)
+
+**Andy 的決定**:(a) API Key 含「證券下單」,問能否脫敏上 Railway (b) 同意下載官方 zip (c) cron 18:00 OK。
+**「脫敏」的作法**:不是把含下單的 key 降權,而是到富邦 API Key 管理頁**另建一把只勾「證券業務」的新 key** 給 Railway;含下單的 key 不放任何雲端環境。依據:nestegg 的實作就是日常同步一把(證券業務)、需要成交明細時另用一把(證券下單),可見富邦允許多把不同權限的 key —— **未驗證**:管理頁能否新建 / 能否選權限。權限最終由富邦伺服器端把關,程式只呼叫 `accounting.*` 不能當作保證。
+
+**step 0 結果(已完成)**
+- 官方 zip `fubon-neo-2.4.0.nodejs.zip` 19,428,829 B,sha256 `7ddb1cb9…a7b37`;內含 `fubon-neo-2.4.0.tgz` sha256 `8cf86d08…b99151e`(完整值都寫在 worker 的 Dockerfile)
+- tgz 內 Linux 只有 `linux-x64-gnu` / `linux-arm64-gnu`,**沒有 musl** → Alpine 確定不行,worker 用 `node:24-slim`
+- author = Fubon Securities;依賴 `@fugle/marketdata 1.7.0-rc.1`(npm 上存在)
+- `apikeyLogin(personalId, apiKey, certPath, certPass?)` **仍需 `.pfx`**,`certPass` 預設身分證字號;另有 `apikeyDmaLogin`(免憑證,DMA 模式,未評估)
+- JS 層只有 `which ldd` 的 execSync 與 Fugle 行情 wss;原生檔靜態字串掃到的端點只有 `neoapi.fbs.com.tw`、`*.fugle.tw`(靜態掃描,不是完整審計)
+
+**相對先前計畫的調整**
+1. 新增 `broker_snapshot_run`(每日一列)與 `replace_broker_snapshot()` RPC:讓「券商沒有任何持股」可被表達(row_count = 0),同日重跑整日覆蓋。`v_broker_recon` 在還沒有任何快照時回 0 列(原計畫寫「回 missing_at_broker」,改掉:沒快照不該全判漏記)
+2. 防呆縮減:只留「券商回空、系統卻有持股 → 失敗」。取消「消失 ≥ 50% 持股」—— 快照只供對帳顯示,寫錯隔天自然修正,不值得多一條規則
+3. 發現 `v_holdings_current` **目前 0 列**(`holdings_transactions` 52 筆,最後一筆 2026-10-06;已實現 24 筆):系統現在沒有持倉。首跑若券商有持股 → 全部 `missing_in_system` 屬預期,不是 bug
+4. cron 放 worker 的 `railway.json`(`cronSchedule`);Railway 沒帶入就到 UI 填
+5. worker 純 `.mjs`,web 的 tsconfig / Dockerfile 零改動;唯一碰到 web 層的是 `.gitignore` 加 `*.pfx`
+
+**完成**
+- [x] 0. 拆檢官方 SDK(見上)
+- [x] 1. migration `20261006000001_broker_inventory_snapshot` 已套用 production(純 ASCII,L73)
+      → verify:anon / authenticated 對 3 個新物件無任何權限、函式只 postgres / service_role、RLS on;rollback 交易內測 5 種狀態(match / qty_diff / cost_diff / missing_in_system / missing_at_broker)+ 零股相加 + Short 忽略 + 同日覆蓋 + 空快照;`holdings_transactions` 仍 52 筆、無 `T000x` 殘留;advisor 對新物件只有與其他表相同的「RLS 無 policy」INFO
+- [x] 2. worker `stock/workers/broker-sync/`(**未 commit / push**)
+      → verify:本機無 Node,改用內建瀏覽器(V8)載入真實檔案 —— `index.mjs` 語法 OK、`lib.test.mjs` 16/16 通過;以假 SDK + 假 Supabase 跑 6 情境(DRY_RUN、實寫、登入失敗訊息遮蔽身分證 / key、空庫存防呆、空對空、帳號無回應)皆符合設計
+      → **未驗證**:真的 SDK、真的登入、Railway build。Dockerfile 內有三道 build 閘門(`node --check`、`node --test`、SDK 在 Linux 載得進來)
+- [ ] 3. Andy:富邦建「證券業務」唯讀 key → Railway 建 service + env(見 `workers/broker-sync/README.md`)
+- [ ] 4. DRY_RUN 首跑 → 用 MCP 查 `fetch_log`
+- [ ] 5. `DRY_RUN=0` → 對 `v_broker_recon` 逐檔核對(尤其:`todayQty` 是否含零股、unrealized 的 `orderType` 是否與 inventories 對得上 → 看 `cost_matched`)
+- [ ] 6. (可選,另行確認)`/holdings` 顯示對帳狀態
+
+**另案(已派出 spawn_task)**:調查中發現 anon key 可讀 `v_holdings_realized`(24 列已實現交易)與 `v_holdings_summary`;約 45 個 view 是 SECURITY DEFINER 且 anon 有完整權限。web 只用 service_role,看起來可安全 revoke,但屬 access control 變更,需先列選項與 rollback 再動。新物件 `v_broker_recon` 已避開此問題(只授權 service_role)。

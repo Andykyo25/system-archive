@@ -1,0 +1,16 @@
+{
+  "name": "broker-sync",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Read-only Fubon Trade API inventory snapshot -> Supabase (Railway cron worker)",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "test": "node --test"
+  },
+  "dependencies": {
+    "fubon-neo": "file:./vendor/fubon-neo-2.4.0.tgz"
+  }
+}
