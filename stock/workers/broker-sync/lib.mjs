@@ -108,6 +108,81 @@ export function buildSnapshotRows(accountNo, inventories, unrealized) {
   return [...out.values()];
 }
 
+// 可空欄位:undefined / null / '' → null;其餘必須是有限數字。
+function optNum(v, what) {
+  if (v === undefined || v === null || v === '') return null;
+  const n = Number(v);
+  if (!Number.isFinite(n)) throw new Error(`non-numeric ${what}`);
+  return n;
+}
+
+// 帳務查詢的 data 是單一物件(querySettlement);「查無資料」算成功但沒有資料。
+export function objOf(res) {
+  if (res?.isSuccess) return { ok: true, data: res.data ?? null };
+  const message = String(res?.message ?? 'no response');
+  if (/查無|無資料|no data/i.test(message)) return { ok: true, data: null };
+  return { ok: false, message };
+}
+
+// querySettlement → broker_settlement 的列,以「查詢日」為鍵。沒有交易的日子金額欄全空,照存(欄位為 null)。
+// 官方 Node.js 文件範例把 settlement_date 寫成 snake_case、其餘是 camelCase,疑為文件筆誤 → 兩種拼法都收。
+export function buildSettlementRows(accountNo, data) {
+  if (!data) return [];
+  if (!Array.isArray(data.details)) throw new Error('unexpected settlement shape: no details array');
+  const out = new Map();
+  for (const d of data.details) {
+    const queryDate = toIsoDate(d?.date);
+    if (!queryDate) throw new Error(`unexpected settlement date: ${String(d?.date).slice(0, 12)}`);
+    const rawSettle = d.settlementDate ?? d.settlement_date;
+    const settlementDate = rawSettle ? toIsoDate(rawSettle) : null;
+    if (rawSettle && !settlementDate) throw new Error(`unexpected settlementDate: ${String(rawSettle).slice(0, 12)}`);
+    out.set(queryDate, {
+      account_no: accountNo,
+      query_date: queryDate,
+      settlement_date: settlementDate,
+      buy_value: optNum(d.buyValue, 'buyValue'),
+      buy_fee: optNum(d.buyFee, 'buyFee'),
+      buy_tax: optNum(d.buyTax, 'buyTax'),
+      buy_settlement: optNum(d.buySettlement, 'buySettlement'),
+      sell_value: optNum(d.sellValue, 'sellValue'),
+      sell_fee: optNum(d.sellFee, 'sellFee'),
+      sell_tax: optNum(d.sellTax, 'sellTax'),
+      sell_settlement: optNum(d.sellSettlement, 'sellSettlement'),
+      total_bs_value: optNum(d.totalBsValue, 'totalBsValue'),
+      total_fee: optNum(d.totalFee, 'totalFee'),
+      total_tax: optNum(d.totalTax, 'totalTax'),
+      total_settlement_amount: optNum(d.totalSettlementAmount, 'totalSettlementAmount'),
+      currency: d.currency ? String(d.currency) : null,
+      raw: d,
+    });
+  }
+  return [...out.values()];
+}
+
+// realizedGainsAndLoses → broker_realized_snapshot 的列。沒有唯一鍵,所以不去重,一列對一列。
+export function buildRealizedRows(accountNo, list) {
+  const out = [];
+  for (const r of list ?? []) {
+    const symbol = String(r.stockNo ?? '');
+    if (!SYMBOL_RE.test(symbol)) throw new Error(`unexpected stockNo: ${symbol.slice(0, 10)}`);
+    const dataDate = r.date ? toIsoDate(r.date) : null;
+    if (r.date && !dataDate) throw new Error(`unexpected realized date: ${String(r.date).slice(0, 12)}`);
+    out.push({
+      account_no: accountNo,
+      data_date: dataDate,
+      symbol,
+      buy_sell: String(r.buySell ?? ''),
+      order_type: String(r.orderType ?? ''),
+      filled_qty: int(r.filledQty, 'filledQty'),
+      filled_price: num(r.filledPrice, 'filledPrice'),
+      realized_profit: num(r.realizedProfit, 'realizedProfit', 0),
+      realized_loss: num(r.realizedLoss, 'realizedLoss', 0),
+      raw: r,
+    });
+  }
+  return out;
+}
+
 // 券商回空、但系統認為還有持股 → 多半是 API / 權限問題,不是真的清倉,視為失敗。
 export function checkSnapshot({ rowCount, systemOpenCount, allowEmpty = false }) {
   if (rowCount === 0 && systemOpenCount > 0 && !allowEmpty) {

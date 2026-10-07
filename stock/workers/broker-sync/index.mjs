@@ -1,7 +1,12 @@
 // broker-sync:唯讀地把富邦證券庫存快照寫進 Supabase(broker_inventory_snapshot),
 // 供 v_broker_recon 與 holdings_transactions 對帳。Railway cron 每個交易日收盤後跑一次。
 //
-// 只呼叫 sdk.accounting.*(庫存 / 未實現損益),不下單、不碰 holdings_transactions。
+// 只呼叫 sdk.accounting.*,不下單、不碰 holdings_transactions:
+//   主線(失敗 = 整次失敗):inventories、unrealizedGainsAndLoses → broker_inventory_snapshot
+//   附加(失敗不阻止庫存快照寫入,但整次標 success=false、exit 1,/health 會亮):
+//     querySettlement('3d')      → broker_settlement        以 (帳號, 查詢日) 為鍵,新抓到的覆蓋舊的
+//     realizedGainsAndLoses      → broker_realized_snapshot 券商現況鏡像,整表取代;查詢不完整時不取代(不誤刪舊資料)
+//   不查 bankRemain:官方限定交割銀行為台北富邦銀行 / LINE Bank,Andy 的帳戶不是。
 //
 // 日誌:每次執行先寫一筆 fetch_log(success=false,「尚未完成」),結束時改成實際結果。
 // 所以程序被 kill / SDK 卡死時,/health 看到的是 danger,而不是沉默。
@@ -14,7 +19,17 @@ import { createRequire } from 'node:module';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { buildSnapshotRows, checkSnapshot, listOf, redact, snapshotDate, withBackoff } from './lib.mjs';
+import {
+  buildRealizedRows,
+  buildSettlementRows,
+  buildSnapshotRows,
+  checkSnapshot,
+  listOf,
+  objOf,
+  redact,
+  snapshotDate,
+  withBackoff,
+} from './lib.mjs';
 
 const env = process.env;
 const required = ['FUBON_ID', 'FUBON_API_KEY', 'FUBON_CERT_B64', 'SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY'];
@@ -73,7 +88,23 @@ async function sync() {
   const invRaw = [];
   const unrRaw = [];
   const accounts = [];
+  const settleRows = [];
+  const realizedRows = [];
+  const fields = {};
+  const warnings = []; // 附加查詢 / 寫入失敗:庫存照寫,但整次標失敗(partial)
+  let realizedComplete = true; // 每個股票帳戶的 realized 都查到,才可以整表取代
+  // 附加查詢的失敗(SDK 回失敗、丟例外、欄位形狀不符)只進 warnings,不影響庫存主線。
+  const aux = async (name, fn) => {
+    try {
+      await fn();
+      return true;
+    } catch (e) {
+      warnings.push(`${name}: ${String(e?.message ?? e).slice(0, 80)}`);
+      return false;
+    }
+  };
   for (const acct of login.data) {
+    const acctNo = `${acct.branchNo}-${acct.account}`;
     // 官方查詢上限 5 次 / 秒;每筆之間空 250 ms,被流量控管再退避。
     const inv = listOf(await withBackoff(() => sdk.accounting.inventories(acct)));
     await sleep(250);
@@ -87,7 +118,23 @@ async function sync() {
     accounts.push({ type: acct.accountType, ok: true });
     invRaw.push(...inv.list);
     unrRaw.push(...unr.list);
-    rows.push(...buildSnapshotRows(`${acct.branchNo}-${acct.account}`, inv.list, unr.list));
+    rows.push(...buildSnapshotRows(acctNo, inv.list, unr.list));
+
+    await aux('querySettlement', async () => {
+      const r = objOf(await withBackoff(() => sdk.accounting.querySettlement(acct, '3d')));
+      if (!r.ok) throw new Error(r.message);
+      fields.settlement_details = Object.keys(r.data?.details?.[0] ?? {});
+      settleRows.push(...buildSettlementRows(acctNo, r.data));
+    });
+    await sleep(250);
+    const realizedOk = await aux('realizedGainsAndLoses', async () => {
+      const r = listOf(await withBackoff(() => sdk.accounting.realizedGainsAndLoses(acct)));
+      if (!r.ok) throw new Error(r.message);
+      fields.realized = Object.keys(r.list[0] ?? {});
+      realizedRows.push(...buildRealizedRows(acctNo, r.list));
+    });
+    if (!realizedOk) realizedComplete = false;
+    await sleep(250);
   }
   if (!accounts.some((a) => a.ok)) throw new Error(`no account answered inventories: ${JSON.stringify(accounts)}`);
 
@@ -95,6 +142,7 @@ async function sync() {
   if (!verdict.ok) throw new Error(verdict.reason);
 
   const date = snapshotDate(invRaw);
+  const counts = { inventory: rows.length, settlement: settleRows.length, realized: realizedRows.length };
   if (DRY_RUN) {
     const diag = {
       date,
@@ -108,12 +156,43 @@ async function sync() {
       inventory_fields: Object.keys(invRaw[0] ?? {}),
       odd_fields: Object.keys(invRaw[0]?.odd ?? {}),
       unrealized_fields: Object.keys(unrRaw[0] ?? {}),
+      settlement_rows: settleRows.length,
+      settlement_fields: fields.settlement_details ?? null,
+      realized_rows: realizedRows.length,
+      realized_fields: fields.realized ?? null,
+      warnings,
     };
-    return { rows_written: 0, rows_skipped: rows.length, error: `DRY_RUN ok: ${JSON.stringify(diag)}` };
+    return {
+      ok: warnings.length === 0,
+      counts,
+      rows_written: 0,
+      rows_skipped: rows.length,
+      error: redact(`DRY_RUN ${warnings.length ? 'partial' : 'ok'}: ${JSON.stringify(diag)}`, SECRETS),
+    };
   }
 
   const written = await sb('/rpc/replace_broker_snapshot', { method: 'POST', body: { p_date: date, p_rows: rows } });
-  return { rows_written: Number(written), rows_skipped: 0, error: null };
+
+  // 庫存已寫;以下任何一步失敗都只進 warnings。realized 是整表取代,查詢不完整就不能動它。
+  if (settleRows.length) {
+    const fetchedAt = new Date().toISOString();
+    await aux('write broker_settlement', () =>
+      sb('/broker_settlement?on_conflict=account_no,query_date', {
+        method: 'POST',
+        body: settleRows.map((r) => ({ snapshot_date: date, fetched_at: fetchedAt, ...r })),
+        prefer: 'resolution=merge-duplicates',
+      }),
+    );
+  }
+  if (realizedComplete) {
+    await aux('write broker_realized_snapshot', () =>
+      sb('/rpc/replace_broker_realized', { method: 'POST', body: { p_date: date, p_rows: realizedRows } }),
+    );
+  }
+
+  const ok = warnings.length === 0;
+  const error = ok ? null : redact(`partial: ${warnings.join('; ')}`, SECRETS).slice(0, 300);
+  return { ok, counts, rows_written: Number(written), rows_skipped: 0, error };
 }
 
 const [{ id: logId }] = await sb('/fetch_log?select=id', {
@@ -126,9 +205,13 @@ const finishLog = (patch) =>
 
 let code = 0;
 try {
-  const result = await sync();
-  await finishLog({ success: true, ...result });
-  console.log(JSON.stringify({ ok: true, dry_run: DRY_RUN, rows_written: result.rows_written, rows_skipped: result.rows_skipped }));
+  const { ok, counts, ...patch } = await sync();
+  await finishLog({ success: ok, ...patch });
+  if (!ok) {
+    code = 1;
+    console.error(`broker-sync partial: ${patch.error}`);
+  }
+  console.log(JSON.stringify({ ok, dry_run: DRY_RUN, rows_written: patch.rows_written, rows_skipped: patch.rows_skipped, counts }));
 } catch (e) {
   code = 1;
   const message = redact(e?.message ?? e, SECRETS).slice(0, 300);

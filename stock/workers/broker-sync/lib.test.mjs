@@ -1,10 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  buildRealizedRows,
+  buildSettlementRows,
   buildSnapshotRows,
   checkSnapshot,
   isThrottleMessage,
   listOf,
+  objOf,
   redact,
   snapshotDate,
   taipeiToday,
@@ -183,4 +186,112 @@ test('withBackoff does not retry non-throttle failures and gives up after the la
 test('redact masks secrets and ignores very short or empty ones', () => {
   assert.equal(redact('login A123456789 failed with key sk-abc-123', ['A123456789', 'sk-abc-123', undefined, 'x']), 'login *** failed with key ***');
   assert.equal(redact('plain x text', ['x']), 'plain x text');
+});
+
+test('objOf: success keeps the object, no-data is ok-but-empty, anything else fails', () => {
+  assert.deepEqual(objOf({ isSuccess: true, data: { a: 1 } }), { ok: true, data: { a: 1 } });
+  assert.deepEqual(objOf({ isSuccess: true }), { ok: true, data: null });
+  assert.deepEqual(objOf({ isSuccess: false, message: '查無資料' }), { ok: true, data: null });
+  assert.deepEqual(objOf({ isSuccess: false, message: 'settle boom' }), {
+    ok: false,
+    message: 'settle boom',
+  });
+  assert.deepEqual(objOf(undefined), { ok: false, message: 'no response' });
+});
+
+const settleDay = (date, settlementDate, extra = {}) => ({
+  date,
+  settlementDate,
+  buyValue: 735500,
+  buyFee: 313,
+  buySettlement: -1429513,
+  buyTax: 0,
+  sellValue: 770500,
+  sellFee: 320,
+  sellSettlement: 0,
+  sellTax: 2309,
+  totalBsValue: 1506000,
+  totalFee: 633,
+  totalSettlementAmount: -1429513,
+  totalTax: 2309,
+  currency: 'TWD',
+  ...extra,
+});
+
+test('buildSettlementRows keys by query date and keeps empty days as null amounts', () => {
+  const empty = { date: '2026/10/07', settlementDate: '', buyValue: '', totalSettlementAmount: undefined };
+  const rows = buildSettlementRows('6460-26', {
+    account: { branchNo: '6460', account: '26' },
+    details: [settleDay('2026/10/05', '2026/10/07'), empty],
+  });
+  assert.equal(rows.length, 2);
+  assert.equal(rows[0].query_date, '2026-10-05');
+  assert.equal(rows[0].settlement_date, '2026-10-07');
+  assert.equal(rows[0].total_settlement_amount, -1429513);
+  assert.equal(rows[0].sell_tax, 2309);
+  assert.equal(rows[0].currency, 'TWD');
+  assert.equal(rows[1].query_date, '2026-10-07');
+  assert.equal(rows[1].settlement_date, null);
+  assert.equal(rows[1].buy_value, null);
+  assert.equal(rows[1].total_settlement_amount, null);
+  assert.equal(rows[1].currency, null);
+});
+
+test('buildSettlementRows accepts the snake_case settlement_date spelling from the Node.js docs', () => {
+  const d = settleDay('2026/10/05', undefined, { settlement_date: '2026/10/07' });
+  assert.equal(buildSettlementRows('a', { details: [d] })[0].settlement_date, '2026-10-07');
+});
+
+test('buildSettlementRows: no data is empty, a wrong shape or bad date throws', () => {
+  assert.deepEqual(buildSettlementRows('a', null), []);
+  assert.deepEqual(buildSettlementRows('a', { details: [] }), []);
+  assert.throws(() => buildSettlementRows('a', { details: 'nope' }), /no details array/);
+  assert.throws(() => buildSettlementRows('a', { details: [settleDay('garbage', '2026/10/07')] }), /unexpected settlement date/);
+  assert.throws(() => buildSettlementRows('a', { details: [settleDay('2026/10/05', '2026/13/40')] }), /unexpected settlementDate/);
+  assert.throws(() => buildSettlementRows('a', { details: [settleDay('2026/10/05', '2026/10/07', { buyFee: 'x' })] }), /non-numeric buyFee/);
+});
+
+const realized = (stockNo, extra = {}) => ({
+  date: '2026/10/05',
+  stockNo,
+  buySell: 'Sell',
+  filledQty: 1000,
+  filledPrice: 36.5,
+  orderType: 'Stock',
+  realizedProfit: 36339,
+  realizedLoss: 0,
+  ...extra,
+});
+
+test('buildRealizedRows maps one row per record and does not dedupe', () => {
+  const rows = buildRealizedRows('6460-26', [realized('1101'), realized('1101')]);
+  assert.equal(rows.length, 2);
+  assert.deepEqual(
+    { ...rows[0], raw: undefined },
+    {
+      account_no: '6460-26',
+      data_date: '2026-10-05',
+      symbol: '1101',
+      buy_sell: 'Sell',
+      order_type: 'Stock',
+      filled_qty: 1000,
+      filled_price: 36.5,
+      realized_profit: 36339,
+      realized_loss: 0,
+      raw: undefined,
+    },
+  );
+  assert.deepEqual(buildRealizedRows('a', []), []);
+  assert.deepEqual(buildRealizedRows('a', undefined), []);
+});
+
+test('buildRealizedRows defaults missing profit/loss to 0 and rejects bad shapes', () => {
+  const rows = buildRealizedRows('a', [realized('2330', { realizedProfit: undefined, realizedLoss: 500 })]);
+  assert.equal(rows[0].realized_profit, 0);
+  assert.equal(rows[0].realized_loss, 500);
+  assert.equal(buildRealizedRows('a', [realized('2330', { date: undefined })])[0].data_date, null);
+  assert.throws(() => buildRealizedRows('a', [realized('BAD!!!')]), /unexpected stockNo/);
+  assert.throws(() => buildRealizedRows('a', [realized('2330', { date: 'garbage' })]), /unexpected realized date/);
+  assert.throws(() => buildRealizedRows('a', [realized('2330', { filledQty: 1.5 })]), /non-integer filledQty/);
+  assert.throws(() => buildRealizedRows('a', [realized('2330', { filledPrice: undefined })]), /missing filledPrice/);
 });

@@ -3920,4 +3920,48 @@ rollback:刪 app/intraday、app/api/intraday、lib/intraday.ts、Sidebar 一行;
 - [ ] 5. `DRY_RUN=0` → 對 `v_broker_recon` 逐檔核對(尤其:`todayQty` 是否含零股、unrealized 的 `orderType` 是否與 inventories 對得上 → 看 `cost_matched`)
 - [ ] 6. (可選,另行確認)`/holdings` 顯示對帳狀態
 
+### 進度 — 2026-10-07(首跑結果;步驟 3 完成、4 卡在券商端)
+
+- 步驟 3 已做:worker 已在 Railway 跑起來(build 成功、SDK 在 Linux 載得進、有連到富邦伺服器)。證據:`fetch_log` id 33783(10-07 00:09 Taipei)、33794(10-07 08:57 Taipei)
+- 步驟 4 結果:兩次都 `success=false`,`error` =「無簽署完成API使用風險暨聲明書帳號…若正進行簽署流程並測試連線中,此訊息表連線測試成功,使用權限將應於次日開通」→ **不是程式問題**,是帳號端 API 風險聲明書尚未生效
+- DB 現況:`broker_snapshot_run` / `broker_inventory_snapshot` 0 列、`v_broker_recon` 0 列;`v_holdings_current` 目前 1 列(先前記 0 列已過時)
+- 對照官方 `llms-full.txt`(2026-10-07 詳讀):worker 只用了 accounting 7 個方法中的 2 個(`inventories`、`unrealizedGainsAndLoses`);未用 `querySettlement` / `realizedGainsAndLoses` / `realizedGainsAndLosesSummary` / `bankRemain` / `maintenance`。官方庫存欄位把「整股餘額 `todayQty`」與「零股餘額 `odd.todayQty`」分開定義,支持 `v_broker_recon` 的 board+odd 相加,但仍待真實資料驗證
+- 下一步:Andy 確認線上風險聲明書已簽署;等次日開通後重跑(cron 18:00 Taipei 會自動跑,或手動 redeploy);DRY_RUN 成功後對照 `inventory_fields` / `odd_fields` / `unrealized_fields` 與官方欄位,再切 `DRY_RUN=0`
+
 **另案(已派出 spawn_task)**:調查中發現 anon key 可讀 `v_holdings_realized`(24 列已實現交易)與 `v_holdings_summary`;約 45 個 view 是 SECURITY DEFINER 且 anon 有完整權限。web 只用 service_role,看起來可安全 revoke,但屬 access control 變更,需先列選項與 rollback 再動。新物件 `v_broker_recon` 已避開此問題(只授權 service_role)。
+
+## 2026-10-07 — broker-sync 擴帳務:加 querySettlement / realizedGainsAndLoses(原三項,Andy 後來砍掉 bankRemain:「銀行餘額拿掉,我沒有」)
+
+**目的**:庫存快照之外,每日把銀行餘額、交割款、已實現損益也讀進 Supabase。仍唯讀、不下單、不碰 `holdings_transactions`。
+
+**設計(假設與取捨)**
+1. 三個查詢都是「附加」:失敗**不阻止庫存快照寫入**。庫存/未實現仍是主線(失敗照舊整次失敗)。
+2. 失敗語意:`bankRemain` **已移除**(官方限定台北富邦銀行 / LINE Bank,Andy 的銀行不是)。`querySettlement` / `realizedGainsAndLoses` 失敗或形狀不符 → 庫存照寫,但 run 標 `success=false`(`partial: …`)、exit 1,/health 亮 danger,不靜默。
+3. `querySettlement` 用 `"3d"`(官方範圍值只有 `"0d"` / `"3d"`);details 以「查詢日」為鍵,無交易日的空列也存(金額欄為 null)。
+4. `realizedGainsAndLoses` 無日期參數、無唯一鍵 → ~~比照庫存整日覆蓋~~ **改為券商現況鏡像,RPC 整表取代**(Andy 授權我決定):每天一份複本會讓加總重複、「最新」有歧義。只有所有股票帳戶的查詢都成功才取代,查詢失敗時不刪舊資料。窗口多長首跑 DRY_RUN 才知道;舊資料以 `holdings_transactions` 為準。
+   `querySettlement` 同理:~~主鍵含 snapshot_date~~ → 主鍵 `(account_no, query_date)`,每次回近三天,新的覆蓋舊的。範圍維持 `"3d"`(Andy 授權我決定:涵蓋今日與近兩日,T+2 備款看得到)。
+5. 新表只供 service_role;不做 view / 不接 web(對帳 view 另案)。
+6. 欄位名依官方 C# / C++ 文件(camelCase,與庫存欄位同風格);Node.js 文件的 `settlement_date` 疑為文件筆誤 → 兩種拼法都收,DRY_RUN 診斷會列出實際欄位名。**未驗證**:真實 SDK 回傳(帳號風險聲明書尚未生效)。
+
+**步驟**
+- [x] 1. migration `20261007000001_broker_account_snapshots.sql` + `20261007000002_broker_account_snapshots_adjust.sql`(drop bank 表、settlement 改主鍵、realized RPC 改整表取代;純 ASCII,L73;皆已套用 production,不改寫已套用的檔):`broker_bank_balance`、`broker_settlement`、`broker_realized_snapshot` + RPC `replace_broker_realized`
+      → pre-check:`list_tables` 無同名(已確認);套用與驗證分兩次呼叫(L35)
+      → verify:anon / authenticated 無權限、RLS on、交易內 rollback 測 upsert 覆蓋與 RPC 整日覆蓋 / 空陣列
+      → rollback:`drop function replace_broker_realized(date, jsonb); drop table broker_realized_snapshot; drop table broker_settlement; drop table broker_bank_balance;`
+- [x] 2. `lib.mjs` 純函式 + `lib.test.mjs` → verify:`node --test` 23/23(新增 7)
+- [x] 3. `index.mjs` 串接 + README → verify:`node --check`;假 SDK + 假 Supabase 跑情境(全成功 / DRY_RUN / bank 失敗 / settlement 失敗 / realized 失敗不誤刪 / 欄位拼法)
+- [ ] 4. 真實登入驗證 → 待帳號風險聲明書生效(同上節步驟 4、5)
+
+**整體 rollback**:git revert 本次 commit → 執行上面 drop。既有庫存快照路徑不受影響。
+
+**完成記錄(2026-10-07)**
+- migration 驗證:anon / authenticated 對 3 表與 RPC 無權限、RLS on;交易內 rollback 測試(DO 區塊以例外帶出結果):RPC 整日覆蓋 2→1 列、缺金額補 0、空陣列清空、壞代號被 check 擋、settlement PK 衝突被擋;事後 3 表皆 0 列、`holdings_transactions` 未動
+- worker 驗證:本機現在有 Node v24.15,`node --check` + `node --test` 通過;假 SDK + 假 Supabase(scratchpad e2e)10 情境:全成功 / DRY_RUN / bank 失敗(軟,success)/ settlement 失敗、丟例外、形狀錯誤、DB 寫入失敗(庫存照寫、success=false、exit 1)/ realized 失敗(**未呼叫**整日覆蓋 RPC)/ settlement_date 兩種拼法 / SDK 訊息含 API key 被遮成 `***`
+- **未驗證**:真實 SDK 回傳形狀(欄位依官方 C# / C++ 文件);bankRemain 對 Andy 的交割銀行是否支援;`"3d"` 實際回傳哪幾天;realizedGainsAndLoses 的歷史範圍(無日期參數)。這些都靠 DRY_RUN 診斷的 `*_fields` / `*_rows` 首跑確認
+- **未 commit / push**:Railway 要吃到新版需 commit + push(worker 的 Dockerfile build gate 會跑 `node --test`)
+
+**調整記錄(2026-10-07,Andy:「銀行餘額拿掉,我沒有 / 3d 你決定對我最好的 / 同上 / 改完 commit = push」)**
+- 移除 `bankRemain`:程式、`buildBankRow` 與其測試、`broker_bank_balance` 表(空表,已 drop)
+- migration 2 驗證:bank 表消失、settlement PK = `(account_no, query_date)`、RPC 權限與 security definer 保留(anon / authenticated 無、service_role 有);rollback 交易測試:realized 整表取代(舊日 0 列)、空陣列清空、settlement 同鍵只留一列且新的覆蓋舊的
+- 驗證:`node --test` 22/22;假 SDK + 假 Supabase 9 情境全符合(假 SDK 的 `bankRemain` 被呼叫就丟錯,確認不再呼叫);realized 查詢失敗時未呼叫取代 RPC
+- 仍**未驗證**:真實 SDK 回傳形狀、`"3d"` 實際回哪幾天、realized 窗口多長 → 首跑 DRY_RUN 的 `settlement_fields` / `realized_fields` / `*_rows` 確認
