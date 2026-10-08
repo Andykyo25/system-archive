@@ -4046,3 +4046,26 @@ rollback:刪 app/intraday、app/api/intraday、lib/intraday.ts、Sidebar 一行;
 - **排程**:`notify-broker-recon` 平日 18:30 Taipei(UTC `30 10 * * 1-5`);migration `20261008000002`(去重表 + `broker-sync` 期望)、`20261008000003`(cron + `broker_recon_notify` 期望,5 天)。`/health` 現況:`broker_recon_notify` ok;`broker-sync` warn(近 7 天內 3 次早期登入失敗的紀錄,最後一筆成功,會自己轉 ok)
 - **`/holdings` 券商對帳區塊**:`app/holdings/BrokerReconSection.tsx` + `lib/broker-recon-view.ts`(`tests/broker-recon-view.test.mjs` 4 項)。實看:持股對帳「1 檔一致 / 快照 10/08 08:55」、待交割款 −117,055(10/08 應收 376,550、10/12 應付 493,605)、交割款對帳「近 3 日一致」;手機寬度三卡堆疊無橫向捲動;更正後的當沖紀錄(含中文備註)正常顯示。`tsc --noEmit` 與 eslint 零問題
 - **本機環境缺口(既有,非本次造成)**:`npm test` 有 3 個檔案(`database` / `plan-risk-db` / `quote-provenance`)因本機沒裝 `@electric-sql/pglite`(package.json 有宣告)而失敗,其餘 58 項通過;它們只載入指定名稱的 migration,不受本次影響。Next 原生編譯器被 Windows 應用程式控制原則擋住,dev server 須用 `next dev --webpack`(我用了臨時 launch 設定,已還原)
+
+### 進度 — 2026-10-08 filledHistory 探測結果(`fetch_log` id 34310,11:46 Taipei)
+
+- **`stock.filledHistory` 回 `此 API KEY 未授權該功能`**:現有只勾「證券業務」的唯讀 key 讀不到成交歷史(證實 nestegg 的回報)。同一次同步 `success=true`、`rows_written=1`,探測沒影響同步
+- 結論:**「自動記帳」走 filledHistory 需要含「證券下單」權限的 key → 不放 Railway(先前決定)**。暫不做。每日對帳(`v_broker_settlement_recon` + Telegram)已能在當日抓到記錯 / 漏記
+- 若日後想少打字,現有 key 就能做「半自動建議」:`inventories` 每檔每日含 `buyFilledQty / buyValue / sellFilledQty / sellValue`(已存在 `broker_inventory_snapshot.raw`),搭配 `querySettlement` 的手續費 / 稅,可產生「今日成交建議」讓 Andy 一鍵確認。限制:只有每檔每日彙總、不是逐筆;**未驗證**「當日全數賣出(todayQty=0)的檔」會不會出現在 `inventories`(目前 worker 會略過 todayQty 為 0 的列,要改)
+- 待做(Andy):Railway 拿掉 `PROBE_FILLED`
+
+## 2026-10-08 — 新功能 3 / 4 / 5 可行性:行情權限探測(Andy:「345 可以做嗎」)
+
+**3** 法人歷史回填(`ownership/institutional-trades`,2013 起)、**4** 集保戶股權分散(2013 起)+ ETF 持股變動(2019 起)、**5** 停損停利盤中路徑驗證(分 K,2023-05-23 起)——三者都用**行情 API**,而 Railway 的 key 只勾「證券業務」。跟 `filledHistory` 一樣,先探測再設計,避免蓋在假設上。
+
+**探測設計**(取代已結案的 `PROBE_FILLED`):`PROBE_MARKET=1` → worker 在**同步寫入之後**(失敗 / 逾時不影響同步)`sdk.initRealtime()` 並呼叫 10 個端點:日 K(近期 / 2010)、1 分 K(近期 / 2023-05 最早)、三大法人(近期 / 2013)、集保(近期 / 2013)、ETF 持股(0050 / 主動式 00981A)。每個只回報 ok / 筆數 / 欄位名 / 巢狀陣列長度 / 日期範圍 / 耗時(不含價量),寫進 `fetch_log.error`(`PROBE market: …`)。呼叫間隔 1.1 秒(歷史行情 60 次/分)、整體 90 秒逾時(Dockerfile 180 秒硬砍前)。
+- 判讀:權限 → 是否「未授權」;深度 → 最早日期是否如官方文件;欄位 → 設計資料表;耗時 → 估回填時間
+
+**步驟**
+- [x] 1. `lib.mjs`:`summarizeMarket` / `marketProbePlan`(移除 `summarizeFilled` / `compactDate`)+ 測試 → verify:`node --test`
+- [x] 2. `index.mjs`:`PROBE_MARKET`(移除 `PROBE_FILLED`);假 SDK 情境 → verify:同步先寫入再探測、探測丟例外 / 被拒 / 逾時都不影響同步、機密被遮
+- [ ] 3. README / commit / push → Andy 設 `PROBE_MARKET=1` 跑一次 → 我讀結果 → 再設計 3 / 4 / 5
+
+**rollback**:git revert;Railway 拿掉 `PROBE_MARKET`。
+
+**完成記錄(2026-10-08)**:worker 測試 26/26。假 SDK 情境:預設關(`error` 為 null)/ 成功(10 個端點各一行摘要)/ 被拒(API key 被遮、同步仍成功)/ `initRealtime` 丟例外(單一 `init` 項)/ 回 429 型 body(標為 `unexpected shape`)/ DRY_RUN(診斷含 `market_probe`)/ SDK 卡死(**91 秒內收尾、同步成功、快照已寫入、探測標 timeout**)。每個情境的快照寫入都在探測之前。**尚未用真實帳號跑**:Andy 在 Railway 設 `PROBE_MARKET=1` 跑一次,我讀 `fetch_log.error` → 再設計 3 / 4 / 5。

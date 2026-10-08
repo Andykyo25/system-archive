@@ -8,8 +8,9 @@
 //     realizedGainsAndLoses      → broker_realized_snapshot 券商現況鏡像,整表取代;查詢不完整時不取代(不誤刪舊資料)
 //   不查 bankRemain:官方限定交割銀行為台北富邦銀行 / LINE Bank,Andy 的帳戶不是。
 //
-// PROBE_FILLED=1(暫時性,預設關):另外查近 14 天 stock.filledHistory,只回報筆數 / 欄位名 /
-// 委託類別(不含價量)到 fetch_log.error,用來確認唯讀 key 讀不讀得到成交歷史;失敗不影響同步結果。
+// PROBE_MARKET=1(暫時性,預設關):同步寫入「之後」才執行,用現有 key 實際打行情 REST 端點
+// (日 K / 分 K / 三大法人 / 集保 / ETF 持股,各抓近期與最早期),只回報 ok / 筆數 / 欄位名 / 日期範圍 /
+// 耗時(不含數值)到 fetch_log.error。用來確認這把 key 有沒有行情權限與歷史深度;失敗或逾時(90 秒)不影響同步結果。
 //
 // 日誌:每次執行先寫一筆 fetch_log(success=false,「尚未完成」),結束時改成實際結果。
 // 所以程序被 kill / SDK 卡死時,/health 看到的是 danger,而不是沉默。
@@ -23,17 +24,16 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
-  addDaysIso,
   buildRealizedRows,
   buildSettlementRows,
   buildSnapshotRows,
   checkSnapshot,
-  compactDate,
   listOf,
+  marketProbePlan,
   objOf,
   redact,
   snapshotDate,
-  summarizeFilled,
+  summarizeMarket,
   taipeiToday,
   withBackoff,
 } from './lib.mjs';
@@ -48,7 +48,7 @@ if (missing.length) {
 
 const DRY_RUN = env.DRY_RUN !== '0';
 const ALLOW_EMPTY = env.ALLOW_EMPTY === '1';
-const PROBE_FILLED = env.PROBE_FILLED === '1';
+const PROBE_MARKET = env.PROBE_MARKET === '1';
 const SECRETS = [env.FUBON_ID, env.FUBON_API_KEY, env.FUBON_CERT_PASSWORD, env.FUBON_CERT_B64, env.SUPABASE_SERVICE_ROLE_KEY];
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -77,6 +77,39 @@ async function sb(path, { method = 'GET', body, prefer } = {}) {
 let sdk = null;
 let tmpDir = null;
 
+// PROBE_MARKET:用現有 key 實際打行情端點,回報權限 / 深度 / 欄位 / 耗時。整體 90 秒逾時(Dockerfile 180 秒硬砍前)。
+async function runMarketProbe() {
+  const out = [];
+  const work = (async () => {
+    let stock;
+    try {
+      sdk.initRealtime();
+      stock = sdk.marketdata.restClient.stock;
+    } catch (e) {
+      out.push({ name: 'init', ok: false, message: String(e?.message ?? e).slice(0, 120) });
+      return;
+    }
+    for (const p of marketProbePlan(taipeiToday())) {
+      const t0 = Date.now();
+      try {
+        const res = p.fn === 'candles' ? await stock.historical.candles(p.args) : await stock.ownership[p.fn](p.args);
+        out.push({ name: p.name, ...summarizeMarket(res), ms: Date.now() - t0 });
+      } catch (e) {
+        out.push({ name: p.name, ok: false, message: String(e?.message ?? e).slice(0, 120), ms: Date.now() - t0 });
+      }
+      await sleep(1100); // 歷史行情上限 60 次 / 分
+    }
+  })();
+  const timeout = new Promise((resolve) =>
+    setTimeout(() => {
+      out.push({ name: 'timeout', ok: false, message: 'probe exceeded 90 s' });
+      resolve();
+    }, 90_000),
+  );
+  await Promise.race([work, timeout]);
+  return out;
+}
+
 async function sync() {
   const open = await sb('/v_holdings_current?select=symbol');
 
@@ -99,7 +132,6 @@ async function sync() {
   const settleRows = [];
   const realizedRows = [];
   const fields = {};
-  const probes = []; // PROBE_FILLED:filledHistory 探測摘要(每個股票帳戶一筆)
   const warnings = []; // 附加查詢 / 寫入失敗:庫存照寫,但整次標失敗(partial)
   let realizedComplete = true; // 每個股票帳戶的 realized 都查到,才可以整表取代
   // 附加查詢的失敗(SDK 回失敗、丟例外、欄位形狀不符)只進 warnings,不影響庫存主線。
@@ -144,18 +176,6 @@ async function sync() {
     });
     if (!realizedOk) realizedComplete = false;
     await sleep(250);
-    if (PROBE_FILLED) {
-      const end = taipeiToday();
-      try {
-        const res = await withBackoff(() =>
-          sdk.stock.filledHistory(acct, compactDate(addDaysIso(end, -14)), compactDate(end)),
-        );
-        probes.push(summarizeFilled(res));
-      } catch (e) {
-        probes.push({ ok: false, message: String(e?.message ?? e).slice(0, 120) });
-      }
-      await sleep(250);
-    }
   }
   if (!accounts.some((a) => a.ok)) throw new Error(`no account answered inventories: ${JSON.stringify(accounts)}`);
 
@@ -181,7 +201,7 @@ async function sync() {
       settlement_fields: fields.settlement_details ?? null,
       realized_rows: realizedRows.length,
       realized_fields: fields.realized ?? null,
-      filled_probe: PROBE_FILLED ? probes : undefined,
+      market_probe: PROBE_MARKET ? await runMarketProbe() : undefined,
       warnings,
     };
     return {
@@ -212,10 +232,13 @@ async function sync() {
     );
   }
 
+  // 探測放在所有寫入之後:它再慢 / 再壞,都不會讓快照寫不進去。
+  const marketProbe = PROBE_MARKET ? await runMarketProbe() : null;
+
   const ok = warnings.length === 0;
   const error = ok
-    ? PROBE_FILLED
-      ? redact(`PROBE filledHistory: ${JSON.stringify(probes)}`, SECRETS).slice(0, 1000)
+    ? marketProbe
+      ? redact(`PROBE market: ${JSON.stringify(marketProbe)}`, SECRETS).slice(0, 4000)
       : null
     : redact(`partial: ${warnings.join('; ')}`, SECRETS).slice(0, 300);
   return { ok, counts, rows_written: Number(written), rows_skipped: 0, error };
