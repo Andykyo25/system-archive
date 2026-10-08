@@ -4120,7 +4120,7 @@ rollback:刪 app/intraday、app/api/intraday、lib/intraday.ts、Sidebar 一行;
 **步驟**
 - [x] A. jobs 框架 + `broker_job_task` + Dockerfile 調整 + 測試 + 假 SDK e2e
 - [x] B. 4:migration、tdcc / etf jobs、views、`/stocks/[symbol]` 區塊
-- [ ] C. 5:migration、minute job、`intraday-resolve.mjs`
+- [x] C. 5:~~migration、minute job、`intraday-resolve.mjs`~~ → **前提不成立,不蓋分 K 管線**(見下)
 - [ ] D. 3:migration、inst job
 - [ ] E. 每階段 commit + push;最後文件 / 記錄
 
@@ -4131,3 +4131,9 @@ rollback:刪 app/intraday、app/api/intraday、lib/intraday.ts、Sidebar 一行;
 - worker:`jobs-lib.mjs`(13 項測試:集保衍生值、ETF 差分與退出列、任務清單、重試規則、分 K 壓縮…)、`jobs.mjs`(編排;假 SDK + 記憶體資料庫 8 情境:首次 / 同日重跑零呼叫 / 續抓 / 429 重試一次後停止且不記失敗 / 單一任務失敗 / 預算耗盡 / 設定錯誤 / 退出列)、`index.mjs` 接線(整支程式子行程 6 情境:jobs 在主同步結案之後、獨立 fetch_log、首次成功登錄期望、`JOBS=` 空值停用、DRY_RUN 不執行、jobs 失敗不碰主同步且機密被遮、登入失敗不啟動 jobs)。worker 共 36 項測試。移除已結案的 `PROBE_MARKET` 程式。Dockerfile:納入新檔、硬砍秒數可由 `HARD_KILL_SEC` 調(預設 600)
 - UI:`/stocks/[symbol]` 新增「集保與 ETF」區塊(`lib/chip-plus-view.ts` 6 項測試)。實看:空狀態文字、導覽列新項目;暫時的測試資料(標的 1103、ETF `ZTEST*`)顯示的數字與資料逐項吻合(大戶比 / 散戶比 / 人數的週變化、ETF 持有檔數 / 張數 / 近 1・5・20 日加減碼 / 2 檔加碼 1 檔減碼、已退出的 ETF 不列入持有清單);**測試資料已刪除,三張表確認為 0 列**
 - **未驗證**:真實 SDK 的 `ownership.etfHoldings / tdccDistribution` 回傳(探測只確認了欄位名與筆數);真實資料要等 worker 排程。另:本機 Windows 上「登入失敗」路徑子行程會以 libuv 崩潰碼 0xC0000409 結束(已提交的 HEAD 版本也一樣,Linux 的 Railway 不受影響,10/07 的真實登入失敗正常記為失敗)
+
+**階段 C(功能 5)結論(2026-10-08):前提不成立,不需要分 K**
+- 先用本機 `signals.json`(85,894 訊號、含下市股)檢驗「sim() 對同日兩邊都碰到先判停損會不會造成偏誤」:R2p 上線規格(3×ATR 停損 + 10% 停利 + 20 日)**2,066 筆交易、41,320 個持有日,同日同時碰到停損與停利的 = 0**;停損中位數離進場價 12.6%,單日要同時打到 −12.6% 與 +10% 幾乎不可能(台股另有 ±10% 漲跌幅)。套到全部 82,438 個訊號也只有 14 筆
+- 組合掃描(`tools/scan-backtest/ambiguity-scan.mjs`):2×ATR 配 ≥ 8% 停利 ≤ 0.1%、3×ATR 配 ≥ 8% 為 0%;只有 1×ATR 配 3~5% 停利才到 2~4%。**你實際測的策略空間裡,「先判停損」不構成偏誤**
+- 因此沒有建 `minute_day_request` / `minute_day_path` / worker `minute` 工作 / 判定工具(不解決不存在的問題)。保留 `ambiguity-scan.mjs` 與 `intraday-lib.mjs`(7 項測試),日後調整出場參數時可快速檢查
+- 若日後某設定的模糊比例 > 1%:做法已寫在 `intraday-lib.mjs` 檔頭(用當日開盤把百分比換算成分 K 的原始價,逐分鐘找第一個觸價;同一分鐘兩邊都碰到 = 無法判定;換算後的日高低要貼近日 K 才採信)。富邦 `historical/candles timeframe=1`(2023-05-23 起)已實測可用

@@ -27,6 +27,7 @@ node r2p.mjs                                 # 現行上線規格的回測數字
 | `r2p.mjs` | **上線規格**:R2p 前 3 檔 + 停損 3×ATR14 + 停利 10% + 最長 20 日 |
 | `baseline.mjs` | 型態 A/B/C/D 與正式信心門檻機制的逐年成績 |
 | `research.mjs` / `featscan.mjs` / `combo.mjs` / `exits.mjs` / `robust.mjs` / `prodfeas.mjs` / `h0.mjs` / `tail2.mjs` | 2026-09-29 的研究過程(假設、分位掃描、組合、出場、門檻高原、正式庫可行版、崩跌反彈檢查、停損寬度) |
+| `ambiguity-scan.mjs` / `intraday-lib.mjs` | `sim()` 同日低點碰停損、高點也碰停利時固定先判停損;這支數出受影響的交易比例(2026-10-08:上線規格 R2p = 0 / 2,066,2~3×ATR 停損配 ≥ 8% 停利 ≤ 0.1%,只有 1×ATR 配 3~5% 停利才到 2~4%)。測試:`node --test intraday-lib.test.mjs` |
 | `incl.txt` | 當時 `stock_industry` 未被 `industry_policy` 排除的代號(現行分類,非 PIT) |
 
 ## 紀律
