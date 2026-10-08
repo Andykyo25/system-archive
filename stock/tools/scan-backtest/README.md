@@ -33,6 +33,7 @@ node r2p.mjs                                 # 現行上線規格的回測數字
 | `ambiguity-scan.mjs` / `intraday-lib.mjs` | `sim()` 同日低點碰停損、高點也碰停利時固定先判停損;這支數出受影響的交易比例(2026-10-08:上線規格 R2p = 0 / 2,066,2~3×ATR 停損配 ≥ 8% 停利 ≤ 0.1%,只有 1×ATR 配 3~5% 停利才到 2~4%)。測試:`node --test intraday-lib.test.mjs` |
 | `fetch-inst.mjs` / `inst-lib.mjs` | 證交所 T86 / 櫃買三大法人日報,按日存成 `data/inst_{twse,tpex}_YYYYMMDD.json`(可續抓;單位股;外資取「不含外資自營商」口徑)。測試:`node --test inst-lib.test.mjs` |
 | `inst-pit.mjs` / `inst-pit-lib.mjs` | 法人條件的 PIT 檢驗:R2p 交易依「訊號日 T 的法人買賣超占 20 日均量」分高 / 低組(2023–24 定三分位門檻、2025–26 驗證、逐年同向、按日重抽信賴區間)。測試:`node --test inst-pit-lib.test.mjs` |
+| `short-term.mjs` / `short-term-lib.mjs` / `short-term-models.mjs` | 5–10 日研究：27 組出場、40 條單條件、Ridge Logistic 與深度 2 決策樹；公司行動隔離、年度時序驗證、20 日區塊重抽、多重檢驗及成本壓力。執行 `node short-term.mjs`，輸出本機 `short-term-output/`，不改來源資料或正式庫。規約及結論見 `tasks/short-term-{protocol,research}-20261008.md`。測試 `node --test --test-isolation=none short-term-*.test.mjs` |
 | `incl.txt` | 當時 `stock_industry` 未被 `industry_policy` 排除的代號(現行分類,非 PIT) |
 
 ## 紀律
