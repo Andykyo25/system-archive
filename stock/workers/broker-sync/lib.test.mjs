@@ -11,8 +11,6 @@ import {
   objOf,
   redact,
   snapshotDate,
-  marketProbePlan,
-  summarizeMarket,
   taipeiToday,
   toIsoDate,
   withBackoff,
@@ -303,40 +301,4 @@ test('addDaysIso does plain calendar arithmetic across month and year ends', () 
   assert.equal(addDaysIso('2026-10-08', -14), '2026-09-24');
   assert.equal(addDaysIso('2026-01-05', -14), '2025-12-22');
   assert.equal(addDaysIso('2026-02-27', 3), '2026-03-02');
-});
-
-test('marketProbePlan covers every endpoint the designs need, with ranges under one year', () => {
-  const plan = marketProbePlan('2026-10-08');
-  assert.deepEqual([...new Set(plan.map((p) => p.fn))].sort(), ['candles', 'etfHoldings', 'institutionalTrades', 'tdccDistribution']);
-  assert.equal(new Set(plan.map((p) => p.name)).size, plan.length);
-  for (const p of plan) {
-    const days = (new Date(p.args.to) - new Date(p.args.from)) / 86400000;
-    assert.ok(days >= 0 && days < 365, p.name + ' range must be < 1 year, got ' + days);
-  }
-  const by = Object.fromEntries(plan.map((p) => [p.name, p.args]));
-  assert.deepEqual(by.candles_D_recent, { symbol: '2330', from: '2026-09-08', to: '2026-10-08', timeframe: 'D' });
-  assert.equal(by.candles_1m_first.from, '2023-05-23');
-  assert.equal(by.inst_2013.from, '2013-01-02');
-  assert.equal(by.etf_active_00981A.symbol, '00981A');
-});
-
-test('summarizeMarket reports counts, field names, nested array sizes and date range but no values', () => {
-  const out = summarizeMarket({
-    symbol: '0050',
-    data: [
-      { date: '2026-10-07', components: [{ symbol: '2330', weight: 58.1 }, { symbol: '2317', weight: 4.2 }] },
-      { date: '2026-10-06', components: [{ symbol: '2330', weight: 58.0 }] },
-    ],
-  });
-  assert.deepEqual(out, { ok: true, rows: 2, fields: ['date', 'components'], nested: { components: 2 }, first: '2026-10-06', last: '2026-10-07' });
-  assert.ok(!JSON.stringify(out).includes('58'));
-  const minute = summarizeMarket({ data: [{ date: '2026-10-07T13:30:00.000+08:00', close: 1000 }, { date: '2026-10-07T09:01:00.000+08:00', close: 990 }] });
-  assert.equal(minute.first, '2026-10-07T09:01:00');
-  assert.equal(minute.last, '2026-10-07T13:30:00');
-});
-
-test('summarizeMarket: empty data is an ok empty result, a wrong shape is a failure', () => {
-  assert.deepEqual(summarizeMarket({ data: [] }), { ok: true, rows: 0, fields: [], nested: {}, first: null, last: null });
-  assert.deepEqual(summarizeMarket({ statusCode: 429, message: 'Rate limit exceeded' }), { ok: false, message: 'unexpected shape: statusCode,message' });
-  assert.deepEqual(summarizeMarket(undefined), { ok: false, message: 'unexpected shape: empty' });
 });

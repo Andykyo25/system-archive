@@ -4069,3 +4069,65 @@ rollback:刪 app/intraday、app/api/intraday、lib/intraday.ts、Sidebar 一行;
 **rollback**:git revert;Railway 拿掉 `PROBE_MARKET`。
 
 **完成記錄(2026-10-08)**:worker 測試 26/26。假 SDK 情境:預設關(`error` 為 null)/ 成功(10 個端點各一行摘要)/ 被拒(API key 被遮、同步仍成功)/ `initRealtime` 丟例外(單一 `init` 項)/ 回 429 型 body(標為 `unexpected shape`)/ DRY_RUN(診斷含 `market_probe`)/ SDK 卡死(**91 秒內收尾、同步成功、快照已寫入、探測標 timeout**)。每個情境的快照寫入都在探測之前。**尚未用真實帳號跑**:Andy 在 Railway 設 `PROBE_MARKET=1` 跑一次,我讀 `fetch_log.error` → 再設計 3 / 4 / 5。
+
+### 進度 — 2026-10-08 PROBE_MARKET 結果(`fetch_log` id 34323,11:58 Taipei;整次 17 秒、`success=true`)
+
+**這把「證券業務」key 有行情權限,10 個端點全部成功**,每次呼叫 69–115 ms,1.1 秒間隔下沒有 429。
+
+| 端點 | 結果 |
+|---|---|
+| 日 K | 近期 20 筆(09-08~10-07);2010-01-04 起確認有資料(Q1 2010 共 57 筆);欄位 date/open/high/low/close/volume |
+| 1 分 K | 近 4 個交易日 1,063 筆(≈266/日,09:00~13:30);**2023-05-23 09:00 確認是最早**(4 日 1,064 筆);多一個 average 欄 |
+| 三大法人 | 近期 20 筆;**2013-01-02 起確認有資料**(Q1 2013 共 56 筆);欄位 date/foreign/trust/dealer/total |
+| 集保 | 每週一筆(近 7 週 8 筆);每期 17 列級距(2013 為 16 列;2013-07~09 只有 3 筆 = 月資料);欄位 date/distributions |
+| ETF 持股 | 0050:7 日、各 50 檔成分;**主動式 00981A 同樣 7 日、50 檔**(09-29 起) |
+
+**資源**:DB 現 419 MB(top:`price_intraday_cache` 120 MB、`price_daily` 102 MB、`stock_news` 52 MB)。`price_daily` 最早只到 2023-01-03;`stock_institutional` 2021-06 起、411 檔。`backtest_trades` 10,299 筆,其中 2023-05-23 之後(有分 K)9,678 筆。universe 148、`universe_dynamic` 322。
+
+**設計要點(待 Andy 拍板順序前不動工)**
+- 儲存:分 K 不存(約 3,400 萬列);法人只存 net(整數)約 50 MB / 50 萬列(148 檔 × 2013 起);集保只存衍生值(大戶 / 散戶比、總人數,不存 17 級距 × 週);ETF 只存變動
+- 3 的歷史會長過 `price_daily`(2023 起)→ 要做 2013+ 的 PIT 回測就得連日 K 一起補;且 148 檔是凍結種子,2013–2022 有倖存者偏誤(L38),只能當探索性結果
+- 5 只需要「日 K 判定同日同時碰停損與停利」的那些交易日的 1 分 K(每日 1 次呼叫),不必全抓
+- 待做(Andy):Railway 拿掉 `PROBE_MARKET`
+
+## 2026-10-08 — 新功能 4 → 5 → 3(Andy:「Supabase 有 2G 可用,請開始做 4->5->3,自行驗證通過就接著做」)
+
+**架構(三者共用)**:富邦 SDK 只在 Railway worker 跑得起來 → 真實資料只能靠 worker 灌。worker 在每日同步**寫完並結案之後**跑「背景工作(jobs)」,有時間預算、進度記在 DB、失敗與主同步隔離:
+- `jobs.mjs`(I/O 編排)+ `jobs-lib.mjs`(純函式,有測試)。順序 etf → tdcc → minute → inst(小而每日的先跑,大回填吃剩餘預算)
+- 進度表 `broker_job_task(job, task_key, done_at, rows)`:任務是可重算的確定性清單(例:`inst|2330|2021`),跑完才記;每次執行挑未完成的前 N 個。每日 / 每週型任務把日期或週別放進 key
+- 速率:全域 1.1 秒間隔(歷史行情 60 次/分);遇 429 等 65 秒重試一次,再 429 就停止本次 jobs(下次再來)。預算預設 420 秒,Dockerfile 硬砍改 600 秒(`HARD_KILL_SEC` / `JOB_BUDGET_SEC` 可由 env 調;`JOBS=etf,tdcc,minute,inst` 可挑)
+- jobs 有自己的 `fetch_log`(`broker-jobs`);首次成功後自動登錄 `data_source_expectation`(5 天),避免「先登錄、還沒跑就紅燈」
+- 假設與限制:真實資料要等 worker 排程(今晚 18:00)才會進來,這之前只能用假 SDK / DB rollback / UI 空狀態驗證
+
+**4 看盤資訊(集保大戶 + 主動式 ETF 加減碼)**
+- `tdcc_distribution_weekly`(只存衍生值:合計人數 / 股數、≥400 張與 ≥1000 張大戶人數與比例、≤50 張散戶人數與比例);宇宙 = `stock_universe` ∪ 持股,每檔 1 次呼叫拿 1 年(週資料),之後每週補
+- `etf_holdings_daily`(etf, 日期, 成分股, 股數, 權重, 變動);ETF = `etf_metadata.is_active_etf` 且代號 `^[0-9]{5}A$`(股票型;`…D` 是債券型排除);只收台股代號;**自己做前後日差分並對「整檔被賣出」補一列 qty=0**(API 的 quantityChange 看不到退出);回填自 2025-01-01,之後每日補
+- view `v_tdcc_latest`(最新一期 + 週變化)、`v_etf_active_flow`(最新日持有檔數 / 股數、近 1 / 5 / 20 日加減碼合計)
+- 顯示:`/stocks/[symbol]` 新增「集保與主動式 ETF」區塊(筆記:僅看盤資訊,不是訊號,依 M10);無資料顯示空狀態
+- 驗證:純函式測試、假 SDK 端對端、DB rollback 測試、UI 實看(空狀態 + 暫時測試資料,事後清除)
+
+**5 停損停利同日順序(分 K)**
+- 事實:`tools/scan-backtest/lib.mjs sim()` 對「同日低點 ≤ 停損 且 高點 ≥ 停利」固定先判停損(保守);分 K 能檢驗,看上線規格 R2p(3ATR 停損 + 10% 停利 + 20 日)的成績會差多少
+- `minute_day_request`(要抓哪天)→ worker job `minute` → `minute_day_path`(每日 1 列,存每分鐘高 / 低陣列 + 開盤,約 2.5 KB;分 K 本身不存);2023-05-23 之前的日子標 0 筆
+- 研究工具 `tools/scan-backtest/intraday-resolve.mjs`:找出 R2p 模擬中「同日兩邊都碰到」的交易日 → 寫入 request;等 worker 抓回後 → 逐分鐘判定誰先到 → 比較成績。同一分鐘內兩邊都碰到的記為「無法判定」並在結果中另列
+- 驗證:判定函式單元測試(合成路徑)、對真實 signals.json 跑出 request 清單與數量;**實際判定結果要等 worker 抓回分 K**
+
+**3 法人歷史(2013 起)**
+- `inst_trades_hist(symbol, trade_date, foreign_net, trust_net, dealer_net, total_net)`;宇宙同上;每檔每年 1 次呼叫,**由新到舊**(近年先到),當年每週重抓
+- 預估約 2,000 次呼叫 ≈ 每日 420 秒預算下 6~7 個交易日補完;約 500k 列 ≈ 50 MB
+- 倖存者偏誤提醒寫進表註解與 README(凍結 148 檔,2013–2022 只能當探索性結果,L38);日 K 歷史(`price_daily` 只到 2023-01)是否一併補,等 3 完成後再評估,不先做
+
+**步驟**
+- [x] A. jobs 框架 + `broker_job_task` + Dockerfile 調整 + 測試 + 假 SDK e2e
+- [x] B. 4:migration、tdcc / etf jobs、views、`/stocks/[symbol]` 區塊
+- [ ] C. 5:migration、minute job、`intraday-resolve.mjs`
+- [ ] D. 3:migration、inst job
+- [ ] E. 每階段 commit + push;最後文件 / 記錄
+
+**rollback**:各階段 git revert;`drop table` 新表(皆新增、無依賴);Railway 設 `JOBS=` 空值即停用全部 jobs。
+
+**階段 A + B 完成記錄(2026-10-08)**
+- migration `20261008000004`(已套用):`broker_job_task`、`tdcc_distribution_weekly`、`etf_holdings_daily`、`v_tdcc_latest`、`v_etf_active_flow`、`v_tdcc_last_date`、`v_etf_last_date`;僅 service_role;rollback 交易內以合成資料手算驗證 view(近 1 / 5 / 20 日加減碼、退出列、週變化),整段已回滾
+- worker:`jobs-lib.mjs`(13 項測試:集保衍生值、ETF 差分與退出列、任務清單、重試規則、分 K 壓縮…)、`jobs.mjs`(編排;假 SDK + 記憶體資料庫 8 情境:首次 / 同日重跑零呼叫 / 續抓 / 429 重試一次後停止且不記失敗 / 單一任務失敗 / 預算耗盡 / 設定錯誤 / 退出列)、`index.mjs` 接線(整支程式子行程 6 情境:jobs 在主同步結案之後、獨立 fetch_log、首次成功登錄期望、`JOBS=` 空值停用、DRY_RUN 不執行、jobs 失敗不碰主同步且機密被遮、登入失敗不啟動 jobs)。worker 共 36 項測試。移除已結案的 `PROBE_MARKET` 程式。Dockerfile:納入新檔、硬砍秒數可由 `HARD_KILL_SEC` 調(預設 600)
+- UI:`/stocks/[symbol]` 新增「集保與 ETF」區塊(`lib/chip-plus-view.ts` 6 項測試)。實看:空狀態文字、導覽列新項目;暫時的測試資料(標的 1103、ETF `ZTEST*`)顯示的數字與資料逐項吻合(大戶比 / 散戶比 / 人數的週變化、ETF 持有檔數 / 張數 / 近 1・5・20 日加減碼 / 2 檔加碼 1 檔減碼、已退出的 ETF 不列入持有清單);**測試資料已刪除,三張表確認為 0 列**
+- **未驗證**:真實 SDK 的 `ownership.etfHoldings / tdccDistribution` 回傳(探測只確認了欄位名與筆數);真實資料要等 worker 排程。另:本機 Windows 上「登入失敗」路徑子行程會以 libuv 崩潰碼 0xC0000409 結束(已提交的 HEAD 版本也一樣,Linux 的 Railway 不受影響,10/07 的真實登入失敗正常記為失敗)

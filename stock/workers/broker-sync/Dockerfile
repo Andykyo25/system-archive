@@ -36,10 +36,12 @@ RUN set -eu \
 COPY package.json ./
 RUN npm install --omit=dev --no-audit --no-fund
 
-COPY lib.mjs lib.test.mjs index.mjs ./
+COPY lib.mjs lib.test.mjs jobs-lib.mjs jobs-lib.test.mjs jobs.mjs index.mjs ./
 
 # Build gates: syntax, unit tests, and "the native SDK actually loads on this platform".
 RUN node --check lib.mjs \
+  && node --check jobs-lib.mjs \
+  && node --check jobs.mjs \
   && node --check index.mjs \
   && node --test \
   && timeout 60 node -e "const { FubonSDK } = require('fubon-neo'); if (typeof FubonSDK !== 'function') throw new Error('FubonSDK missing'); console.log('fubon-neo loaded'); process.exit(0)"
@@ -48,6 +50,7 @@ RUN node --check lib.mjs \
 RUN chown -R node:node /app
 USER node
 
-# Hard kill after 180 s: a hung native call must not keep the cron slot occupied.
+# Hard kill (default 600 s; the daily sync takes ~20 s and the background jobs have their own
+# 420 s budget, JOB_BUDGET_SEC): a hung native call must not keep the cron slot occupied.
 # fetch_log keeps its "not finished" row, so /health shows the run as failed.
-CMD ["timeout", "-s", "KILL", "180", "node", "index.mjs"]
+CMD ["sh", "-c", "exec timeout -s KILL \"${HARD_KILL_SEC:-600}\" node index.mjs"]

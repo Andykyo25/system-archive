@@ -190,44 +190,6 @@ export function addDaysIso(iso, days) {
   return d.toISOString().slice(0, 10);
 }
 
-// 行情探測要打的端點(PROBE_MARKET=1):每類各抓「近期」與「官方宣稱的最早期」,確認權限與歷史深度。
-// 區間都 < 1 年(官方限制);全用 2330 / 0050 / 00981A 這類一定存在的代號。
-export function marketProbePlan(today) {
-  const d = (n) => addDaysIso(today, n);
-  const own = (name, fn, args) => ({ name, fn, args });
-  return [
-    own('candles_D_recent', 'candles', { symbol: '2330', from: d(-30), to: today, timeframe: 'D' }),
-    own('candles_D_2010', 'candles', { symbol: '2330', from: '2010-01-04', to: '2010-03-31', timeframe: 'D' }),
-    own('candles_1m_recent', 'candles', { symbol: '2330', from: d(-6), to: d(-1), timeframe: '1' }),
-    own('candles_1m_first', 'candles', { symbol: '2330', from: '2023-05-23', to: '2023-05-26', timeframe: '1' }),
-    own('inst_recent', 'institutionalTrades', { symbol: '2330', from: d(-30), to: today }),
-    own('inst_2013', 'institutionalTrades', { symbol: '2330', from: '2013-01-02', to: '2013-03-29' }),
-    own('tdcc_recent', 'tdccDistribution', { symbol: '2330', from: d(-60), to: today }),
-    own('tdcc_2013', 'tdccDistribution', { symbol: '2330', from: '2013-07-01', to: '2013-09-30' }),
-    own('etf_0050', 'etfHoldings', { symbol: '0050', from: d(-10), to: today }),
-    own('etf_active_00981A', 'etfHoldings', { symbol: '00981A', from: d(-10), to: today }),
-  ];
-}
-
-// 行情 REST 回傳(plain JSON:{ data: [...] })→ 探測摘要。
-// 只含筆數、欄位名、巢狀陣列長度(例:ETF 成分股數)、日期範圍,不含任何數值。
-export function summarizeMarket(res) {
-  const data = res?.data;
-  if (!Array.isArray(data)) {
-    return { ok: false, message: `unexpected shape: ${Object.keys(res ?? {}).slice(0, 8).join(',') || 'empty'}` };
-  }
-  const first = data[0] ?? {};
-  const dates = data.map((x) => String(x?.date ?? '')).filter(Boolean).sort();
-  return {
-    ok: true,
-    rows: data.length,
-    fields: Object.keys(first),
-    nested: Object.fromEntries(Object.entries(first).filter(([, v]) => Array.isArray(v)).map(([k, v]) => [k, v.length])),
-    first: dates[0]?.slice(0, 19) ?? null,
-    last: dates.at(-1)?.slice(0, 19) ?? null,
-  };
-}
-
 // 券商回空、但系統認為還有持股 → 多半是 API / 權限問題,不是真的清倉,視為失敗。
 export function checkSnapshot({ rowCount, systemOpenCount, allowEmpty = false }) {
   if (rowCount === 0 && systemOpenCount > 0 && !allowEmpty) {

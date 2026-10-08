@@ -8,9 +8,9 @@
 //     realizedGainsAndLoses      → broker_realized_snapshot 券商現況鏡像,整表取代;查詢不完整時不取代(不誤刪舊資料)
 //   不查 bankRemain:官方限定交割銀行為台北富邦銀行 / LINE Bank,Andy 的帳戶不是。
 //
-// PROBE_MARKET=1(暫時性,預設關):同步寫入「之後」才執行,用現有 key 實際打行情 REST 端點
-// (日 K / 分 K / 三大法人 / 集保 / ETF 持股,各抓近期與最早期),只回報 ok / 筆數 / 欄位名 / 日期範圍 /
-// 耗時(不含數值)到 fetch_log.error。用來確認這把 key 有沒有行情權限與歷史深度;失敗或逾時(90 秒)不影響同步結果。
+// 背景工作(jobs.mjs):每日同步「結案之後」才執行,用有時間預算的方式補富邦行情資料(ETF 持股、集保等),
+// 有自己的 fetch_log(source='broker-jobs');失敗、逾時、被限流都不影響上面的庫存同步。
+// 環境變數:JOBS(逗號分隔,預設全部;設成空字串 = 全部停用)、JOB_BUDGET_SEC(預設 420)、HARD_KILL_SEC(Dockerfile,預設 600)。
 //
 // 日誌:每次執行先寫一筆 fetch_log(success=false,「尚未完成」),結束時改成實際結果。
 // 所以程序被 kill / SDK 卡死時,/health 看到的是 danger,而不是沉默。
@@ -29,14 +29,12 @@ import {
   buildSnapshotRows,
   checkSnapshot,
   listOf,
-  marketProbePlan,
   objOf,
   redact,
   snapshotDate,
-  summarizeMarket,
-  taipeiToday,
   withBackoff,
 } from './lib.mjs';
+import { ALL_JOBS, runJobs } from './jobs.mjs';
 
 const env = process.env;
 const required = ['FUBON_ID', 'FUBON_API_KEY', 'FUBON_CERT_B64', 'SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY'];
@@ -48,7 +46,6 @@ if (missing.length) {
 
 const DRY_RUN = env.DRY_RUN !== '0';
 const ALLOW_EMPTY = env.ALLOW_EMPTY === '1';
-const PROBE_MARKET = env.PROBE_MARKET === '1';
 const SECRETS = [env.FUBON_ID, env.FUBON_API_KEY, env.FUBON_CERT_PASSWORD, env.FUBON_CERT_B64, env.SUPABASE_SERVICE_ROLE_KEY];
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -76,39 +73,6 @@ async function sb(path, { method = 'GET', body, prefer } = {}) {
 
 let sdk = null;
 let tmpDir = null;
-
-// PROBE_MARKET:用現有 key 實際打行情端點,回報權限 / 深度 / 欄位 / 耗時。整體 90 秒逾時(Dockerfile 180 秒硬砍前)。
-async function runMarketProbe() {
-  const out = [];
-  const work = (async () => {
-    let stock;
-    try {
-      sdk.initRealtime();
-      stock = sdk.marketdata.restClient.stock;
-    } catch (e) {
-      out.push({ name: 'init', ok: false, message: String(e?.message ?? e).slice(0, 120) });
-      return;
-    }
-    for (const p of marketProbePlan(taipeiToday())) {
-      const t0 = Date.now();
-      try {
-        const res = p.fn === 'candles' ? await stock.historical.candles(p.args) : await stock.ownership[p.fn](p.args);
-        out.push({ name: p.name, ...summarizeMarket(res), ms: Date.now() - t0 });
-      } catch (e) {
-        out.push({ name: p.name, ok: false, message: String(e?.message ?? e).slice(0, 120), ms: Date.now() - t0 });
-      }
-      await sleep(1100); // 歷史行情上限 60 次 / 分
-    }
-  })();
-  const timeout = new Promise((resolve) =>
-    setTimeout(() => {
-      out.push({ name: 'timeout', ok: false, message: 'probe exceeded 90 s' });
-      resolve();
-    }, 90_000),
-  );
-  await Promise.race([work, timeout]);
-  return out;
-}
 
 async function sync() {
   const open = await sb('/v_holdings_current?select=symbol');
@@ -201,7 +165,6 @@ async function sync() {
       settlement_fields: fields.settlement_details ?? null,
       realized_rows: realizedRows.length,
       realized_fields: fields.realized ?? null,
-      market_probe: PROBE_MARKET ? await runMarketProbe() : undefined,
       warnings,
     };
     return {
@@ -232,16 +195,49 @@ async function sync() {
     );
   }
 
-  // 探測放在所有寫入之後:它再慢 / 再壞,都不會讓快照寫不進去。
-  const marketProbe = PROBE_MARKET ? await runMarketProbe() : null;
-
   const ok = warnings.length === 0;
-  const error = ok
-    ? marketProbe
-      ? redact(`PROBE market: ${JSON.stringify(marketProbe)}`, SECRETS).slice(0, 4000)
-      : null
-    : redact(`partial: ${warnings.join('; ')}`, SECRETS).slice(0, 300);
+  const error = ok ? null : redact(`partial: ${warnings.join('; ')}`, SECRETS).slice(0, 300);
   return { ok, counts, rows_written: Number(written), rows_skipped: 0, error };
+}
+
+// 背景工作:自己的 fetch_log(先記「尚未完成」,結束再改);永遠不丟例外,也不改變主同步的 exit code。
+async function runBackgroundJobs() {
+  const enabled = env.JOBS === undefined ? ALL_JOBS : env.JOBS.split(',').map((x) => x.trim()).filter(Boolean);
+  if (enabled.length === 0) return;
+  let logId = null;
+  try {
+    [{ id: logId }] = await sb('/fetch_log?select=id', {
+      method: 'POST',
+      prefer: 'return=representation',
+      body: { source: 'broker-jobs', success: false, error: 'run started, not finished' },
+    });
+    const budgetMs = Math.max(30, Number(env.JOB_BUDGET_SEC ?? 420)) * 1000;
+    const r = await runJobs({ sdk, sb, enabled, budgetMs });
+    const rows = Object.values(r.summary).reduce((n, j) => n + (j.rows ?? 0), 0);
+    const text = redact(JSON.stringify({ summary: r.summary, notes: r.notes, stopped: r.stopped }), SECRETS);
+    await sb(`/fetch_log?id=eq.${logId}`, {
+      method: 'PATCH',
+      body: { finished_at: new Date().toISOString(), success: r.ok, rows_written: rows, error: text.slice(0, 4000) },
+    });
+    console.log(`broker-jobs: ${text.slice(0, 600)}`);
+    if (r.ok) {
+      // 首次成功後才登錄監控期望:先登錄的話,還沒跑過就會在 /health 紅燈
+      await sb('/data_source_expectation?on_conflict=source', {
+        method: 'POST',
+        body: [{ source: 'broker-jobs', max_age_days: 5, note: 'broker-sync background jobs (ETF holdings, TDCC, ...); runs after the daily sync' }],
+        prefer: 'resolution=ignore-duplicates',
+      });
+    }
+  } catch (e) {
+    const message = redact(e?.message ?? e, SECRETS).slice(0, 300);
+    console.error(`broker-jobs failed: ${message}`);
+    if (logId) {
+      await sb(`/fetch_log?id=eq.${logId}`, {
+        method: 'PATCH',
+        body: { finished_at: new Date().toISOString(), success: false, error: message },
+      }).catch(() => {});
+    }
+  }
 }
 
 const [{ id: logId }] = await sb('/fetch_log?select=id', {
@@ -261,6 +257,7 @@ try {
     console.error(`broker-sync partial: ${patch.error}`);
   }
   console.log(JSON.stringify({ ok, dry_run: DRY_RUN, rows_written: patch.rows_written, rows_skipped: patch.rows_skipped, counts }));
+  if (!DRY_RUN) await runBackgroundJobs();
 } catch (e) {
   code = 1;
   const message = redact(e?.message ?? e, SECRETS).slice(0, 300);

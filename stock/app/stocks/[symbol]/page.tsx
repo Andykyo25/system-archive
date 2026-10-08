@@ -9,6 +9,7 @@ import {
   Layers3,
   Newspaper,
   Target,
+  Users,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { KLineChart, type OHLCV } from "@/app/_components/KLineChart";
@@ -22,6 +23,16 @@ import {
   ValuationBar,
   type ChipPoint,
 } from "@/app/_components/ChipSparkline";
+import {
+  etfModel,
+  tdccMetrics,
+  type EtfFlow,
+  type EtfHolderRow,
+  type EtfModel,
+  type Metric,
+  type TdccLatest,
+  type TdccWeek,
+} from "@/lib/chip-plus-view";
 
 export const dynamic = "force-dynamic";
 
@@ -158,6 +169,11 @@ export default async function StockDetailPage({
     { data: latestPriceRow },
     { data: chipRows },
     { data: valuationRow },
+    tdccLatestR,
+    tdccWeeksR,
+    etfFlowR,
+    etfRowsR,
+    etfNamesR,
   ] = await Promise.all([
     sb
       .from("price_daily")
@@ -209,7 +225,38 @@ export default async function StockDetailPage({
       .select("*")
       .eq("symbol", symbol)
       .maybeSingle(),
+    // 集保戶股權分散(每週)與主動式 ETF 持股(每日):看盤資訊,讀取失敗只影響該區塊
+    sb.from("v_tdcc_latest").select("*").eq("symbol", symbol).maybeSingle(),
+    sb
+      .from("tdcc_distribution_weekly")
+      .select("data_date, holders_total, big400_ratio, big1000_ratio, retail50_ratio")
+      .eq("symbol", symbol)
+      .order("data_date", { ascending: false })
+      .limit(26),
+    sb.from("v_etf_active_flow").select("*").eq("symbol", symbol).maybeSingle(),
+    sb
+      .from("etf_holdings_daily")
+      .select("etf_symbol, data_date, quantity, weight, quantity_change")
+      .eq("symbol", symbol)
+      .order("data_date", { ascending: false })
+      .limit(80),
+    sb.from("etf_metadata").select("symbol, name").eq("is_active_etf", true),
   ]);
+
+  const chipPlusError =
+    [tdccLatestR, tdccWeeksR, etfFlowR, etfRowsR, etfNamesR].find((r) => r.error)?.error?.message ?? null;
+  const etfNames = Object.fromEntries(
+    ((etfNamesR.data as { symbol: string; name: string | null }[] | null) ?? []).map((r) => [r.symbol, r.name ?? ""]),
+  );
+  const holderMetrics = tdccMetrics(
+    tdccLatestR.data as TdccLatest | null,
+    (tdccWeeksR.data as TdccWeek[] | null) ?? [],
+  );
+  const etf = etfModel(
+    etfFlowR.data as EtfFlow | null,
+    (etfRowsR.data as EtfHolderRow[] | null) ?? [],
+    etfNames,
+  );
 
   const rows = (priceRows as PriceRow[] | null) ?? [];
   const meta: StockMeta = {
@@ -343,6 +390,7 @@ export default async function StockDetailPage({
           ["#trend", "趨勢價格"],
           ["#factors", "因子分析"],
           ["#chips", "籌碼動向"],
+          ["#holders", "集保與 ETF"],
           ["#valuation", "估值位置"],
           ["#news", "相關新聞"],
         ].map(([href, label]) => (
@@ -383,6 +431,7 @@ export default async function StockDetailPage({
 
       <FactorSection rank={rank} signal={signal} />
       <ChipSection rows={(chipRows as ChipSeriesRow[] | null) ?? []} />
+      <HoldersSection metrics={holderMetrics} etf={etf} loadError={chipPlusError} />
       <ValuationSection row={valuationRow as ValuationRow | null} />
       <NewsSection rows={(newsRows as NewsRow[] | null) ?? []} />
     </div>
@@ -976,6 +1025,142 @@ function ChipSection({ rows }: { rows: ChipSeriesRow[] }) {
             </div>
           );
         })}
+      </div>
+    </section>
+  );
+}
+
+// ── 集保戶股權分散 + 主動式 ETF 持股(2026-10-08)────────────────────
+// 富邦行情 API 經 broker-sync 背景工作寫入。看盤資訊,不是訊號:這類籌碼指標的預測力尚未經本系統
+// PIT 驗證(M10),所以只呈現方向與幅度,不給買賣建議。收料範圍 = stock_universe + 曾交易的標的。
+const HOLDER_STROKE: Record<string, string> = {
+  big1000: "#f87171",
+  big400: "#fb923c",
+  retail50: "#60a5fa",
+  holders: "#a78bfa",
+};
+
+function deltaClass(v: number | null): string {
+  return v == null || v === 0 ? "text-flat" : v > 0 ? "text-up" : "text-down";
+}
+
+function HoldersSection({
+  metrics,
+  etf,
+  loadError,
+}: {
+  metrics: Metric[];
+  etf: EtfModel;
+  loadError: string | null;
+}) {
+  const head = (
+    <SectionTitle
+      icon={<Users size={18} />}
+      eyebrow="Holder structure"
+      title="集保與主動式 ETF"
+      description="集保戶股權分散（每週）與主動式 ETF 持股變動（每日）。紅綠依台股慣例；這些指標的預測力尚未經本系統驗證，僅供參考。"
+    />
+  );
+  if (loadError) {
+    return (
+      <section id="holders" className="section-anchor space-y-4">
+        {head}
+        <p className="surface-card rounded-3xl p-6 text-center text-sm text-slate-500">讀取失敗：{loadError}</p>
+      </section>
+    );
+  }
+  if (metrics.length === 0 && !etf.hasData) {
+    return (
+      <section id="holders" className="section-anchor space-y-4">
+        {head}
+        <p className="surface-card rounded-3xl p-6 text-center text-sm text-slate-500">
+          此標的目前沒有集保或主動式 ETF 持股資料（只收 stock_universe 與曾交易的標的，背景工作逐步補入）
+        </p>
+      </section>
+    );
+  }
+  return (
+    <section id="holders" className="section-anchor space-y-4">
+      {head}
+      {metrics.length > 0 && (
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+          {metrics.map((m) => (
+            <div key={m.key} className="surface-card rounded-3xl p-4">
+              <div className="mb-3 flex items-start justify-between gap-2">
+                <span className="text-xs font-medium text-slate-300">{m.label}</span>
+                <span className="rounded-lg border border-line bg-black/10 px-1.5 py-0.5 text-[9px] text-slate-600">{m.hint}</span>
+              </div>
+              <div className="mb-3 flex items-baseline gap-2">
+                <span className="text-xl font-semibold tracking-tight tabular-nums text-slate-100">{m.value}</span>
+                <span className={`text-[11px] tabular-nums ${deltaClass(m.delta)}`}>
+                  {m.delta == null ? "" : m.delta > 0 ? "▲ " : m.delta < 0 ? "▼ " : "― "}
+                  {m.deltaText}
+                </span>
+              </div>
+              {m.points.length >= 2 ? (
+                <>
+                  <Sparkline points={m.points} stroke={HOLDER_STROKE[m.key] ?? "#94a3b8"} />
+                  <div className="mt-2 flex justify-between text-[9px] text-slate-600">
+                    <span>{m.points[0].as_of}</span>
+                    <span>{m.points.length} 週</span>
+                    <span>{m.points[m.points.length - 1].as_of}</span>
+                  </div>
+                </>
+              ) : (
+                <p className="text-[10px] text-slate-600">資料不足兩週，尚無走勢</p>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+      <div className="surface-card rounded-3xl p-4 sm:p-5">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <p className="text-sm font-medium text-slate-200">主動式 ETF 持有</p>
+          <span className="text-[10px] text-slate-600">{etf.asOf ? `資料日 ${etf.asOf}` : "尚無資料"}</span>
+        </div>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+          <div>
+            <p className="text-[10px] text-slate-600">持有檔數</p>
+            <p className="mt-1 text-lg font-semibold tabular-nums text-slate-100">{etf.nEtf} 檔</p>
+          </div>
+          <div>
+            <p className="text-[10px] text-slate-600">合計持有</p>
+            <p className="mt-1 text-lg font-semibold tabular-nums text-slate-100">{etf.totalLots} 張</p>
+          </div>
+          {etf.windows.map((w) => (
+            <div key={w.label}>
+              <p className="text-[10px] text-slate-600">{w.label}加減碼</p>
+              <p className={`mt-1 text-lg font-semibold tabular-nums ${deltaClass(w.delta)}`}>{w.value} 張</p>
+            </div>
+          ))}
+        </div>
+        <p className="mt-2 text-[10px] text-slate-600">{etf.buySell}</p>
+        {etf.holders.length > 0 && (
+          <div className="mt-3 overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-left text-[10px] text-slate-600">
+                  <th className="py-1 pr-3 font-normal">ETF</th>
+                  <th className="py-1 pr-3 text-right font-normal">持有（張）</th>
+                  <th className="py-1 pr-3 text-right font-normal">權重</th>
+                  <th className="py-1 text-right font-normal">較前一資料日</th>
+                </tr>
+              </thead>
+              <tbody>
+                {etf.holders.map((h) => (
+                  <tr key={h.etf} className="border-t border-line/60">
+                    <td className="py-1.5 pr-3 text-slate-300">
+                      {h.etf} <span className="text-slate-500">{h.name}</span>
+                    </td>
+                    <td className="py-1.5 pr-3 text-right tabular-nums text-slate-200">{h.lots}</td>
+                    <td className="py-1.5 pr-3 text-right tabular-nums text-slate-400">{h.weight}</td>
+                    <td className={`py-1.5 text-right tabular-nums ${deltaClass(h.change)}`}>{h.changeLots}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </section>
   );
