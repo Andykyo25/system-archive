@@ -3965,3 +3965,53 @@ rollback:刪 app/intraday、app/api/intraday、lib/intraday.ts、Sidebar 一行;
 - migration 2 驗證:bank 表消失、settlement PK = `(account_no, query_date)`、RPC 權限與 security definer 保留(anon / authenticated 無、service_role 有);rollback 交易測試:realized 整表取代(舊日 0 列)、空陣列清空、settlement 同鍵只留一列且新的覆蓋舊的
 - 驗證:`node --test` 22/22;假 SDK + 假 Supabase 9 情境全符合(假 SDK 的 `bankRemain` 被呼叫就丟錯,確認不再呼叫);realized 查詢失敗時未呼叫取代 RPC
 - 仍**未驗證**:真實 SDK 回傳形狀、`"3d"` 實際回哪幾天、realized 窗口多長 → 首跑 DRY_RUN 的 `settlement_fields` / `realized_fields` / `*_rows` 確認
+
+### 進度 — 2026-10-08(首次登入成功;DRY_RUN 通過,尚未 DRY_RUN=0)
+
+- `fetch_log` id 34140(10-08 08:51 Taipei):`success=true`、`warnings=[]`。登入成功、帳號 type=stock
+- 欄位核對(實際回傳 vs 官方文件):庫存 15 欄含 `odd`(9 欄)、未實現 11 欄含 `todayQty` / `buySell`、交割款 15 欄 —— 與程式假設**完全一致**。`settlementDate` 實際是 camelCase,文件 Node 範例的 snake_case 確認是筆誤(`lib.mjs` 的 snake_case 相容分支現已多餘但無害)
+- `order_types=["Stock"]`(字串,`v_broker_recon` 的 `in ('Stock','Margin')` 可用)、`cost_matched=1/1`、庫存 1 檔 = 系統 `v_holdings_current` 1 檔(3374)
+- `"3d"` 回 3 列;realized 回 **0 列**(`realized_fields=[]`)。系統最近一筆 SELL 是 10-06、BUY 是 10-07,10-08 08:51 尚未開盤 → **推論**窗口可能只有當日(未驗證)。若屬實,整表取代的鏡像每天只剩當日賣出,同日對帳夠用但沒有歷史;等有賣出的交易日跑完再決定是否改成「取代該回應涵蓋的日期區間、不刪區間外」
+- 待做:Andy 在 Railway 設 `DRY_RUN=0` → 跑一次 → 對 `v_broker_recon`(預期 3374 `match`,成本差 ≤1%;`odd_qty` 預期 0)
+
+### 進度 — 2026-10-08 第一次 DRY_RUN=0(`fetch_log` id 34141:success、rows_written=1、error=null)
+
+- `v_broker_recon`:3374 `match`(系統 1000 股 @493.5 / 券商 1000 股 @493.61)。券商成本價**含買進手續費**((493500+105)/1000=493.605),系統 `avg_cost` 不含 → 1% 容差必要;`odd_qty=0`(Andy 不買零股,整股 / 零股重複計算的疑慮實務上不會發生,也無法用真實資料驗證)
+- 交割款對帳(`broker_settlement` vs `holdings_transactions`):10/06 買進 375,500 / 手續費 80 ✓、賣出 754,000 / 手續費 160 ✓、10/07 買進 493,500 / 手續費 105 ✓;**賣出稅不符:系統 2,262、券商 1,710(差 552)**。1,710 = 552 + 1,158,即 2492 華新科 10/06 的 368 元賣出被券商以當沖半稅(0.15%)計,386 元那筆照 0.3%。系統兩筆都按 0.3% 記(1,104 + 1,158),也沒有走 `day_trades`。同型態:6/8 的 2408(`day_trades` 備註「先賣後買回補被當沖」)。**待 Andy 決定是否更正**(未動資料)
+- realized 仍 0 列,但 10/06 確有賣出 → 窗口不含兩天前(疑為當日);交割款才是每日對帳的可靠來源
+- 下一步候選:`v_broker_settlement_recon`(每日買 / 賣金額、手續費、稅 vs `holdings_transactions`),自動抓上述差異
+
+## 2026-10-08 — 更正 10/06 華新科當沖 + `v_broker_settlement_recon`(Andy:「更正且做 settlement_recon view」)
+
+**目的**:(1) 把 10/06 的 2492「SELL 368 + BUY 375.5」從一般買賣改記為當沖(券商交割款:該筆賣出稅 552 = 0.15%,系統按 0.3% 記成 1,104);(2) 建 view 每日自動比對券商交割款與 `holdings_transactions` + `day_trades`,下次有差異直接亮出來。
+
+**更正方案**:刪 `holdings_transactions` 兩列 → 新增一筆 `day_trades`(qty 1000、buy 375.5、sell 368、buy_fee 80、sell_fee 78、tax 552、備註記原 `signal_source=discretionary`)。同一個交易內完成。
+- 預期影響:10/06 之後 2492 的 386 賣出改對 345.5 的 10/02 庫存(avg_cost 345.5),`v_holdings_realized` 該日兩筆 → 一筆;`v_day_trades_realized` +1 筆。總實現損益預期 **+472**(稅 +552、買進手續費 80 在 `v_holdings_realized` 本來就不計、在 `v_day_trades_realized` 會扣 → −80)。持股 `v_holdings_current` 不變
+- pre-check:更正前先用 view 抓出 552 差異(證明偵測有效);抓更正前基準值
+- verify:更正後 view 10/06 = match、`v_holdings_realized` + `v_day_trades_realized` 總和變動剛好 +472、`v_holdings_current` 不變
+- **rollback(原始兩列,逐欄)**:
+  ```sql
+  begin;
+  delete from day_trades where symbol = '2492' and trade_date = '2026-10-06' and sell_price = 368 and buy_price = 375.5;
+  insert into holdings_transactions (id, symbol, txn_type, qty, price, fee, tax, txn_date, note, created_at, signal_source, signal_score, signal_rank, plan_id) values
+   ('8643f43c-0127-4895-af4e-8d073118bd2e','2492','SELL',1000,368,78,1104,'2026-10-06',null,'2026-10-06T01:53:26.124266+00',null,null,null,null),
+   ('245aebaf-75d5-4102-9a95-1c85e79ea98e','2492','BUY',1000,375.5,80,0,'2026-10-06',null,'2026-10-06T02:20:09.150373+00','discretionary',null,null,null);
+  commit;
+  ```
+
+**view 設計** `v_broker_settlement_recon`(migration `20261008000001`)
+1. 以券商為主(`broker_settlement` 的每個查詢日 left join 系統當日合計);系統端 = `holdings_transactions` + `day_trades`(當沖算 2 腿)。券商沒有該日列就不比(無從比)
+2. 比對項:買進金額、賣出金額、買進手續費、賣出手續費、賣出稅、淨交割額(系統 = 賣出 − 賣費 − 稅 − 買入 − 買費);diff = 系統 − 券商
+3. 容差:金額必須完全相等;手續費 / 稅每腿容差 1 元(四捨五入差)
+4. status:`match` / `pending`(快照在該日 14:00 Taipei 前抓、尚不完整,避免盤中新記的交易誤報)/ `missing_in_system` / `missing_at_broker` / `value_diff` / `tax_diff` / `fee_diff`
+5. 僅 service_role(比照其他 broker view)。限制:不含融資 / 融券的利息與保證金流量
+
+- [x] 1. migration `20261008000001_broker_settlement_recon.sql` → view;更正前確認 10/06 = `tax_diff`(稅差 552、淨交割額差 −552)
+- [x] 2. 更正資料(單一 DO 區塊;刪除筆數 ≠ 2 即中止)
+- [x] 3. 驗證 + 合成情境測試(rollback 交易)
+
+**完成記錄(2026-10-08)**
+- 更正結果(與預期逐項吻合):10/06 `v_holdings_realized` 兩筆 → 一筆(386 賣出對 345.5 庫存,PnL 39,260);`v_day_trades_realized` +1 筆(−8,210,手續費 158、稅 552)。`v_holdings_realized` 391,823.4(24 筆)→ 400,505.4(23 筆);`v_day_trades_realized` −51,440(3 筆)→ −59,650(4 筆);合計 340,383.4 → 340,855.4(**+472**,同預期)。`v_holdings_current` 不變(3374 / 1000 / 493.5);`holdings_transactions` 53 → 51、`day_trades` 3 → 4。備註中文以 `U&'XXXX'` 機械產生,回讀正確(L49 / L73)
+- `v_broker_settlement_recon`:10/06、10/07、10/08 皆 `match`,10/06 淨交割額 376,550 = 券商。僅 service_role 可存取(anon / authenticated 無)
+- 合成情境(rollback 交易,2099 年測試資料,事後 0 殘留)9 種:match / missing_in_system / missing_at_broker / value_diff / tax_diff / fee_diff / pending / 當沖兩腿 match / 手續費差 1 元(容差內)match
+- 限制:券商只有 `broker_settlement` 有列的日子才比得到(worker 每天 18:00 抓近三天);融資融券利息不含;realized 表因窗口不明,沒有納入對帳
