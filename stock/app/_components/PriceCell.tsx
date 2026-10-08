@@ -1,4 +1,5 @@
 import { fmtMoney, formatPriceTimestamp } from "./Format";
+import { quoteStatus } from "@/lib/holding-decision";
 
 // 顯示價格 + 來源 timestamp。
 // is_provisional → 黃字 + ⚠
@@ -22,6 +23,7 @@ export function PriceCell({
 }) {
   const ts = formatPriceTimestamp(asOfTs, source, date);
   const showProv = isProvisional || ts.provisional;
+  const quality = asOfTs ? quoteStatus(asOfTs, source ?? null) : null;
 
   return (
     <span className="inline-flex flex-col items-end leading-tight">
@@ -34,10 +36,11 @@ export function PriceCell({
       </span>
       {ts.text !== "—" && (
         <span
-          className="text-[10px] text-zinc-500"
+          className="text-xs text-slate-400"
           title={ts.tooltip}
         >
-          {ts.text}
+          {quality?.label ?? ts.text}
+          {quality && <span className="block">{ts.text}</span>}
         </span>
       )}
     </span>

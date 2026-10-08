@@ -112,5 +112,5 @@ export interface VerdictLive {
 export function verdictEvidence(r: VerdictRow): string {
   const supply =
     r.supply_share == null ? "" : `上方套牢 ${(Number(r.supply_share) * 100).toFixed(0)}%，`;
-  return `系統看多：距 60 日高 ${Number(r.off_hi60).toFixed(1)}%，${supply}0050 在季線上（2023–2026 回測勝率 56%）。`;
+  return `R2p 型態候選：距 60 日高 ${Number(r.off_hi60).toFixed(1)}%，${supply}0050 在季線上；歷史研究不代表本筆獲利機率，請核對三面資料與交易風險。`;
 }

@@ -3,6 +3,7 @@
 // 只呈現事實與既有規則換算的參考價位,不產生新的買賣訊號;五檔買賣比僅供參考(掛單可撤)。
 
 // ---------- 型別 ----------
+import type { HoldingDecision } from './holding-decision';
 export interface MisRaw {
   c?: string; n?: string;
   z?: string; pz?: string; y?: string; o?: string; h?: string; l?: string; v?: string;
@@ -43,6 +44,9 @@ export interface Analysis {
   verdict: VerdictInfo | null;
   holding: { lots: number; avgCost: number } | null;
   atrMultiple: number;
+  holdingDecision?: HoldingDecision;
+  holdingStop?: number | null;
+  dataWarnings?: string[];
 }
 // 前端輪詢時存的快照,用來做「和 N 分鐘前比」
 export interface Snapshot {
@@ -208,12 +212,21 @@ export function staticReadings(a: Analysis): Reading[] {
 export function adviceText(a: Analysis): { flat: string; heldLabel: string; held: string[] } {
   const price = a.quote?.price ?? a.fallback?.price ?? null;
   const kl = keyLevels(a), d = a.daily, v = a.verdict, h = a.holding;
-  const state = v ? (v.state === "block" ? `停止進場${v.reason ? `,${v.reason}` : ""}` : v.state === "ok" ? "可進場" : "觀察中") : "";
+  const quoteTime = a.quote?.quotedAt;
+  const confirmed = !!a.quote && !a.quote.priceIsMid && quoteTime != null && Number.isFinite(quoteTime)
+    && Date.now()-quoteTime >= -60_000 && Date.now()-quoteTime <= 5*60_000
+    && isMarketHours(Date.now()) && !a.dataWarnings?.length;
+  const state = v ? (v.state === "block" ? `停止進場${v.reason ? `,${v.reason}` : ""}` : v.state === "ok" && confirmed ? "型態符合，仍需核對三面資料" : "報價與進場條件待確認") : "";
   const flat = v
     ? `在今日看多名單(名單日 ${v.watchDate},盤中狀態:${state})。進場區間 ${fmt(v.entryMin)}–${fmt(v.entryMax)},停損 ${fmt(v.stopPrice)}。`
     : `不在今日看多名單,系統沒有進場訊號。${kl?.support != null ? `可觀察 ${fmt(kl.support)} 附近是否量縮止穩(僅供觀察,非進場建議)。` : ""}`;
   const held: string[] = [];
   if (h && price != null) held.push(`${h.lots} 張、均價 ${fmt(h.avgCost)}、損益 ${pctText((price / h.avgCost - 1) * 100)}`);
+  if (h && a.holdingDecision) {
+    held.push(a.holdingDecision.headline, ...a.holdingDecision.reasons);
+    held.push(`既定持股停損參考 ${fmt(a.holdingStop)}；與首頁及持股管理採同一判讀。`);
+    return { flat, heldLabel: '已有持股', held };
+  }
   held.push(`停損參考 ${kl?.atrStop != null ? fmt(kl.atrStop) : "—"}(現價 − ${a.atrMultiple}×ATR14${d?.atr14 != null ? ` ${fmt(d.atr14)}` : ""},沿用持股建議的倍數)`);
   if (d) held.push(`收盤跌破 MA20 ${fmt(d.ma20)} 視為原始進場理由消失`);
   return { flat, heldLabel: h ? "已有持股" : "若持有", held };

@@ -7,6 +7,10 @@ import { taipeiDate, type TradePlan } from "@/lib/trade-plan";
 import { VerdictBoard } from "./VerdictBoard";
 import { PlanItem, type PlanSettings } from "./PlanForms";
 import type { RiskContext } from "@/lib/plan-risk";
+import { LiveRefresh } from "@/app/_components/LiveRefresh";
+import { holdingDates } from "@/lib/holding-analysis";
+import type { HoldingEvidence } from "@/lib/holding-decision";
+import research from "@/lib/r2p-research.json";
 
 export const dynamic = "force-dynamic";
 
@@ -49,6 +53,18 @@ export default async function ScanPage() {
     ]);
   const date = unwrap(dateR, "價格資料日")?.[0]?.trade_date ?? null;
   const today = taipeiDate();
+  const symbols = rows.map(r=>r.symbol).sort();
+  const rankR = symbols.length ? await sb.from("v_stock_rank")
+    .select("symbol,fund_count_pos,fund_count_total,mom_count_pos,mom_count_total,chip_count_pos,chip_count_total")
+    .in("symbol",symbols) : {data:[],error:null};
+  let dates = {};
+  let evidenceError = rankR.error ? "三面因子讀取失敗" : null;
+  try { dates = await holdingDates(symbols); } catch { evidenceError = "分析資料時間讀取失敗"; }
+  const factors = Object.fromEntries(((rankR.data??[]) as HoldingEvidence[]).map(r=>[r.symbol,r]));
+  const timestamps = [...new Set((liveR.data??[]).map(r=>r.quoted_at).filter(Boolean))];
+  const quoteR = symbols.length && timestamps.length ? await sb.from('price_intraday_cache')
+    .select('symbol,quoted_at,source').in('symbol',symbols).in('quoted_at',timestamps) : {data:[],error:null};
+  const quoteSources = Object.fromEntries((quoteR.data??[]).filter(q=>(liveR.data??[]).some(l=>l.symbol===q.symbol && Date.parse(l.quoted_at)===Date.parse(q.quoted_at))).map(q=>[q.symbol,q.source]));
   const plans = (plansR.data ?? []) as TradePlan[];
   const active = plans.filter(
     (p) => p.status === "watching" && p.valid_until >= today,
@@ -75,6 +91,7 @@ export default async function ScanPage() {
   );
   return (
     <div className="space-y-6">
+      <LiveRefresh />
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">今日看多</h1>
@@ -86,6 +103,7 @@ export default async function ScanPage() {
           成績單 →
         </Link>
       </header>
+      <p className="text-sm leading-relaxed text-slate-300">盤後型態候選 → 檢查三面資料與風險 → 訂交易計畫。上榜與條件通過數都不代表獲利機率。</p>
       {cash != null && cash <= 0 && (
         <p className="rounded-xl border border-amber-400/25 bg-amber-400/5 px-4 py-3 text-sm text-amber-200">
           資金已全數投入，新計畫股數會是 0。
@@ -98,7 +116,22 @@ export default async function ScanPage() {
         plansAvailable={!plansR.error}
         riskContext={riskContext}
         settings={planSettings}
+        factors={factors}
+        dates={dates}
+        evidenceError={evidenceError}
+        liveAvailable={!liveR.error}
+        quoteSources={quoteSources}
       />
+      <details className="rounded-2xl border border-line bg-surface-1 p-4">
+        <summary className="cursor-pointer text-sm font-medium text-slate-200">R2p 歷史驗證與風險 · {research.trades.toLocaleString()} 筆模擬交易</summary>
+        <div className="mt-4 space-y-3 text-sm text-slate-300">
+          <p>{research.from}–{research.to} · 檢驗 {research.checkedOn} · 版本 {research.strategy}</p>
+          <p>扣成本勝率 {research.netWinPct.toFixed(1)}% · 平均單筆淨報酬 {research.meanNetPct.toFixed(2)}% · 按訊號日等權平均 {research.dayWeightedMeanNetPct.toFixed(2)}% · 最差單筆淨報酬 {research.worstNetPct.toFixed(1)}%</p>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">{research.years.map(y=><p key={y.year}>{y.year}<span className="block tabular-nums">平均淨報酬 {y.mean.toFixed(2)}%</span></p>)}</div>
+          <ul className="space-y-2 text-xs leading-relaxed text-slate-400">{research.limits.map(limit=><li key={limit}>{limit}</li>)}</ul>
+          <Link href="/track" className="inline-block text-sky-300">檢查前向追蹤 →</Link>
+        </div>
+      </details>
       <section id="plans" className="scroll-mt-6 space-y-4">
         <div className="flex items-center justify-between gap-3">
           <h2 className="text-lg font-semibold">我的交易計畫</h2>

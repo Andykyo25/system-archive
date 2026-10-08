@@ -31,7 +31,7 @@
 
   /* surfaces(玻璃感:半透明疊在漸層底上;dialog 例外為實色) */
   --color-surface-0: #070b12;
-  --color-surface-1: rgba(14, 21, 33, 0.76);
+  --color-surface-1: #101722;
   --color-surface-2: rgba(148, 163, 184, 0.08);
   --color-surface-raised: rgba(20, 29, 44, 0.82);
   --color-surface-sunken: rgba(5, 9, 16, 0.82);
@@ -67,14 +67,7 @@ body {
   font-variant-numeric: tabular-nums;
   /* 柔和深色底:近黑 + 兩道極淡的品牌色光暈(藍/翠),取代死平 zinc-950 */
   color-scheme: dark;
-  background:
-    linear-gradient(rgba(148, 163, 184, 0.025) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(148, 163, 184, 0.025) 1px, transparent 1px),
-    radial-gradient(1000px 620px at 82% -12%, rgba(14, 165, 233, 0.13), transparent 62%),
-    radial-gradient(850px 540px at 12% 108%, rgba(16, 185, 129, 0.075), transparent 62%),
-    #070b12;
-  background-size: 40px 40px, 40px 40px, auto, auto, auto;
-  background-attachment: fixed;
+  background: #090e17;
 }
 
 ::selection {

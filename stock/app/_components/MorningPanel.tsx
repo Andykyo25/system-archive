@@ -65,12 +65,12 @@ const ZONE_META: Record<string, { label: string; cls: string }> = {
 
 function regimeZone(ret: number): { label: string; cls: string; note: string } {
   if (ret < 0)
-    return { label: "歷史有利區(跌勢)", cls: "text-green-400", note: "季 alpha 歷史 +8.84(全勝)" };
+    return { label: "近季下跌", cls: "text-slate-300", note: "歷史樣本僅 12 季，不作為部位指令" };
   if (ret < 10)
     return { label: "中性區", cls: "text-zinc-300", note: "無顯著歷史傾向" };
   if (ret < 20)
-    return { label: "⚠ 策略地雷區", cls: "text-orange-400", note: "季 alpha 歷史 −8.70(全敗):減碼/改 0050" };
-  return { label: "歷史有利區(強漲)", cls: "text-green-400", note: "季 alpha 歷史 +3.76(全勝)" };
+    return { label: "近季上漲 10–20%", cls: "text-slate-300", note: "歷史樣本僅 12 季，不作為部位指令" };
+  return { label: "近季上漲逾 20%", cls: "text-slate-300", note: "歷史樣本僅 12 季，不作為部位指令" };
 }
 
 // 距停損緩衝:現價高於停損價多少 %(≤0 = 已破)
@@ -242,7 +242,7 @@ export function MorningPanel({
       {/* 機會行:進場訊號摘要 */}
       <div className="flex flex-wrap items-baseline gap-x-2 px-4 py-2 text-xs text-zinc-400">
         <span>
-          今日進場訊號{" "}
+          多因子研究線索{" "}
           <span className="font-semibold text-zinc-200">{signalCount}</span> 檔
         </span>
         {signalTop.length > 0 && (

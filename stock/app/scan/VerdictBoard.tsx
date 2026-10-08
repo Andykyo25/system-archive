@@ -11,6 +11,7 @@ import { planDefaults } from "@/lib/plan-defaults";
 import { fmtMoney, fmtPct, pctColor } from "@/app/_components/Format";
 import type { RiskContext } from "@/lib/plan-risk";
 import { PlanForm, type PlanSettings } from "./PlanForms";
+import { quoteStatus, type EvidenceDates, type HoldingEvidence } from "@/lib/holding-decision";
 
 const BADGE = {
   ok: "bg-rose-400/10 text-rose-300 ring-rose-300/20",
@@ -27,6 +28,7 @@ export function VerdictBoard({
   plansAvailable,
   riskContext,
   settings,
+  factors = {}, dates = {}, evidenceError, liveAvailable = true, quoteSources = {},
 }: {
   rows: VerdictRow[];
   live: Map<string, VerdictLive>;
@@ -34,6 +36,11 @@ export function VerdictBoard({
   plansAvailable: boolean;
   riskContext: RiskContext | null;
   settings: PlanSettings;
+  factors?: Record<string,HoldingEvidence>;
+  dates?: Record<string,EvidenceDates>;
+  evidenceError?: string | null;
+  liveAvailable?: boolean;
+  quoteSources?: Record<string,string | null>;
 }) {
   if (!rows.length) {
     return (
@@ -59,8 +66,10 @@ export function VerdictBoard({
         const stopPct = plan && close > 0 ? (plan.stopPrice / close - 1) * 100 : null;
         const lv = live.get(r.symbol);
         const state = lv?.state ?? "wait";
-        const badge =
-          state === "block" ? "停止進場" : state === "ok" ? "看多 · 可進場" : "看多";
+        const quality = lv?.quoted_at ? quoteStatus(lv.quoted_at,quoteSources[r.symbol]??null) : null;
+        const confirmed = liveAvailable && quality?.reliable && quality.label === '盤中報價';
+        const badge = !liveAvailable ? '盤中檢查失敗' : state === "block" ? "停止進場" : state === "ok" && confirmed ? "型態符合 · 核對進場" : "盤後候選 · 待確認";
+        const factor=factors[r.symbol], ds=dates[r.symbol];
         return (
           <article
             key={r.symbol}
@@ -100,6 +109,16 @@ export function VerdictBoard({
                 ⛔ {lv?.reason}，不要進場
               </p>
             )}
+            {!liveAvailable && <p role="alert" className="mt-3 text-sm text-amber-200">盤中風險檢查載入失敗，請重新確認後再評估進場。</p>}
+            <p className="mt-2 text-xs text-slate-400">{quality?.label??'今日報價未取得'} · {lv?.quoted_at ? new Date(lv.quoted_at).toLocaleString('zh-TW',{timeZone:'Asia/Taipei',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false}) : '時間未確認'} 台北 · {quoteSources[r.symbol]??'來源未確認'}</p>
+            {evidenceError ? <p role="alert" className="mt-3 text-sm text-amber-200">{evidenceError}</p> : <dl className="mt-4 grid grid-cols-3 gap-3 border-t border-line pt-3 text-xs">
+              {[
+                {name:'基本面',pos:factor?.fund_count_pos,total:factor?.fund_count_total,date:ds?.fundamental},
+                {name:'技術面',pos:factor?.mom_count_pos,total:factor?.mom_count_total,date:ds?.technical??r.trade_date},
+                {name:'籌碼面',pos:factor?.chip_count_pos,total:factor?.chip_count_total,date:ds?.chip},
+              ].map(d=><div key={d.name} className="min-w-0"><dt className="text-slate-400">{d.name}</dt><dd className="mt-1">{d.total && d.pos!=null?`${d.pos}/${d.total} 通過`:'因子不足'}</dd><dd className="mt-1 break-words text-slate-400">{d.date??'資料日未確認'}</dd></div>)}
+            </dl>}
+            <p className="mt-3 text-xs leading-relaxed text-slate-400">R2p 依價量型態選出；三面因子供研究，缺資料時無法認定綜合看多。</p>
             {plan && (
               <dl className="mt-4 grid grid-cols-3 gap-3 border-t border-line pt-3 text-sm">
                 <div>
@@ -127,7 +146,7 @@ export function VerdictBoard({
                 </div>
               </dl>
             )}
-            {plansAvailable && state !== "block" && (
+            {plansAvailable && state !== "block" && liveAvailable && (
               <details className="mt-3">
                 <summary className="cursor-pointer text-sm text-sky-300">
                   建立交易計畫

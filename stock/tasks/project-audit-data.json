@@ -1,0 +1,464 @@
+{
+  "checkedAt": "2026-10-08T06:30:55.161Z",
+  "results": {
+    "health": {
+      "status": 200,
+      "ms": 1324,
+      "data": [
+        {
+          "category": "source",
+          "key": "backfill_corporate_action",
+          "label": "backfill_corporate_action",
+          "level": "ok",
+          "metric_text": "3/3 成功",
+          "detail": null
+        },
+        {
+          "category": "source",
+          "key": "backfill_fundamentals",
+          "label": "backfill_fundamentals",
+          "level": "ok",
+          "metric_text": "5/5 成功",
+          "detail": null
+        },
+        {
+          "category": "source",
+          "key": "backfill_institutional",
+          "label": "backfill_institutional",
+          "level": "ok",
+          "metric_text": "10/10 成功",
+          "detail": null
+        },
+        {
+          "category": "source",
+          "key": "backfill_lending",
+          "label": "backfill_lending",
+          "level": "ok",
+          "metric_text": "20/20 成功",
+          "detail": null
+        },
+        {
+          "category": "source",
+          "key": "backfill_margin",
+          "label": "backfill_margin",
+          "level": "ok",
+          "metric_text": "5/5 成功",
+          "detail": null
+        },
+        {
+          "category": "source",
+          "key": "backfill_market_history",
+          "label": "backfill_market_history",
+          "level": "warn",
+          "metric_text": "5/6 成功",
+          "detail": "2026-09-28 tpex: tpex HTTP 520; 2026-09-29 tpex: tpex HTTP 520; 2026-09-30 tpex: tpex HTTP 520; 2026-10-01 tpex: tpex HTTP 520; 2026-10-02 tpex: tpex HTTP 520"
+        },
+        {
+          "category": "source",
+          "key": "backfill_monthly_revenue",
+          "label": "backfill_monthly_revenue",
+          "level": "ok",
+          "metric_text": "5/5 成功",
+          "detail": null
+        },
+        {
+          "category": "source",
+          "key": "backfill_price",
+          "label": "backfill_price",
+          "level": "ok",
+          "metric_text": "8/8 成功",
+          "detail": null
+        },
+        {
+          "category": "source",
+          "key": "backfill_shareholding",
+          "label": "backfill_shareholding",
+          "level": "ok",
+          "metric_text": "4/4 成功",
+          "detail": null
+        },
+        {
+          "category": "source",
+          "key": "backfill_valuation",
+          "label": "backfill_valuation",
+          "level": "ok",
+          "metric_text": "5/5 成功",
+          "detail": null
+        },
+        {
+          "category": "source",
+          "key": "broker_recon_notify",
+          "label": "broker_recon_notify",
+          "level": "ok",
+          "metric_text": "1/1 成功",
+          "detail": null
+        },
+        {
+          "category": "source",
+          "key": "broker-sync",
+          "label": "broker-sync",
+          "level": "warn",
+          "metric_text": "4/7 成功",
+          "detail": "login failed: 無簽署完成API使用風險暨聲明書帳號，請與營業員聯絡；若正進行簽署流程並測試連線中，此訊息表連線測試成功，使用權限將應於次日開通"
+        },
+        {
+          "category": "source",
+          "key": "etf_metadata_sync",
+          "label": "etf_metadata_sync",
+          "level": "ok",
+          "metric_text": "1/1 成功",
+          "detail": null
+        },
+        {
+          "category": "source",
+          "key": "events_tpex_prepost",
+          "label": "events_tpex_prepost",
+          "level": "ok",
+          "metric_text": "7/7 成功",
+          "detail": null
+        },
+        {
+          "category": "source",
+          "key": "events_twse_t187ap04",
+          "label": "events_twse_t187ap04",
+          "level": "ok",
+          "metric_text": "7/7 成功",
+          "detail": null
+        },
+        {
+          "category": "source",
+          "key": "events_twse_t187ap38",
+          "label": "events_twse_t187ap38",
+          "level": "ok",
+          "metric_text": "7/7 成功",
+          "detail": null
+        },
+        {
+          "category": "source",
+          "key": "events_twse_twt48u",
+          "label": "events_twse_twt48u",
+          "level": "ok",
+          "metric_text": "7/7 成功",
+          "detail": null
+        },
+        {
+          "category": "source",
+          "key": "finmind",
+          "label": "finmind",
+          "level": "ok",
+          "metric_text": "5/5 成功",
+          "detail": null
+        },
+        {
+          "category": "source",
+          "key": "finmind_fundamentals",
+          "label": "finmind_fundamentals",
+          "level": "ok",
+          "metric_text": "1/1 成功",
+          "detail": null
+        },
+        {
+          "category": "source",
+          "key": "finmind_monthly_revenue",
+          "label": "finmind_monthly_revenue",
+          "level": "ok",
+          "metric_text": "1/1 成功",
+          "detail": null
+        },
+        {
+          "category": "source",
+          "key": "finmind_valuation",
+          "label": "finmind_valuation",
+          "level": "ok",
+          "metric_text": "5/5 成功",
+          "detail": null
+        },
+        {
+          "category": "source",
+          "key": "google_news",
+          "label": "google_news",
+          "level": "warn",
+          "metric_text": "105/112 成功",
+          "detail": "0055: HTTP 404"
+        },
+        {
+          "category": "source",
+          "key": "google_news_intl",
+          "label": "google_news_intl",
+          "level": "ok",
+          "metric_text": "3/3 成功",
+          "detail": null
+        },
+        {
+          "category": "source",
+          "key": "market_chips",
+          "label": "market_chips",
+          "level": "ok",
+          "metric_text": "5/5 成功",
+          "detail": null
+        },
+        {
+          "category": "source",
+          "key": "overseas_leading",
+          "label": "overseas_leading",
+          "level": "ok",
+          "metric_text": "10/10 成功",
+          "detail": null
+        },
+        {
+          "category": "source",
+          "key": "paper_track",
+          "label": "paper_track",
+          "level": "ok",
+          "metric_text": "1/1 成功",
+          "detail": null
+        },
+        {
+          "category": "source",
+          "key": "reselect_industry_stocks",
+          "label": "reselect_industry_stocks",
+          "level": "ok",
+          "metric_text": "最後成功 7 天前",
+          "detail": null
+        },
+        {
+          "category": "source",
+          "key": "telegram_holdings_advice",
+          "label": "telegram_holdings_advice",
+          "level": "ok",
+          "metric_text": "4/4 成功",
+          "detail": null
+        },
+        {
+          "category": "source",
+          "key": "tpex",
+          "label": "tpex",
+          "level": "danger",
+          "metric_text": "8/10 成功",
+          "detail": "error reading a body from connection"
+        },
+        {
+          "category": "source",
+          "key": "tpex_names",
+          "label": "tpex_names",
+          "level": "ok",
+          "metric_text": "1/1 成功",
+          "detail": null
+        },
+        {
+          "category": "source",
+          "key": "twse",
+          "label": "twse",
+          "level": "ok",
+          "metric_text": "10/10 成功",
+          "detail": null
+        },
+        {
+          "category": "source",
+          "key": "twse_mis_intraday",
+          "label": "twse_mis_intraday",
+          "level": "warn",
+          "metric_text": "1471/1500 成功",
+          "detail": "batch 13: invalid json: \n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n"
+        },
+        {
+          "category": "source",
+          "key": "twse_names",
+          "label": "twse_names",
+          "level": "ok",
+          "metric_text": "1/1 成功",
+          "detail": null
+        },
+        {
+          "category": "freshness",
+          "key": "price_daily",
+          "label": "收盤價",
+          "level": "ok",
+          "metric_text": "2026-10-07",
+          "detail": null
+        },
+        {
+          "category": "freshness",
+          "key": "stock_institutional",
+          "label": "法人買賣超",
+          "level": "ok",
+          "metric_text": "2026-10-07",
+          "detail": null
+        },
+        {
+          "category": "freshness",
+          "key": "stock_margin",
+          "label": "融資融券",
+          "level": "ok",
+          "metric_text": "2026-10-06",
+          "detail": null
+        },
+        {
+          "category": "freshness",
+          "key": "stock_securities_lending",
+          "label": "借券",
+          "level": "ok",
+          "metric_text": "2026-10-07",
+          "detail": null
+        },
+        {
+          "category": "freshness",
+          "key": "stock_pe_pb_daily",
+          "label": "本益比/淨值比",
+          "level": "ok",
+          "metric_text": "2026-10-07",
+          "detail": null
+        },
+        {
+          "category": "freshness",
+          "key": "overseas_indicators",
+          "label": "海外領先指標",
+          "level": "ok",
+          "metric_text": "2026-10-08",
+          "detail": null
+        },
+        {
+          "category": "freshness",
+          "key": "market_chips_daily",
+          "label": "大盤籌碼(期貨/融資/法人)",
+          "level": "ok",
+          "metric_text": "2026-10-07",
+          "detail": null
+        },
+        {
+          "category": "freshness",
+          "key": "scan_picks",
+          "label": "起漲凍結樣本",
+          "level": "ok",
+          "metric_text": "2026-10-07",
+          "detail": null
+        },
+        {
+          "category": "freshness",
+          "key": "stock_shareholding",
+          "label": "外資持股比",
+          "level": "ok",
+          "metric_text": "2026-10-02",
+          "detail": null
+        },
+        {
+          "category": "freshness",
+          "key": "stock_monthly_revenue",
+          "label": "月營收",
+          "level": "ok",
+          "metric_text": "2026-09-01",
+          "detail": null
+        },
+        {
+          "category": "freshness",
+          "key": "stock_fundamentals_quarterly",
+          "label": "季度財報",
+          "level": "ok",
+          "metric_text": "2026-06-30",
+          "detail": null
+        },
+        {
+          "category": "coverage",
+          "key": "price_daily_symbols",
+          "label": "收盤價涵蓋檔數",
+          "level": "ok",
+          "metric_text": "2305 檔(近 20 日中位 2306)",
+          "detail": null
+        },
+        {
+          "category": "quota",
+          "key": "finmind_2",
+          "label": "FinMind 備援 token(本小時)",
+          "level": "ok",
+          "metric_text": "0 / 600",
+          "detail": null
+        }
+      ]
+    },
+    "prices": {
+      "status": 200,
+      "ms": 552,
+      "data": [
+        {
+          "trade_date": "2026-10-07"
+        }
+      ]
+    },
+    "quotes": {
+      "status": 200,
+      "ms": 602,
+      "data": [
+        {
+          "quoted_at": "2026-10-08T05:30:00+00:00",
+          "source": "twse_mis_mid"
+        }
+      ]
+    },
+    "factors": {
+      "status": 200,
+      "ms": 628,
+      "data": {
+        "sample": 588,
+        "capped": false,
+        "withFund": 226,
+        "withTechnical": 583,
+        "withChip": 177,
+        "allThree": 177
+      }
+    },
+    "verdict": {
+      "status": 200,
+      "ms": 7987,
+      "data": [
+        {
+          "symbol": "6811",
+          "trade_date": "2026-10-07",
+          "score_total": 86,
+          "off_hi60": 0,
+          "supply_share": 0,
+          "market_ma60_pct": 9.33
+        },
+        {
+          "symbol": "4908",
+          "trade_date": "2026-10-07",
+          "score_total": 82,
+          "off_hi60": 0,
+          "supply_share": 0.043,
+          "market_ma60_pct": 9.33
+        },
+        {
+          "symbol": "3624",
+          "trade_date": "2026-10-07",
+          "score_total": 81,
+          "off_hi60": 0,
+          "supply_share": 0.014,
+          "market_ma60_pct": 9.33
+        }
+      ]
+    },
+    "live": {
+      "status": 200,
+      "ms": 774,
+      "data": [
+        {
+          "symbol": "3624",
+          "state": "ok",
+          "reason": null,
+          "quoted_at": "2026-10-08T05:30:00+00:00"
+        },
+        {
+          "symbol": "4908",
+          "state": "ok",
+          "reason": null,
+          "quoted_at": "2026-10-08T05:30:00+00:00"
+        },
+        {
+          "symbol": "6811",
+          "state": "ok",
+          "reason": null,
+          "quoted_at": "2026-10-08T05:30:00+00:00"
+        }
+      ]
+    }
+  }
+}

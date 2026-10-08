@@ -28,6 +28,10 @@ import {
   type IntelNewsRow,
 } from "./_components/HoldingsIntelWidget";
 import { GENERIC_INTEL, INDUSTRY_INTEL } from "./_components/overseas-map";
+import { HoldingDecisionPanel } from "./_components/HoldingDecisionPanel";
+import { LiveRefresh } from "./_components/LiveRefresh";
+import { holdingDates } from "@/lib/holding-analysis";
+import type { HoldingAdviceRow, SignalRow } from "./holdings/HoldingsAdvice";
 
 export const dynamic = "force-dynamic";
 
@@ -343,7 +347,8 @@ export default async function Dashboard() {
     { data: perfSummary },
     { data: realizedRows },
     { data: buyTxns },
-    { data: holdingSignals },
+    holdingSignalsR,
+    adviceR,
   ] = await Promise.all([
     sb.from("v_portfolio_summary").select("*").single(),
     sb
@@ -366,9 +371,8 @@ export default async function Dashboard() {
       .order("txn_date", { ascending: true }),
     sb
       .from("v_holdings_signals")
-      .select(
-        "symbol, signal_level, current_price, today_chg_pct, pct_change, stop_loss_price, add_position_price, rsi14",
-      ),
+      .select("*"),
+    sb.from("v_holdings_advice").select("*"),
   ]);
 
   // 核心 query 失敗 → throw 到 app/error.tsx,不靜默變空表(A3/L42),fail-fast
@@ -390,13 +394,18 @@ export default async function Dashboard() {
   // 動機:基本面 6 條 score 對景氣循環股(如記憶體)反轉初期偏嚴 → score 低
   // 但 19 因子綜合排名可能很前面 + 進場燈亮。並列兩者避免被單一 score 誤導。
   const holdingRows = (holdings as HoldingFull[] | null) ?? [];
+  let analysisError = adviceR.error || holdingSignalsR.error ? "持股分析來源讀取失敗" : null;
+  let dates = {};
+  try { dates = await holdingDates(holdingRows.map(r => r.symbol).sort()); }
+  catch { analysisError = "分析資料時間讀取失敗"; }
+  const signalsMap = Object.fromEntries(((holdingSignalsR.data ?? []) as SignalRow[]).map(s => [s.symbol, s]));
   const heldRankMap: Record<string, HeldRank> = {};
   const zoneMap: Record<string, string> = {};
   const eventsMap: Record<string, { type: string; date: string }[]> = {};
   if (holdingRows.length > 0) {
     const heldSymbols = holdingRows.map((h) => h.symbol);
     const today = new Date().toISOString().slice(0, 10);
-    const horizon = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
+    const horizon = new Date(new Date().getTime() + 7 * 86400000).toISOString().slice(0, 10);
     const [{ data: heldRanks }, { data: heldZones }, { data: heldEvents }] =
       await Promise.all([
         sb
@@ -456,7 +465,7 @@ export default async function Dashboard() {
 
   // v_holdings_signals 輕欄位 map(晨間面板 + 持股情報共用)
   const signalLiteMap: Record<string, HoldingSignalLite> = {};
-  for (const s of (holdingSignals as HoldingSignalLite[] | null) ?? []) {
+  for (const s of (holdingSignalsR.data as HoldingSignalLite[] | null) ?? []) {
     signalLiteMap[s.symbol] = s;
   }
 
@@ -507,9 +516,15 @@ export default async function Dashboard() {
 
   return (
     <div className="space-y-6">
+      <LiveRefresh />
       {/* 資料健康放最上面:若資料 stale,下面的持股燈/regime/海外領先全是過期的,
           健康狀態是所有分析的前提。全綠時只是一行淡字,異常才會變紅框擋住視線。 */}
       <DataHealthWidget rows={health.bad} total={health.total} />
+      <SummaryCards summary={summary as PortfolioSummary | null} />
+      <HoldingDecisionPanel rows={(adviceR.data ?? []) as HoldingAdviceRow[]} signalsMap={signalsMap} dates={dates} loadError={analysisError} />
+      <details>
+      <summary className="cursor-pointer text-sm text-slate-300">市場環境與研究線索</summary>
+      <div className="mt-4">
       <MorningPanel
         regimeRet={regimeRet}
         overseasRows={overseasRows}
@@ -517,19 +532,29 @@ export default async function Dashboard() {
         signalCount={signalRows.length}
         signalTop={signalTop}
       />
-      <SummaryCards summary={summary as PortfolioSummary | null} />
+      </div>
+      </details>
+      <details>
+      <summary className="cursor-pointer text-sm text-slate-300">持股相關新聞與海外市場</summary>
+      <div className="mt-4">
       <HoldingsIntelWidget
         holdings={intelHoldings}
         overseasRows={overseasRows}
         twNews={intelNews.tw}
         intlNews={intelNews.intl}
-        regimeRet={regimeRet}
       />
+      </div>
+      </details>
+      <details>
+      <summary className="cursor-pointer text-sm text-slate-300">交易表現與估值明細</summary>
+      <div className="mt-4 space-y-6">
       <PerformanceWidget
         summary={perfSummary as PerfSummary | null}
         realized={perfRealized}
       />
       <HoldingsAnalysis rows={holdingRows} rankMap={heldRankMap} />
+      </div>
+      </details>
     </div>
   );
 }

@@ -105,7 +105,14 @@ test("adviceText:看多名單 / 非名單 / 持股損益", () => {
   const listed = adviceText({ ...base, verdict: { watchDate: "2026-09-30", entryMin: 150, entryMax: 165, stopPrice: 140, state: "block", reason: "今日曾跌破停損" } });
   assert.match(listed.flat, /停止進場,今日曾跌破停損/);
   assert.match(listed.flat, /進場區間 150–165,停損 140/);
+  const pending = adviceText({ ...base, verdict: {watchDate:'2026-10-08',entryMin:150,entryMax:165,stopPrice:140,state:'ok',reason:null} });
+  assert.match(pending.flat, /報價與進場條件待確認/);
+  assert.doesNotMatch(pending.flat, /可進場/);
   const held = adviceText({ ...base, holding: { lots: 2, avgCost: 150 } });
   assert.equal(held.heldLabel, "已有持股");
   assert.equal(held.held[0], "2 張、均價 150、損益 +6.67%");
+  const unified = adviceText({...base,holding:{lots:2,avgCost:150},holdingStop:135,holdingDecision:{state:'caution',label:'留意風險',headline:'先觀察風險變化，暫不加碼',reasons:['籌碼支持偏弱']}});
+  assert.match(unified.held.join(' '), /暫不加碼/);
+  assert.match(unified.held.join(' '), /停損參考 135/);
+  assert.doesNotMatch(unified.held.join(' '), /停損參考 156/);
 });

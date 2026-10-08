@@ -12,11 +12,13 @@ import {
 import { PriceCell } from "../_components/PriceCell";
 import { SellDialog } from "./SellDialog";
 import { DeleteTxnButton } from "./DeleteTxnButton";
-import {
-  HoldingsAdvice,
-  type HoldingAdviceRow,
-  type SignalRow,
+import type {
+  HoldingAdviceRow,
+  SignalRow,
 } from "./HoldingsAdvice";
+import { HoldingDecisionPanel } from "@/app/_components/HoldingDecisionPanel";
+import { LiveRefresh } from "@/app/_components/LiveRefresh";
+import { holdingDates } from "@/lib/holding-analysis";
 import { AlertDialog, type ActiveAlert } from "./AlertDialog";
 import { BrokerReconSection } from "./BrokerReconSection";
 import type {
@@ -162,8 +164,8 @@ export default async function HoldingsPage() {
     { data: realized },
     { data: dayTrades },
     { data: transactions },
-    { data: advice },
-    { data: signals },
+    adviceR,
+    signalsR,
     { data: behavior },
     { data: alertRules },
     { data: capitalRow },
@@ -256,9 +258,13 @@ export default async function HoldingsPage() {
   const txnRows = (transactions as Transaction[] | null) ?? [];
   const sum = (summary as Summary | null) ?? null;
   const portfolioSum = (portfolio as PortfolioSummary | null) ?? null;
-  const adviceRows = (advice as HoldingAdviceRow[] | null) ?? [];
+  const adviceRows = (adviceR.data as HoldingAdviceRow[] | null) ?? [];
+  let analysisError = adviceR.error || signalsR.error ? "持股分析來源讀取失敗" : null;
+  let dates = {};
+  try { dates = await holdingDates(rows.map(r => r.symbol).sort()); }
+  catch { analysisError = "分析資料時間讀取失敗"; }
   const signalsMap: Record<string, SignalRow> = {};
-  for (const s of (signals as SignalRow[] | null) ?? []) {
+  for (const s of (signalsR.data as SignalRow[] | null) ?? []) {
     signalsMap[s.symbol] = s;
   }
   const behaviorRows = (behavior as TradeBehaviorRow[] | null) ?? [];
@@ -291,7 +297,9 @@ export default async function HoldingsPage() {
 
   return (
     <div className="space-y-8">
+      <LiveRefresh />
       <SummarySection summary={sum} portfolio={portfolioSum} />
+      <HoldingDecisionPanel rows={adviceRows} signalsMap={signalsMap} dates={dates} loadError={analysisError} />
 
       <BrokerReconSection
         run={((brokerRunR.data as BrokerRun[] | null) ?? [])[0] ?? null}
@@ -305,8 +313,6 @@ export default async function HoldingsPage() {
         }
       />
 
-      <AddBuySection fees={fees} />
-
       <CurrentHoldingsSection
         rows={rows}
         fees={fees}
@@ -315,13 +321,17 @@ export default async function HoldingsPage() {
         capital={capital}
       />
 
+      <details className="rounded-2xl border border-line bg-surface-1 p-4">
+        <summary className="cursor-pointer text-sm font-medium text-slate-200">新增買入 / 記錄當沖</summary>
+        <div className="mt-4"><AddBuySection fees={fees} /></div>
+      </details>
+
       <ActiveAlertsSection rows={alertRows} />
 
-      <HoldingsAdvice rows={adviceRows} signalsMap={signalsMap} />
-
-      <TradeBehaviorSection rows={behaviorRows} />
-
-      <RealizedSection rows={realizedRows} />
+      <details className="rounded-2xl border border-line bg-surface-1 p-4">
+        <summary className="cursor-pointer text-sm font-medium text-slate-200">交易行為與已實現損益</summary>
+        <div className="mt-5 space-y-8"><TradeBehaviorSection rows={behaviorRows} /><RealizedSection rows={realizedRows} /></div>
+      </details>
 
       <TransactionLogSection rows={txnRows} />
     </div>
@@ -890,7 +900,7 @@ function RealizedSection({ rows }: { rows: RealizedRow[] }) {
 function TransactionLogSection({ rows }: { rows: Transaction[] }) {
   return (
     <section>
-      <details open className="rounded-2xl border border-line bg-surface-1">
+      <details className="rounded-2xl border border-line bg-surface-1">
         <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-zinc-200">
           全部交易紀錄 ({rows.length})
           <span className="ml-2 text-xs font-normal text-zinc-500">

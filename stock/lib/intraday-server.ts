@@ -1,6 +1,8 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { dailyStats, supplyAbove, toQuote, type Analysis, type DailyBar, type MisRaw, type Quote } from "@/lib/intraday";
+import { holdingDates } from './holding-analysis';
+import { decideHolding, type HoldingEvidence, type HoldingDecision } from './holding-decision';
 
 const MIS_URL = "https://mis.twse.com.tw/stock/api/getStockInfo.jsp";
 const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36";
@@ -72,6 +74,35 @@ export async function loadAnalysis(symbol: string): Promise<{ analysis: Analysis
   const v = verdictR.data;
   const h = holdR.data;
   const lots = h ? Number(h.net_qty) / 1000 : 0;
+  let holdingDecision: HoldingDecision | undefined;
+  let holdingStop: number | null = null;
+  const dataWarnings = [
+    barsR.error ? '日線資料讀取失敗' : null,
+    verdictR.error ? '盤中進場閘門讀取失敗' : null,
+    holdR.error ? '持股資料讀取失敗' : null,
+  ].filter((v): v is string => !!v);
+  if (h && lots > 0) {
+    try {
+      const [advice, signals, dates] = await Promise.all([
+        sb.from('v_holdings_advice').select('*').eq('symbol',symbol).maybeSingle(),
+        sb.from('v_holdings_signals').select('signal_level').eq('symbol',symbol).maybeSingle(),
+        holdingDates([symbol]),
+      ]);
+      if (advice.error || signals.error || !advice.data) throw new Error('holding analysis unavailable');
+      const row=advice.data as HoldingEvidence;
+      holdingStop=n(row.stop_loss_price);
+      // Use the direct quote when available, with its own timestamp and provenance.
+      const current = quote?.price != null ? {
+        ...row, current_price:quote.price,
+        pct_change: Number(h.avg_cost)>0 ? (quote.price/Number(h.avg_cost)-1)*100 : null,
+        as_of_ts:quote.quotedAt ? new Date(quote.quotedAt).toISOString() : null,
+        price_source:quote.priceIsMid?'twse_mis_mid':'twse_mis',
+      } : row;
+      holdingDecision=decideHolding(current,signals.data?.signal_level??null,dates[symbol]??null);
+    } catch {
+      holdingDecision={state:'unavailable',label:'分析受限',headline:'持股綜合分析讀取失敗',reasons:['暫不提供持股操作判斷，請更新資料。']};
+    }
+  }
   return {
     notFound: false,
     analysis: {
@@ -89,6 +120,7 @@ export async function loadAnalysis(symbol: string): Promise<{ analysis: Analysis
       } : null,
       holding: h && lots > 0 ? { lots, avgCost: Number(h.avg_cost) } : null,
       atrMultiple: n(setR.data?.value) ?? 2,
+      holdingDecision, holdingStop, dataWarnings,
     },
   };
 }

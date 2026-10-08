@@ -373,6 +373,7 @@ function AnalysisView({
       </div>
 
       <Card title="操作參考" subtitle="既有系統規則換算,不是新的買賣訊號">
+        {a.dataWarnings?.length ? <p role="alert" className="text-sm text-amber-200">{a.dataWarnings.join('；')}，相關分析受限。</p> : null}
         <Advice a={a} />
       </Card>
     </div>

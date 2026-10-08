@@ -35,6 +35,7 @@ export function DataHealthWidget({
   const danger = rows.filter((r) => r.level === "danger");
   const warn = rows.filter((r) => r.level === "warn");
   const bad = [...danger, ...warn];
+  if (!total) return <p role="alert" className="text-sm text-amber-200">資料健康檢查未取得，暫無法確認資料管線狀態。<Link href="/health" className="ml-2 underline">查看明細</Link></p>;
 
   if (bad.length === 0) {
     return (
@@ -83,7 +84,10 @@ export function DataHealthWidget({
         </Link>
       </header>
 
-      <ul className="space-y-1.5">
+      <p className="text-xs leading-relaxed text-slate-300">部分來源曾回報異常；各標的請以報價與分析日期確認可用性。</p>
+      <details className="mt-3">
+      <summary className="cursor-pointer text-sm text-slate-300">查看來源異常摘要</summary>
+      <ul className="mt-3 space-y-2">
         {top.map((r) => (
           <li key={`${r.category}-${r.key}`} className="text-xs">
             <span
@@ -100,7 +104,7 @@ export function DataHealthWidget({
               <span className="text-zinc-500">{r.metric_text}</span>
             )}
             {r.detail && (
-              <span className="ml-1.5 text-zinc-600">— {r.detail}</span>
+              <span className="ml-1.5 break-words text-slate-400">— {r.detail}</span>
             )}
           </li>
         ))}
@@ -111,6 +115,7 @@ export function DataHealthWidget({
           另有 {bad.length - top.length} 項未列出
         </p>
       )}
+      </details>
     </section>
   );
 }

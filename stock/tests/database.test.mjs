@@ -173,6 +173,9 @@ test("migrations: split-adjusted scan, shared dates, provenance, atomic fills an
         )
         .replaceAll("now()", "timestamptz '2026-09-07T02:00:00Z'"),
     );
+    // The INSERT inside the frozen function uses the table default. Freeze that
+    // clock too, or a later real date makes the new event appear not yet due.
+    await db.exec("alter table alert_events alter column delivery_after set default timestamptz '2026-09-07T02:00:00Z'");
     await db.exec(`insert into alert_rules(symbol,condition,threshold) values('FRESH','price_above',50),('STALE','price_above',50),('DAILY','price_above',50);
       insert into quote_fixture values
       ('FRESH',54,'2026-09-07T01:58:00Z','twse_mis','REGULAR'),
