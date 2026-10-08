@@ -88,3 +88,39 @@ for (const [kind, k] of FEATURES) {
 const hits = rows.filter((r) => r.verdict !== "—");
 console.log(`\n9 個特徵中,通過「樣本外信賴區間不含 0 + 四個年度方向一致 + 樣本內同向」的有 ${hits.length} 個${hits.length ? ":" + hits.map((h) => `${h.kind}${h.k}d(${h.verdict})`).join("、") : ""}。`);
 console.log("注意:9 個特徵同時檢定,偶然過關的期望值約 0.45 個;單一個過關要再獨立驗證(例如 paper-track)才能當 gate。");
+
+// ── 事後假設(2026-10-08):投信 5 日「大量買超」 ───────────────────────────────────────────
+// 上面 trust5d 通過的結果要小心解讀:投信有大量的 0(沒有動作),IS 三分位上緣門檻 = 0,
+// 所以「高組」其實是「≥ 0(沒動作 + 買超)」,「低組」是投信賣超。看五分位後,穩定的是最大買超那一端。
+// 這個切法是看過五分位表後才選的(事後假設):門檻只用 IS 定,但「測這一端」的選擇本身有資料窺探,
+// 9 個特徵 + 1 個事後切法 → 只能當線索,要用前向資料(paper-track)獨立驗證才能當 gate(M10 紀律)。
+{
+  const T = traded.map((s) => ({ s, x: netShare(s, "trust", 5, ctx) })).filter((o) => o.x != null);
+  const ISx = T.filter((o) => IS(o.s));
+  const OOSx = T.filter((o) => OOS(o.s));
+  const cut = quantile(ISx.map((o) => o.x).filter((v) => v > 0), 0.8); // IS 中「正的」trust5d 的 80 分位
+  const isQ5 = (o) => o.x >= cut;
+  const net = (s) => ret(s) - COST;
+  const mean2 = (a) => (a.length ? a.reduce((x, s) => x + net(s), 0) / a.length : NaN);
+  const win2 = (a) => (a.length ? (100 * a.filter((s) => ret(s) > 0).length) / a.length : NaN);
+  const sg = (v) => (v >= 0 ? "+" : "") + v.toFixed(2);
+  console.log(`\n── 事後假設:投信 5 日大量買超(IS 正值的 80 分位以上;門檻 ${cut.toFixed(4)} = 5 日合計約 ${(500 * cut).toFixed(0)}% 的 20 日均量)──`);
+  console.log(`被標記的交易:IS ${ISx.filter(isQ5).length}/${ISx.length}、OOS ${OOSx.filter(isQ5).length}/${OOSx.length}`);
+  for (const [lab, set] of [["IS 2023-24", ISx], ["OOS 2025-26", OOSx], ["全期", T]]) {
+    const H = set.filter(isQ5).map((o) => o.s);
+    const L = set.filter((o) => !isQ5(o)).map((o) => o.s);
+    const ci = bootDiff(H.map((s) => ({ d: s.d, r: net(s) })), L.map((s) => ({ d: s.d, r: net(s) })), 2000, rand);
+    console.log(`${lab.padEnd(12)} Q5 n ${String(H.length).padStart(4)} 勝率 ${win2(H).toFixed(1)} 扣成本平均 ${sg(mean2(H))} | 其他 n ${String(L.length).padStart(4)} 勝率 ${win2(L).toFixed(1)} 平均 ${sg(mean2(L))} | Δ ${sg(ci.diff)} [${sg(ci.lo95)}, ${sg(ci.hi95)}]`);
+  }
+  console.log("逐年(Q5 平均 / 其他平均 / Q5 筆數):");
+  for (const y of YEARS) {
+    const S = T.filter((o) => o.s.d.startsWith(y));
+    const H = S.filter(isQ5).map((o) => o.s);
+    console.log(`  ${y}  ${sg(mean2(H))} / ${sg(mean2(S.filter((o) => !isQ5(o)).map((o) => o.s)))} / n=${H.length}`);
+  }
+  for (const [lab, set] of [["IS", ISx], ["OOS", OOSx]]) {
+    const all = set.map((o) => o.s);
+    const kept = set.filter((o) => !isQ5(o)).map((o) => o.s);
+    console.log(`若剔除 Q5(${lab}):n ${all.length}→${kept.length}、勝率 ${win2(all).toFixed(1)}→${win2(kept).toFixed(1)}、扣成本平均 ${sg(mean2(all))}→${sg(mean2(kept))}`);
+  }
+}
