@@ -4,6 +4,13 @@ import {decideHolding,quoteStatus} from '../lib/holding-decision.ts';
 const now=Date.parse('2026-10-08T02:00:00Z');
 const dates={technical:'2026-10-07',fundamental:'2026-06-30',chip:'2026-10-07'};
 const row={symbol:'TEST',current_price:110,as_of_ts:'2026-10-08T01:59:00Z',price_source:'twse_mis',pct_change:10,stop_loss_price:90,rsi14:65,fund_count_pos:5,fund_count_total:6,mom_count_pos:4,mom_count_total:5,chip_count_pos:3,chip_count_total:4};
+test('ETF uses position risks independently of individual-company fundamentals',()=>{
+  const etf={...row,symbol:'0050',fund_count_total:0,chip_count_total:0};
+  assert.equal(decideHolding(etf,'healthy',{...dates,assetType:'etf',fundamental:null,chip:null},now).state,'monitor');
+  assert.equal(decideHolding(etf,'warning',{...dates,assetType:'etf'},now).state,'caution');
+  assert.equal(decideHolding({...etf,current_price:80},'healthy',{...dates,assetType:'etf'},now).state,'review');
+  assert.equal(decideHolding(etf,null,{...dates,assetType:'etf'},now).state,'unavailable');
+});
 test('fresh complete evidence monitors; a warning overrides reassuring factor scores',()=> {
   assert.equal(decideHolding(row,'healthy',dates,now).state,'monitor');
   assert.equal(decideHolding(row,'warning',dates,now).state,'caution');

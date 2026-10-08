@@ -50,7 +50,7 @@ export function HoldingDecisionPanel({rows,signalsMap,dates,loadError}: {
           <dl className="mt-4 grid grid-cols-3 gap-3">
             {dims.map(d=><div key={d.name} className="min-w-0">
               <dt className="text-xs text-slate-400">{d.name}</dt>
-              <dd className="mt-1 text-sm tabular-nums">{d.total && d.pos!=null ? `${d.pos}/${d.total} 通過` : '資料不足'}</dd>
+              <dd className="mt-1 text-sm tabular-nums">{datesRow?.assetType==='etf' && d.name!=='技術面'?'ETF 獨立評估':d.total && d.pos!=null ? `${d.pos}/${d.total} 通過` : '資料不足'}</dd>
               <dd className="mt-1 break-words text-xs text-slate-400">{d.label} {d.date??'未確認'}</dd>
             </div>)}
           </dl>

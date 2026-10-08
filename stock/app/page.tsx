@@ -32,6 +32,7 @@ import { HoldingDecisionPanel } from "./_components/HoldingDecisionPanel";
 import { LiveRefresh } from "./_components/LiveRefresh";
 import { holdingDates } from "@/lib/holding-analysis";
 import type { HoldingAdviceRow, SignalRow } from "./holdings/HoldingsAdvice";
+import {TodayChanges} from './_components/TodayChanges';
 
 export const dynamic = "force-dynamic";
 
@@ -520,6 +521,7 @@ export default async function Dashboard() {
       {/* 資料健康放最上面:若資料 stale,下面的持股燈/regime/海外領先全是過期的,
           健康狀態是所有分析的前提。全綠時只是一行淡字,異常才會變紅框擋住視線。 */}
       <DataHealthWidget rows={health.bad} total={health.total} />
+      <TodayChanges />
       <SummaryCards summary={summary as PortfolioSummary | null} />
       <HoldingDecisionPanel rows={(adviceR.data ?? []) as HoldingAdviceRow[]} signalsMap={signalsMap} dates={dates} loadError={analysisError} />
       <details>

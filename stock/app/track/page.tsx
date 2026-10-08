@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { readAll, unwrap } from "@/lib/db";
 import { TableShell, THead } from "@/app/_components/ui";
 import { fmtMoney, fmtPct, pctColor } from "@/app/_components/Format";
+import {ForwardPerformance} from '@/app/_components/ForwardPerformance';
 import {
   SYSTEMS,
   VERDICT,
@@ -108,6 +109,8 @@ export default async function TrackPage({
         )}
       </div>
 
+      <ForwardPerformance />
+      <p className="text-sm text-slate-400">以下為固定天數漲跌觀察，未扣成本；與上方實際規則的前向模擬分開計算。</p>
       {/* 四套系統總覽:點卡片切換 */}
       <nav className="grid grid-cols-2 gap-3 lg:grid-cols-4" aria-label="選股系統">
         {SYSTEM_KEYS.map((k) => {

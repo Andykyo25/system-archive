@@ -15,7 +15,7 @@ export interface HoldingEvidence {
   chip_count_pos: number | null;
   chip_count_total: number | null;
 }
-export interface EvidenceDates { technical: string | null; fundamental: string | null; chip: string | null }
+export interface EvidenceDates { technical: string | null; fundamental: string | null; chip: string | null; assetType?: 'stock'|'etf' }
 export interface HoldingDecision {
   state: 'unavailable' | 'review' | 'caution' | 'monitor';
   label: string;
@@ -53,6 +53,12 @@ export function decideHolding(row: HoldingEvidence, signalLevel: string | null, 
     state: 'review', label: '優先檢視', headline: '已觸及既定停損參考',
     reasons: [`現價 ${price.toFixed(2)}，既定停損 ${stop.toFixed(2)}。`, '先核對成交價與交易計畫，依原有部位紀律處理。'],
   };
+  if(dates?.assetType==='etf'){
+    if(staleDate(dates.technical,5,now) || signalLevel==null)
+      return {state:'unavailable',label:'ETF 分析受限',headline:'先確認價格趨勢與部位風險',reasons:['ETF 不套用個股 EPS、ROE 或法人共識；日線或風險訊號尚未完整取得。']};
+    const caution=signalLevel==='alert'||signalLevel==='warning'||(pct!=null&&pct<=-7);
+    return {state:caution?'caution':'monitor',label:'ETF 部位追蹤',headline:caution?'優先檢視 ETF 部位風險':'依原有 ETF 配置計畫追蹤',reasons:['ETF 獨立檢查報價、趨勢與停損；不將個股財報缺項視為 ETF 財務惡化。','尚未納入淨值折溢價、追蹤誤差及完整成分股風險，暫不產生加碼建議。']};
+  }
   const dims = [
     { name: '基本面', pos: row.fund_count_pos, total: row.fund_count_total, min: 4 },
     { name: '技術面', pos: row.mom_count_pos, total: row.mom_count_total, min: 2 },

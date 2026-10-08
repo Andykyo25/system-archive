@@ -1,8 +1,9 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { authorizeServiceRequest } from "../_shared/authorize.ts";
+import { collectionOrder, collectionNumber } from "../../../lib/collection.ts";
 
 const FINMIND_URL = "https://api.finmindtrade.com/api/v4/data";
-const FINMIND_DAILY_BUDGET = 600;
 const LOOKBACK_DAYS = 800; // ~2 年的季報
 
 interface FundamentalRow {
@@ -21,14 +22,6 @@ interface FundamentalRow {
   fcf: number | null;
 }
 
-function decodeJwtPayload(jwt: string): Record<string, unknown> {
-  const parts = jwt.split(".");
-  if (parts.length !== 3) throw new Error("invalid jwt shape");
-  const b64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
-  const pad = b64 + "=".repeat((4 - b64.length % 4) % 4);
-  return JSON.parse(atob(pad));
-}
-
 async function fetchFinmindData(
   token: string,
   dataset: string,
@@ -43,7 +36,7 @@ async function fetchFinmindData(
   u.searchParams.set("start_date", startDate);
   u.searchParams.set("end_date", endDate);
   u.searchParams.set("token", token);
-  const r = await fetch(u);
+  const r = await fetch(u, {signal:AbortSignal.timeout(8000)});
   if (!r.ok) throw new Error(`HTTP ${r.status}`);
   const j = await r.json();
   if (j.status !== 200) throw new Error(`FinMind status=${j.status} msg=${j.msg}`);
@@ -58,8 +51,8 @@ function pivotByPeriod(
   const map = new Map<string, Map<string, number>>();
   for (const r of rows) {
     if (!map.has(r.date)) map.set(r.date, new Map());
-    const v = Number(r.value);
-    if (Number.isFinite(v)) map.get(r.date)!.set(r.type, v);
+    const v = collectionNumber(r.value);
+    if (v != null && /^\d{4}-\d{2}-\d{2}$/.test(r.date)) map.get(r.date)!.set(r.type, v);
   }
   return map;
 }
@@ -113,121 +106,49 @@ async function processSymbol(
 }
 
 Deno.serve(async (req: Request) => {
-  const auth = req.headers.get("authorization");
-  if (!auth?.startsWith("Bearer ")) return Response.json({ error: "missing bearer" }, { status: 401 });
-  let role: unknown;
+  const key=Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  if (!key) return Response.json({error:"unauthorized"},{status:401});
+  const sb=createClient(Deno.env.get("SUPABASE_URL")!,key);
+  if (!await authorizeServiceRequest(req,key,async()=>{
+    const r=await sb.rpc("read_edge_function_auth"); return r.error?null:r.data;
+  })) return Response.json({error:"unauthorized"},{status:401});
+  const started=Date.now();
   try {
-    role = decodeJwtPayload(auth.slice(7)).role;
-  } catch {
-    return Response.json({ error: "invalid jwt" }, { status: 401 });
-  }
-  if (role !== "service_role") return Response.json({ error: "forbidden", role }, { status: 403 });
-
-  const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-  if (!SERVICE_ROLE) return Response.json({ error: "missing SUPABASE_SERVICE_ROLE_KEY env" }, { status: 500 });
-
-  const supabase = createClient(Deno.env.get("SUPABASE_URL")!, SERVICE_ROLE);
-
-  const tokenRes = await supabase.rpc("read_finmind_token");
-  if (tokenRes.error || !tokenRes.data) {
-    return Response.json({ error: "missing finmind_token in vault", detail: tokenRes.error?.message }, { status: 500 });
-  }
-  const TOKEN = tokenRes.data as string;
-
-  // ETF 沒有財報 —— TaiwanStockFinancialStatements 對 00xxxx 一律回空陣列。
-  // 實測 stock_fundamentals_quarterly 至今 ETF 列數 = 0、個股 2450 列,即
-  // v_fetch_universe(594)裡的 416 檔 ETF 每次燒 416×3 = 1248 次 call 換 0 列
-  // (整支的預算是 594×3 = 1782,難怪永遠停在 quota exhausted at 00798B)。
-  // 改讀 v_fetch_universe_stocks(stock 底集,不含 ETF):178×3 = 534 次(2026-08-11)。
-  // fallback:view 異常 → 退回原 holdings/watchlist/industry query(零退化)。
-  const fu = await supabase.from("v_fetch_universe_stocks").select("symbol");
-  const targetSymbols = new Set<string>();
-  if (fu.error) {
-    const [holdings, watchlist, industry] = await Promise.all([
-      supabase.from("holdings").select("symbol").is("closed_at", null),
-      supabase.from("watchlist").select("symbol"),
-      supabase.from("industry_stocks").select("symbol"),
+    const [targets,statuses,token]=await Promise.all([
+      sb.from("v_collection_priority").select("symbol,priority,is_etf"),
+      sb.from("collection_status").select("symbol,status,observed_at").eq("dataset","fundamentals"),
+      sb.rpc("read_finmind_token"),
     ]);
-    for (const r of holdings.data ?? []) targetSymbols.add(r.symbol);
-    for (const r of watchlist.data ?? []) targetSymbols.add(r.symbol);
-    for (const r of industry.data ?? []) targetSymbols.add(r.symbol);
-  } else {
-    for (const r of fu.data ?? []) targetSymbols.add(r.symbol);
-  }
-  if (targetSymbols.size === 0) return Response.json({ skipped: "no_target_symbols" });
-
-  const today = new Date().toISOString().slice(0, 10);
-  const startDate = new Date(Date.now() - LOOKBACK_DAYS * 86400 * 1000).toISOString().slice(0, 10);
-
-  await supabase.from("api_quota_state").upsert(
-    { source: "finmind", quota_date: today, used: 0, budget: FINMIND_DAILY_BUDGET },
-    { onConflict: "source,quota_date", ignoreDuplicates: true },
-  );
-  const { data: quotaRow } = await supabase
-    .from("api_quota_state")
-    .select("used, budget")
-    .eq("source", "finmind")
-    .eq("quota_date", today)
-    .single();
-  const usedSoFar = quotaRow?.used ?? 0;
-  const budget = quotaRow?.budget ?? FINMIND_DAILY_BUDGET;
-  const remaining = budget - usedSoFar;
-
-  // fetch_log 必須先寫再判 quota。原本順序相反 —— 配額用盡時直接 return,
-  // 一列 log 都沒留下,於是 /health 上這支不是變紅,是**整列消失**
-  // (institutional 5 天、lending 4 天就是這樣人間蒸發的,2026-08-11 診斷)。
-  const { data: logRow } = await supabase.from("fetch_log").insert({ source: "finmind_fundamentals" }).select("id").single();
-  const logId = logRow!.id;
-
-  if (remaining < 3) {
-    await supabase.from("fetch_log").update({
-      finished_at: new Date().toISOString(),
-      success: false,
-      rows_written: 0,
-      error: `quota_exhausted before start (used ${usedSoFar}/${budget})`,
-    }).eq("id", logId);
-    return Response.json({ skipped: "quota_exhausted", quota: { used: usedSoFar, budget } });
-  }
-
-  let written = 0;
-  let apiCalls = 0;
-  const errors: string[] = [];
-
-  for (const symbol of targetSymbols) {
-    if (apiCalls + 3 > remaining) {
-      errors.push(`quota exhausted at ${symbol}`);
-      break;
+    if(targets.error || statuses.error || token.error || !token.data) throw new Error("collection configuration unavailable");
+    const due=collectionOrder(targets.data??[],statuses.data??[]).slice(0,12);
+    const {data:log,error:logError}=await sb.from("fetch_log").insert({source:"finmind_fundamentals"}).select("id").single();
+    if(logError || !log) throw new Error("collection log unavailable");
+    let written=0,calls=0,errors=0,processed=0;
+    const today=new Date().toISOString().slice(0,10);
+    const startDate=new Date(started-LOOKBACK_DAYS*86400_000).toISOString().slice(0,10);
+    for(const target of due){
+      if(Date.now()-started>100_000) break;
+      const reserved=await sb.rpc("reserve_collection_quota",{p_n:3});
+      if(reserved.error) throw new Error("quota reservation failed");
+      if(!reserved.data) break;
+      calls+=3;
+      let status="ok",reason:string|null=null,dataDate:string|null=null;
+      try {
+        const rows=await processSymbol(token.data,target.symbol,startDate,today);
+        if(!rows.length) {status="empty";reason="來源未回傳季報；尚無可評資料";}
+        else {
+          const enriched=rows.map(r=>({...r,source:"finmind",fetched_at:new Date().toISOString(),published_at:null}));
+          const up=await sb.from("stock_fundamentals_quarterly").upsert(enriched,{onConflict:"symbol,period_end"});
+          if(up.error) throw new Error("write failed");
+          written+=rows.length;dataDate=rows.map(r=>r.period_end).sort().at(-1)??null;
+        }
+      } catch {status="error";reason="來源或寫入失敗；待排程重試";errors++;}
+      const saved=await sb.from("collection_status").upsert({symbol:target.symbol,dataset:"fundamentals",source:"finmind",status,reason,data_date:dataDate,observed_at:new Date().toISOString(),published_at:null});
+      if(saved.error) throw new Error("collection status write failed");
+      processed++;
     }
-    try {
-      apiCalls += 3;
-      const rows = await processSymbol(TOKEN, symbol, startDate, today);
-      if (rows.length > 0) {
-        const { error } = await supabase
-          .from("stock_fundamentals_quarterly")
-          .upsert(rows, { onConflict: "symbol,period_end" });
-        if (error) throw error;
-        written += rows.length;
-      }
-    } catch (e) {
-      errors.push(`${symbol}: ${e instanceof Error ? e.message : String(e)}`);
-    }
-  }
-
-  // B1:原子遞增(取代 read-modify-write,並行不覆蓋)
-  await supabase.rpc("increment_quota", { p_source: "finmind", p_date: today, p_n: apiCalls });
-
-  await supabase.from("fetch_log").update({
-    finished_at: new Date().toISOString(),
-    success: errors.length === 0,
-    rows_written: written,
-    error: errors.length > 0 ? errors.join("; ").slice(0, 1000) : null,
-  }).eq("id", logId);
-
-  return Response.json({
-    target_symbols: targetSymbols.size,
-    api_calls: apiCalls,
-    written,
-    errors: errors.length,
-    quota: { used: usedSoFar + apiCalls, budget },
-  });
+    const finished=await sb.from("fetch_log").update({finished_at:new Date().toISOString(),success:errors===0 && processed===due.length,rows_written:written,error:errors?`${errors} symbols failed`:processed<due.length?"quota or runtime budget reached; queued for next run":null}).eq("id",log.id);
+    if(finished.error) throw new Error("collection log write failed");
+    return Response.json({processed,queued:due.length-processed,written,api_calls:calls,errors});
+  }catch{return Response.json({error:"fundamental collection failed"},{status:500});}
 });

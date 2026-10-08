@@ -1,4 +1,7 @@
 import Link from "next/link";
+import {stockDecisionContext} from '@/lib/stock-decision';
+import {StockDecisionBrief} from '@/app/_components/StockDecisionBrief';
+import {LiveRefresh} from '@/app/_components/LiveRefresh';
 import {
   Activity,
   ArrowLeft,
@@ -159,14 +162,14 @@ export default async function StockDetailPage({
     .slice(0, 10);
 
   const [
-    { data: priceRows },
+    { data: priceRows,error:priceError },
     { data: industryRow },
     { data: etfRow },
     { data: scoreRow },
     { data: newsRows },
-    { data: factorRow },
+    { data: factorRow,error:factorError },
     { data: entryRow },
-    { data: latestPriceRow },
+    { data: latestPriceRow,error:quoteError },
     { data: chipRows },
     { data: valuationRow },
     tdccLatestR,
@@ -174,6 +177,7 @@ export default async function StockDetailPage({
     etfFlowR,
     etfRowsR,
     etfNamesR,
+    {data:stockNameRow},
   ] = await Promise.all([
     sb
       .from("price_daily")
@@ -241,6 +245,7 @@ export default async function StockDetailPage({
       .order("data_date", { ascending: false })
       .limit(80),
     sb.from("etf_metadata").select("symbol, name").eq("is_active_etf", true),
+    sb.from("stock_names").select("name").eq("symbol",symbol).maybeSingle(),
   ]);
 
   const chipPlusError =
@@ -264,6 +269,7 @@ export default async function StockDetailPage({
     name:
       (industryRow as StockMeta | null)?.name ??
       (etfRow as { name: string | null } | null)?.name ??
+      stockNameRow?.name ??
       null,
     industry:
       (industryRow as StockMeta | null)?.industry ??
@@ -303,10 +309,18 @@ export default async function StockDetailPage({
     ? Boolean(lp?.is_provisional || priceStamp.provisional)
     : Boolean(latest?.is_provisional);
   const decision = decisionMeta(signal);
+  let context:Awaited<ReturnType<typeof stockDecisionContext>>|null=null;
+  let contextError:string|null=[priceError,factorError,quoteError].some(Boolean)?'價格或因子讀取失敗':null;
+  try{context=await stockDecisionContext(symbol);}catch{contextError='決策依據讀取失敗';}
+  const priceLines=[
+    ...(context?.held?[{price:Number(context.held.avg_cost),title:'持股均價',color:'#38bdf8'},{price:Number(context.held.stop_loss_price),title:'部位停損',color:'#fb7185'}]:[]),
+    ...(context?.plan?[{price:Number(context.plan.stop_price),title:'計畫停損',color:'#fbbf24'}]:[]),
+  ];
   const closePoints = ohlcv.map((point) => ({ time: point.time, close: point.close }));
 
   return (
     <div className="space-y-7 pb-4">
+      <LiveRefresh />
       <Link
         href="/rank"
         className="inline-flex items-center gap-1.5 text-xs text-slate-500 transition-colors hover:text-sky-300"
@@ -348,10 +362,10 @@ export default async function StockDetailPage({
           <div className="rounded-2xl border border-line bg-black/15 p-4 sm:p-5">
             <p className="eyebrow">模型狀態</p>
             <div className="mt-3 flex items-center justify-between gap-3">
-              <p className="text-xl font-semibold text-slate-100">{decision.title}</p>
-              <Badge tone={decision.tone} className="px-2 py-1">{decision.label}</Badge>
+              <p className="text-xl font-semibold text-slate-100">{contextError?'資料待確認':context?.decision?.label??decision.title}</p>
+              <Badge tone={contextError?'neutral':context?.decision?({unavailable:'neutral',review:'danger',caution:'warn',monitor:'accent'} as const)[context.decision.state]:decision.tone} className="px-2 py-1">{contextError?'待確認':context?.decision?'持股判讀':decision.label}</Badge>
             </div>
-            <p className="mt-2 text-sm leading-relaxed text-slate-400">{decision.description}</p>
+            <p className="mt-2 text-sm leading-relaxed text-slate-400">{contextError?'讀取失敗，暫無法確認模型狀態。':context?.decision?.headline??decision.description}</p>
             <div className="mt-4 flex items-center justify-between border-t border-line pt-3 text-xs">
               <span className="text-slate-500">19 因子綜合排名</span>
               <span className="font-semibold tabular-nums text-slate-100">{rank?.expected_rank != null ? `#${rank.expected_rank}` : "—"}</span>
@@ -387,6 +401,7 @@ export default async function StockDetailPage({
 
       <nav className="sticky top-16 z-20 -mx-1 flex gap-1 overflow-x-auto rounded-2xl border border-line bg-[#09101b]/86 p-1.5 backdrop-blur-xl" aria-label="個股分析區段">
         {[
+          ["#decision","決策依據"],
           ["#trend", "趨勢價格"],
           ["#factors", "因子分析"],
           ["#chips", "籌碼動向"],
@@ -399,6 +414,7 @@ export default async function StockDetailPage({
           </a>
         ))}
       </nav>
+      <StockDecisionBrief context={context} rank={rank as unknown as Record<string,unknown>|null} isEtf={!!etfRow||/^00/.test(symbol)} error={contextError} priceDate={latest?.trade_date??null}/>
 
       <section id="trend" className="section-anchor space-y-4">
         <SectionTitle
@@ -413,7 +429,7 @@ export default async function StockDetailPage({
               <p className="text-sm font-medium text-slate-200">K 線與成交量</p>
               <Badge tone="neutral">布林通道 20, 2</Badge>
             </div>
-            <KLineChart data={ohlcv} />
+            <KLineChart data={ohlcv} priceLines={priceLines}/>
           </div>
           <TrendSnapshot stats={priceStats} latestClose={num(latest?.close)} />
         </div>

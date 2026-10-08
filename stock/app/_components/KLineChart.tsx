@@ -57,7 +57,9 @@ function bollingerBands(
   return { upper, middle, lower };
 }
 
-export function KLineChart({ data }: { data: OHLCV[] }) {
+export interface ChartPriceLine {price:number;title:string;color:string}
+const NO_LINES:ChartPriceLine[]=[];
+export function KLineChart({ data,priceLines=NO_LINES }: { data: OHLCV[];priceLines?:ChartPriceLine[] }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
 
@@ -110,6 +112,8 @@ export function KLineChart({ data }: { data: OHLCV[] }) {
         close: d.close,
       })),
     );
+    for(const line of priceLines) if(Number.isFinite(line.price)&&line.price>0)
+      candle.createPriceLine({price:line.price,title:line.title,color:line.color,lineWidth:1,lineStyle:LineStyle.Dashed,axisLabelVisible:true});
 
     // 布林軌道(20,2)疊在 K 線上 — 資訊呈現,非買賣訊號(走 B)
     const boll = bollingerBands(data);
@@ -172,7 +176,7 @@ export function KLineChart({ data }: { data: OHLCV[] }) {
       chart.remove();
       chartRef.current = null;
     };
-  }, [data]);
+  }, [data,priceLines]);
 
   if (data.length === 0) {
     return (
