@@ -78,7 +78,8 @@ export function formatPriceTimestamp(
       : "Yahoo Finance";
     // mid 標明非實際成交價
     const tag = source === "twse_mis_mid" ? "twse_mis(中價)" : source;
-    const text = ago == null ? `即時 · ${tag}` : `${ago} min ago · ${tag}`;
+    const age = ago?.endsWith('h') ? `${ago.slice(0,-1)} 小時前` : `${ago} 分鐘前`;
+    const text = ago == null ? `時間請見提示 · ${tag}` : `${age} · ${tag}`;
     return {
       text,
       tooltip: `${label} ${formatLocalDateTime(asOfTs)}`,
@@ -143,9 +144,11 @@ function minutesAgo(iso: string): string | null {
 function formatLocalDateTime(iso: string): string {
   try {
     return new Date(iso).toLocaleString("zh-TW", {
+      timeZone: 'Asia/Taipei',
+      hour12: false,
       dateStyle: "short",
       timeStyle: "short",
-    });
+    }) + ' 台北';
   } catch {
     return iso;
   }
