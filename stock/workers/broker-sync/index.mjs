@@ -8,6 +8,9 @@
 //     realizedGainsAndLoses      → broker_realized_snapshot 券商現況鏡像,整表取代;查詢不完整時不取代(不誤刪舊資料)
 //   不查 bankRemain:官方限定交割銀行為台北富邦銀行 / LINE Bank,Andy 的帳戶不是。
 //
+// PROBE_FILLED=1(暫時性,預設關):另外查近 14 天 stock.filledHistory,只回報筆數 / 欄位名 /
+// 委託類別(不含價量)到 fetch_log.error,用來確認唯讀 key 讀不讀得到成交歷史;失敗不影響同步結果。
+//
 // 日誌:每次執行先寫一筆 fetch_log(success=false,「尚未完成」),結束時改成實際結果。
 // 所以程序被 kill / SDK 卡死時,/health 看到的是 danger,而不是沉默。
 // source='broker-sync' 會自動出現在 v_data_health,web 不用改。
@@ -20,14 +23,18 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
+  addDaysIso,
   buildRealizedRows,
   buildSettlementRows,
   buildSnapshotRows,
   checkSnapshot,
+  compactDate,
   listOf,
   objOf,
   redact,
   snapshotDate,
+  summarizeFilled,
+  taipeiToday,
   withBackoff,
 } from './lib.mjs';
 
@@ -41,6 +48,7 @@ if (missing.length) {
 
 const DRY_RUN = env.DRY_RUN !== '0';
 const ALLOW_EMPTY = env.ALLOW_EMPTY === '1';
+const PROBE_FILLED = env.PROBE_FILLED === '1';
 const SECRETS = [env.FUBON_ID, env.FUBON_API_KEY, env.FUBON_CERT_PASSWORD, env.FUBON_CERT_B64, env.SUPABASE_SERVICE_ROLE_KEY];
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -91,6 +99,7 @@ async function sync() {
   const settleRows = [];
   const realizedRows = [];
   const fields = {};
+  const probes = []; // PROBE_FILLED:filledHistory 探測摘要(每個股票帳戶一筆)
   const warnings = []; // 附加查詢 / 寫入失敗:庫存照寫,但整次標失敗(partial)
   let realizedComplete = true; // 每個股票帳戶的 realized 都查到,才可以整表取代
   // 附加查詢的失敗(SDK 回失敗、丟例外、欄位形狀不符)只進 warnings,不影響庫存主線。
@@ -135,6 +144,18 @@ async function sync() {
     });
     if (!realizedOk) realizedComplete = false;
     await sleep(250);
+    if (PROBE_FILLED) {
+      const end = taipeiToday();
+      try {
+        const res = await withBackoff(() =>
+          sdk.stock.filledHistory(acct, compactDate(addDaysIso(end, -14)), compactDate(end)),
+        );
+        probes.push(summarizeFilled(res));
+      } catch (e) {
+        probes.push({ ok: false, message: String(e?.message ?? e).slice(0, 120) });
+      }
+      await sleep(250);
+    }
   }
   if (!accounts.some((a) => a.ok)) throw new Error(`no account answered inventories: ${JSON.stringify(accounts)}`);
 
@@ -160,6 +181,7 @@ async function sync() {
       settlement_fields: fields.settlement_details ?? null,
       realized_rows: realizedRows.length,
       realized_fields: fields.realized ?? null,
+      filled_probe: PROBE_FILLED ? probes : undefined,
       warnings,
     };
     return {
@@ -191,7 +213,11 @@ async function sync() {
   }
 
   const ok = warnings.length === 0;
-  const error = ok ? null : redact(`partial: ${warnings.join('; ')}`, SECRETS).slice(0, 300);
+  const error = ok
+    ? PROBE_FILLED
+      ? redact(`PROBE filledHistory: ${JSON.stringify(probes)}`, SECRETS).slice(0, 1000)
+      : null
+    : redact(`partial: ${warnings.join('; ')}`, SECRETS).slice(0, 300);
   return { ok, counts, rows_written: Number(written), rows_skipped: 0, error };
 }
 

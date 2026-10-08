@@ -1,15 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  addDaysIso,
   buildRealizedRows,
   buildSettlementRows,
   buildSnapshotRows,
   checkSnapshot,
+  compactDate,
   isThrottleMessage,
   listOf,
   objOf,
   redact,
   snapshotDate,
+  summarizeFilled,
   taipeiToday,
   toIsoDate,
   withBackoff,
@@ -294,4 +297,34 @@ test('buildRealizedRows defaults missing profit/loss to 0 and rejects bad shapes
   assert.throws(() => buildRealizedRows('a', [realized('2330', { date: 'garbage' })]), /unexpected realized date/);
   assert.throws(() => buildRealizedRows('a', [realized('2330', { filledQty: 1.5 })]), /non-integer filledQty/);
   assert.throws(() => buildRealizedRows('a', [realized('2330', { filledPrice: undefined })]), /missing filledPrice/);
+});
+
+test('addDaysIso and compactDate do plain calendar arithmetic across month and year ends', () => {
+  assert.equal(addDaysIso('2026-10-08', -14), '2026-09-24');
+  assert.equal(addDaysIso('2026-01-05', -14), '2025-12-22');
+  assert.equal(addDaysIso('2026-02-27', 3), '2026-03-02');
+  assert.equal(compactDate('2026-10-08'), '20261008');
+});
+
+test('summarizeFilled reports counts, field names and order types but never prices or quantities', () => {
+  const fill = (date, orderType, extra = {}) => ({ date, stockNo: '2492', buySell: 'Sell', filledQty: 1000, filledPrice: 368, orderType, filledTime: '09:53:00', ...extra });
+  const out = summarizeFilled({ isSuccess: true, data: [fill('2026/10/06', 'Stock'), fill('2026/10/06', 'DayTrade'), fill('2026/10/05', 'Stock')] });
+  assert.deepEqual(out, {
+    ok: true,
+    rows: 3,
+    fields: ['date', 'stockNo', 'buySell', 'filledQty', 'filledPrice', 'orderType', 'filledTime'],
+    order_types: ['DayTrade', 'Stock'],
+    day_trade_rows: 1,
+    first_date: '2026-10-05',
+    last_date: '2026-10-06',
+  });
+  assert.ok(!JSON.stringify(out).includes('368'));
+});
+
+test('summarizeFilled: no data is an empty ok result, a permission error is a failure', () => {
+  assert.deepEqual(summarizeFilled({ isSuccess: false, message: '查無資料' }), {
+    ok: true, rows: 0, fields: [], order_types: [], day_trade_rows: 0, first_date: null, last_date: null,
+  });
+  assert.deepEqual(summarizeFilled({ isSuccess: false, message: '此 API KEY 未授權該功能' }), { ok: false, message: '此 API KEY 未授權該功能' });
+  assert.deepEqual(summarizeFilled(undefined), { ok: false, message: 'no response' });
 });

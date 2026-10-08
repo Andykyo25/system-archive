@@ -4015,3 +4015,34 @@ rollback:刪 app/intraday、app/api/intraday、lib/intraday.ts、Sidebar 一行;
 - `v_broker_settlement_recon`:10/06、10/07、10/08 皆 `match`,10/06 淨交割額 376,550 = 券商。僅 service_role 可存取(anon / authenticated 無)
 - 合成情境(rollback 交易,2099 年測試資料,事後 0 殘留)9 種:match / missing_in_system / missing_at_broker / value_diff / tax_diff / fee_diff / pending / 當沖兩腿 match / 手續費差 1 元(容差內)match
 - 限制:券商只有 `broker_settlement` 有列的日子才比得到(worker 每天 18:00 抓近三天);融資融券利息不含;realized 表因窗口不明,沒有納入對帳
+
+## 2026-10-08 — 對帳主動通知 + `/holdings` 待交割款 + filledHistory 權限探測(Andy:「好 開始」,承接「新功能清單」功能 1 探測 + 功能 2)
+
+**目的**:(A) 對帳異常 / 同步失敗主動推 Telegram;(B) `/holdings` 顯示券商對帳與待交割款;(C) 用現有唯讀 key 探測 `stock.filledHistory` 讀不讀得到(決定「自動記帳」可不可行)。仍不下單、不寫 `holdings_transactions`。
+
+**設計**
+1. **通知(A)**:新 EF `notify-broker-recon`,沿用 `check-price-alerts` 的授權(`authorizeServiceRequest` + `read_edge_function_auth`)與 vault 的 Telegram 設定;純文字訊息(不用 MarkdownV2,免跳脫)。pg_cron 平日 18:30 Taipei(worker 18:00 之後)。只在有異常時發,三類:
+   - 持股對帳(`v_broker_recon` 最新快照且 `snapshot_date` = 今天,status ≠ match)— **每天重提醒直到修好**
+   - 交割款對帳(`v_broker_settlement_recon` 近 3 天,status ∉ match / pending)— 每個 (日期, status) 只發一次
+   - 同步(近 3 小時內沒有 `broker-sync` 紀錄或最後一筆失敗)— 每天只發一次
+   去重表 `broker_recon_alerted`(Telegram 送成功才寫入);每次執行寫 `fetch_log`(`broker_recon_notify`)。`data_source_expectation` 新增 `broker-sync`、`broker_recon_notify`(5 天)——否則 cron 靜默停擺在 `/health` 看不到
+2. **顯示(B)**:`/holdings` 總計下方加「券商對帳」區塊:持股對帳狀態、待交割款(`broker_settlement.settlement_date ≥ 今天`,正 = 應收)、近 3 日交割款對帳狀態。資料缺 / 讀取失敗只顯示小字,**不讓核心頁面 throw**
+3. **探測(C)**:worker 加 `PROBE_FILLED=1`:查近 14 天 `filledHistory`(≤30 天上限),只回報筆數 / 欄位名 / `orderType` 種類 / `DayTrade` 筆數(不記價量),寫進 `fetch_log.error`(`PROBE …`);失敗不讓整次同步失敗。預設關閉
+4. EF 的中文依 L49 / L73 機械處理:repo 檔保留中文,部署內容由腳本把非 ASCII 轉 `\uXXXX`,部署後 `get_edge_function` 拉回逐字比對
+
+**步驟**
+- [x] 1. worker 探測:`lib.mjs` 純函式 + 測試 + `index.mjs`;e2e 假 SDK 加 `filledHistory` → verify:`node --test`、假 SDK 情境(探測成功 / 失敗 / 不啟用)
+- [x] 2. EF 純函式 `_shared/broker-recon.ts` + `tests/broker-recon.test.mjs`(節點 strip-types)→ verify:`npm test`
+- [x] 3. migration `20261008000002_broker_recon_notify.sql`:`broker_recon_alerted` + expectation(不含 cron)→ rollback:`drop table broker_recon_alerted; delete from data_source_expectation where source in ('broker-sync','broker_recon_notify');`
+- [x] 4. 部署 EF → 拉回比對 → 手動呼叫驗證(無異常不發訊息;製造異常看 Telegram **前先問 Andy**,因為會真的發訊息)→ 再加 cron(migration `20261008000003`)→ rollback:`select cron.unschedule('notify-broker-recon');` + 刪 EF
+- [x] 5. `/holdings` 區塊 → verify:`tsc --noEmit`、`npm test`、dev server 實看
+- [x] 6. 文件 / commit / push
+
+**不做**:自動記帳本體(等探測結果)、下單、行情、改既有 `notify-holdings-telegram`。
+
+**完成記錄(2026-10-08)**
+- **worker 探測**:`PROBE_FILLED=1`(預設關)。`lib.mjs` 加 `addDaysIso` / `compactDate` / `summarizeFilled`;worker 測試 25/25;假 SDK 6 情境(預設關 error 為 null / 探測成功 / 權限被拒且 API key 被遮 / 丟例外 / DRY_RUN / 交割款失敗時 `partial` 優先)。**尚未用真實帳號跑**——要 Andy 在 Railway 設 `PROBE_FILLED=1` 跑一次,我讀 `fetch_log.error`,看完拿掉
+- **EF `notify-broker-recon`**(v1,`verify_jwt: true`):純邏輯在 `_shared/broker-recon.ts`(`tests/broker-recon.test.mjs` 8 項)。部署後以 `{"sample":true}` 取回固定樣本訊息,**sha256 與本機一致**(`daeb1c81…3099`)= 中文逐字一致(L49);`{"dry_run":true}` 與真實呼叫都回 `{"alerts":0,"sent":0}`,真實呼叫寫入 `fetch_log`(`broker_recon_notify`,success)且沒發訊息。**未驗證**:Telegram 真正送出的路徑(讀 vault → sendMessage → 寫 `broker_recon_alerted`)——沿用 `check-price-alerts` 同款寫法,但沒有真的觸發過,因為目前沒有異常、而且會發出真的訊息
+- **排程**:`notify-broker-recon` 平日 18:30 Taipei(UTC `30 10 * * 1-5`);migration `20261008000002`(去重表 + `broker-sync` 期望)、`20261008000003`(cron + `broker_recon_notify` 期望,5 天)。`/health` 現況:`broker_recon_notify` ok;`broker-sync` warn(近 7 天內 3 次早期登入失敗的紀錄,最後一筆成功,會自己轉 ok)
+- **`/holdings` 券商對帳區塊**:`app/holdings/BrokerReconSection.tsx` + `lib/broker-recon-view.ts`(`tests/broker-recon-view.test.mjs` 4 項)。實看:持股對帳「1 檔一致 / 快照 10/08 08:55」、待交割款 −117,055(10/08 應收 376,550、10/12 應付 493,605)、交割款對帳「近 3 日一致」;手機寬度三卡堆疊無橫向捲動;更正後的當沖紀錄(含中文備註)正常顯示。`tsc --noEmit` 與 eslint 零問題
+- **本機環境缺口(既有,非本次造成)**:`npm test` 有 3 個檔案(`database` / `plan-risk-db` / `quote-provenance`)因本機沒裝 `@electric-sql/pglite`(package.json 有宣告)而失敗,其餘 58 項通過;它們只載入指定名稱的 migration,不受本次影響。Next 原生編譯器被 Windows 應用程式控制原則擋住,dev server 須用 `next dev --webpack`(我用了臨時 launch 設定,已還原)

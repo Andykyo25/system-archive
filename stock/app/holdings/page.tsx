@@ -18,6 +18,13 @@ import {
   type SignalRow,
 } from "./HoldingsAdvice";
 import { AlertDialog, type ActiveAlert } from "./AlertDialog";
+import { BrokerReconSection } from "./BrokerReconSection";
+import type {
+  BrokerRun,
+  InventoryReconRow,
+  SettlementReconRow,
+  UpcomingRow,
+} from "@/lib/broker-recon-view";
 import { cancelPriceAlert } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -147,6 +154,7 @@ function isEtfSymbol(symbol: string): boolean {
 
 export default async function HoldingsPage() {
   const sb = createClient();
+  const today = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Taipei" });
   const [
     { data: summary },
     { data: portfolio },
@@ -160,6 +168,10 @@ export default async function HoldingsPage() {
     { data: alertRules },
     { data: capitalRow },
     fees,
+    brokerRunR,
+    brokerReconR,
+    brokerUpcomingR,
+    brokerSettleReconR,
   ] = await Promise.all([
     sb.from("v_holdings_summary").select("*").single(),
     sb
@@ -209,6 +221,25 @@ export default async function HoldingsPage() {
       .eq("key", "initial_capital")
       .maybeSingle(),
     loadFeeSettings(),
+    // 券商對帳(輔助資訊):這四個查詢失敗只影響該區塊,不 throw
+    sb
+      .from("broker_snapshot_run")
+      .select("snapshot_date, row_count, fetched_at")
+      .order("snapshot_date", { ascending: false })
+      .limit(1),
+    sb
+      .from("v_broker_recon")
+      .select("symbol, system_qty, broker_qty, status")
+      .order("symbol"),
+    sb
+      .from("broker_settlement")
+      .select("settlement_date, total_settlement_amount")
+      .gte("settlement_date", today),
+    sb
+      .from("v_broker_settlement_recon")
+      .select("trade_date, status, sell_tax_diff")
+      .order("trade_date", { ascending: false })
+      .limit(3),
   ]);
 
   // 持股核心 query 失敗 → throw 到 app/error.tsx(不靜默空表,A3/L42)
@@ -261,6 +292,18 @@ export default async function HoldingsPage() {
   return (
     <div className="space-y-8">
       <SummarySection summary={sum} portfolio={portfolioSum} />
+
+      <BrokerReconSection
+        run={((brokerRunR.data as BrokerRun[] | null) ?? [])[0] ?? null}
+        recon={(brokerReconR.data as InventoryReconRow[] | null) ?? []}
+        upcoming={(brokerUpcomingR.data as UpcomingRow[] | null) ?? []}
+        settleRecon={(brokerSettleReconR.data as SettlementReconRow[] | null) ?? []}
+        today={today}
+        loadError={
+          [brokerRunR, brokerReconR, brokerUpcomingR, brokerSettleReconR].find((r) => r.error)?.error
+            ?.message ?? null
+        }
+      />
 
       <AddBuySection fees={fees} />
 

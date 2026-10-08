@@ -30,6 +30,7 @@
 | `SUPABASE_SERVICE_ROLE_KEY` | 同 web service |
 | `DRY_RUN` | 預設開(只登入 + 查詢 + 記 `fetch_log`,不寫快照);確認無誤後設 `0` |
 | `ALLOW_EMPTY` | 設 `1` 才允許「券商回空、系統卻有持股」時照寫(預設視為失敗) |
+| `PROBE_FILLED` | **暫時性**,設 `1` 時另外查近 14 天 `stock.filledHistory`,只把筆數 / 欄位名 / 委託類別(不含價量)寫進 `fetch_log.error`(`PROBE filledHistory: …`),用來確認唯讀 key 讀不讀得到成交歷史;探測失敗不影響同步結果。看完結果就拿掉 |
 
 這些值只放 Railway 環境變數,不要進 repo、不要貼進對話。
 

@@ -183,6 +183,33 @@ export function buildRealizedRows(accountNo, list) {
   return out;
 }
 
+// ISO 日期加減天數(純日曆運算,與時區無關)。
+export function addDaysIso(iso, days) {
+  const d = new Date(`${iso}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+// '2026-10-08' → '20261008'(filledHistory 的日期參數格式,依官方 C# 文件)。
+export const compactDate = (iso) => iso.replaceAll('-', '');
+
+// stock.filledHistory 的回傳 → 探測摘要。只含筆數、欄位名、委託類別、日期範圍,不含價量。
+export function summarizeFilled(res) {
+  const r = listOf(res);
+  if (!r.ok) return { ok: false, message: r.message.slice(0, 120) };
+  const dates = r.list.map((x) => toIsoDate(x?.date)).filter(Boolean).sort();
+  const types = r.list.map((x) => String(x?.orderType ?? ''));
+  return {
+    ok: true,
+    rows: r.list.length,
+    fields: Object.keys(r.list[0] ?? {}),
+    order_types: [...new Set(types)].sort(),
+    day_trade_rows: types.filter((t) => /day.?trade/i.test(t)).length,
+    first_date: dates[0] ?? null,
+    last_date: dates.at(-1) ?? null,
+  };
+}
+
 // 券商回空、但系統認為還有持股 → 多半是 API / 權限問題,不是真的清倉,視為失敗。
 export function checkSnapshot({ rowCount, systemOpenCount, allowEmpty = false }) {
   if (rowCount === 0 && systemOpenCount > 0 && !allowEmpty) {
