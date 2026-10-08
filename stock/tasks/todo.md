@@ -4121,7 +4121,7 @@ rollback:刪 app/intraday、app/api/intraday、lib/intraday.ts、Sidebar 一行;
 - [x] A. jobs 框架 + `broker_job_task` + Dockerfile 調整 + 測試 + 假 SDK e2e
 - [x] B. 4:migration、tdcc / etf jobs、views、`/stocks/[symbol]` 區塊
 - [x] C. 5:~~migration、minute job、`intraday-resolve.mjs`~~ → **前提不成立,不蓋分 K 管線**(見下)
-- [ ] D. 3:migration、inst job
+- [~] D. 3:~~migration、inst job(逐檔呼叫富邦)~~ → **改用全市場來源**(前提檢驗,見下)
 - [ ] E. 每階段 commit + push;最後文件 / 記錄
 
 **rollback**:各階段 git revert;`drop table` 新表(皆新增、無依賴);Railway 設 `JOBS=` 空值即停用全部 jobs。
@@ -4137,3 +4137,10 @@ rollback:刪 app/intraday、app/api/intraday、lib/intraday.ts、Sidebar 一行;
 - 組合掃描(`tools/scan-backtest/ambiguity-scan.mjs`):2×ATR 配 ≥ 8% 停利 ≤ 0.1%、3×ATR 配 ≥ 8% 為 0%;只有 1×ATR 配 3~5% 停利才到 2~4%。**你實際測的策略空間裡,「先判停損」不構成偏誤**
 - 因此沒有建 `minute_day_request` / `minute_day_path` / worker `minute` 工作 / 判定工具(不解決不存在的問題)。保留 `ambiguity-scan.mjs` 與 `intraday-lib.mjs`(7 項測試),日後調整出場參數時可快速檢查
 - 若日後某設定的模糊比例 > 1%:做法已寫在 `intraday-lib.mjs` 檔頭(用當日開盤把百分比換算成分 K 的原始價,逐分鐘找第一個觸價;同一分鐘兩邊都碰到 = 無法判定;換算後的日高低要貼近日 K 才採信)。富邦 `historical/candles timeframe=1`(2023-05-23 起)已實測可用
+
+**階段 D(功能 3)前提檢驗與改道(2026-10-08)**
+- 目的是「讓看多名單加法人條件能做 PIT 回測」。用手上資料檢驗(L82):R2p 的 2,066 筆交易分布在 **788 檔**,其中落在 148 檔宇宙內的只有 **337 筆(16.3%)**;候選池 1,223 檔、宇宙只占 96 檔。**只補 148 檔(原計畫)對這個目的只涵蓋約 16% 的交易**;回測訊號本身 2022-08 起,2013 年起的歷史也用不到。逐檔呼叫富邦要涵蓋候選池約 1,200 檔 × 5 年 ≈ 6,000 次呼叫(2 小時 +、要排在 worker 的每日預算裡跑 17 天)
+- 另外宇宙股票的法人資料其實已有:`stock_institutional` 宇宙 146 / 148 檔有資料、近 30 天 143 檔,所以**顯示用途也不缺**
+- 結論:逐檔的富邦 `institutional-trades` 不是這個目的的對的工具。改用證交所 T86 / 櫃買三大法人日報(一天一次呼叫拿全市場,免金鑰;記憶 `stock_institutional_coverage_limits` 早已建議)。兩個端點 2026-10-08 實測 2022-07-01 與 2026-09-30 皆可用(證交所 1,126~1,341 列、櫃買 758~913 列),欄位對應以樣本逐項驗證
+- 已建(本機研究工具,不進正式庫、不吃配額):`tools/scan-backtest/fetch-inst.mjs`(可續抓)、`inst-lib.mjs`(解析,4 項測試)、`inst-pit.mjs` + `inst-pit-lib.mjs`(5 項測試)。抓取在背景跑(櫃買約 40 分鐘、證交所約 95 分鐘)
+- 不做:富邦 `inst` worker 工作與 `inst_trades_hist` 表(不解決目的;jobs 框架已在,日後要逐檔歷史只是約 30 行的新工作)

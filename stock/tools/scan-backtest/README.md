@@ -11,6 +11,9 @@ node fetch.mjs twse 2022-07-01 2026-09-26   # 約 1 小時;可與 tpex 同時跑
 node fetch.mjs tpex 2022-07-01 2026-09-26
 node engine.mjs                              # 產生 signals.json / market.json(約 1 秒)
 node validate.mjs                            # 與正式 scan_picks 凍結名單比對(prod_picks.json)
+node fetch-inst.mjs twse 2022-07-01 2026-09-25   # 法人日報(證交所約 95 分鐘、櫃買約 40 分鐘,可同時跑)
+node fetch-inst.mjs tpex 2022-07-01 2026-09-25
+node inst-pit.mjs                            # 法人條件 PIT 檢驗(需要上面兩個抓完)
 node r2p.mjs                                 # 現行上線規格的回測數字
 ```
 
@@ -28,6 +31,8 @@ node r2p.mjs                                 # 現行上線規格的回測數字
 | `baseline.mjs` | 型態 A/B/C/D 與正式信心門檻機制的逐年成績 |
 | `research.mjs` / `featscan.mjs` / `combo.mjs` / `exits.mjs` / `robust.mjs` / `prodfeas.mjs` / `h0.mjs` / `tail2.mjs` | 2026-09-29 的研究過程(假設、分位掃描、組合、出場、門檻高原、正式庫可行版、崩跌反彈檢查、停損寬度) |
 | `ambiguity-scan.mjs` / `intraday-lib.mjs` | `sim()` 同日低點碰停損、高點也碰停利時固定先判停損;這支數出受影響的交易比例(2026-10-08:上線規格 R2p = 0 / 2,066,2~3×ATR 停損配 ≥ 8% 停利 ≤ 0.1%,只有 1×ATR 配 3~5% 停利才到 2~4%)。測試:`node --test intraday-lib.test.mjs` |
+| `fetch-inst.mjs` / `inst-lib.mjs` | 證交所 T86 / 櫃買三大法人日報,按日存成 `data/inst_{twse,tpex}_YYYYMMDD.json`(可續抓;單位股;外資取「不含外資自營商」口徑)。測試:`node --test inst-lib.test.mjs` |
+| `inst-pit.mjs` / `inst-pit-lib.mjs` | 法人條件的 PIT 檢驗:R2p 交易依「訊號日 T 的法人買賣超占 20 日均量」分高 / 低組(2023–24 定三分位門檻、2025–26 驗證、逐年同向、按日重抽信賴區間)。測試:`node --test inst-pit-lib.test.mjs` |
 | `incl.txt` | 當時 `stock_industry` 未被 `industry_policy` 排除的代號(現行分類,非 PIT) |
 
 ## 紀律
