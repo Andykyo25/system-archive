@@ -206,7 +206,8 @@ export default async function StockDetailPage({
       .eq("symbol", symbol)
       .order("published_at", { ascending: false, nullsFirst: false })
       .limit(20),
-    sb.from("v_stock_rank").select("*").eq("symbol", symbol).maybeSingle(),
+    // 含看多候選(rank_eligible=false):有三面因子可看,但不列入排名
+    sb.from("v_stock_rank_all").select("*").eq("symbol", symbol).maybeSingle(),
     sb
       .from("v_entry_signal")
       .select("symbol, is_entry_signal, signal_strength, weighted_score, expected_rank")
@@ -368,7 +369,7 @@ export default async function StockDetailPage({
             <p className="mt-2 text-sm leading-relaxed text-slate-400">{contextError?'讀取失敗，暫無法確認模型狀態。':context?.decision?.headline??decision.description}</p>
             <div className="mt-4 flex items-center justify-between border-t border-line pt-3 text-xs">
               <span className="text-slate-500">19 因子綜合排名</span>
-              <span className="font-semibold tabular-nums text-slate-100">{rank?.expected_rank != null ? `#${rank.expected_rank}` : "—"}</span>
+              <span className="font-semibold tabular-nums text-slate-100">{rank?.rank_eligible === false ? "不列入排名" : rank?.expected_rank != null ? `#${rank.expected_rank}` : "—"}</span>
             </div>
           </div>
         </div>
@@ -616,6 +617,7 @@ interface FactorRankRow {
   symbol: string;
   weighted_score: number | string | null;
   expected_rank: number;
+  rank_eligible?: boolean;
   fund_count_pos: number;
   fund_count_total: number;
   mom_count_pos: number;
@@ -689,7 +691,7 @@ function FactorSection({
           description="四個維度分開閱讀；總分與進場門檻沿用原模型，不因新版介面調整。"
         />
         <div className="flex items-center gap-2">
-          <Badge tone="neutral">排名 #{rank.expected_rank}</Badge>
+          <Badge tone="neutral">{rank.rank_eligible === false ? "看多候選 · 不列入排名" : `排名 #${rank.expected_rank}`}</Badge>
           <Badge tone="accent">總分 {fmtScore(rank.weighted_score)}</Badge>
           {isEntry && <Badge tone={strength === "strong" ? "warn" : "accent"}>{strength === "strong" ? "強訊號" : "標準訊號"}</Badge>}
         </div>

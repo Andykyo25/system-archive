@@ -3,6 +3,7 @@ import { ArrowUpRight } from "lucide-react";
 import {
   VERDICT_EXIT,
   conditions,
+  factorCell,
   verdictEvidence,
   type VerdictLive,
   type VerdictRow,
@@ -116,8 +117,9 @@ export function VerdictBoard({
                 {name:'基本面',pos:factor?.fund_count_pos,total:factor?.fund_count_total,date:ds?.fundamental},
                 {name:'技術面',pos:factor?.mom_count_pos,total:factor?.mom_count_total,date:ds?.technical??r.trade_date},
                 {name:'籌碼面',pos:factor?.chip_count_pos,total:factor?.chip_count_total,date:ds?.chip},
-              ].map(d=><div key={d.name} className="min-w-0"><dt className="text-slate-400">{d.name}</dt><dd className="mt-1">{d.total && d.pos!=null?`${d.pos}/${d.total} 通過`:'因子不足'}</dd><dd className="mt-1 break-words text-slate-400">{d.date??'資料日未確認'}</dd></div>)}
+              ].map(d=><div key={d.name} className="min-w-0"><dt className="text-slate-400">{d.name}</dt><dd className="mt-1">{factorCell(!!factor,d.pos,d.total)}</dd><dd className="mt-1 break-words text-slate-400">{d.date??'資料日未確認'}</dd></div>)}
             </dl>}
+            {!evidenceError && !factor && <p className="mt-2 text-xs text-slate-400">進榜後自動補資料，約 1 小時內更新三面因子。</p>}
             <p className="mt-3 text-xs leading-relaxed text-slate-400">R2p 依價量型態選出；三面因子供研究，缺資料時無法認定綜合看多。</p>
             {plan && (
               <dl className="mt-4 grid grid-cols-3 gap-3 border-t border-line pt-3 text-sm">

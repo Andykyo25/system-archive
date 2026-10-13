@@ -108,6 +108,14 @@ export interface VerdictLive {
   quoted_at: string | null;
 }
 
+// 看多卡三面格子:查無列 = 進榜後補料中(request_verdict_backfill 每小時 :40 補、:50 重算);
+// 有列但該面 0 項可評 = 資料源本身沒有(例:創新板不可融資券),兩者都不是「條件沒過」。
+export function factorCell(hasRow: boolean, pos: number | null | undefined, total: number | null | undefined): string {
+  if (!hasRow) return "收料中";
+  if (!total || pos == null) return "無可評資料";
+  return `${pos}/${total} 通過`;
+}
+
 // 寫進交易計畫的進場理由:R2p 三條件的實際數值 + 回測出處。
 export function verdictEvidence(r: VerdictRow): string {
   const supply =

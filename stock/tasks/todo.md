@@ -4188,3 +4188,61 @@ rollback:刪 app/intraday、app/api/intraday、lib/intraday.ts、Sidebar 一行;
 規約見 [short-term-protocol-20261008.md](short-term-protocol-20261008.md)。研究只用本機資料，不改線上策略。
 
 **Review**：2,105 個完整樣本，27 種出場、40 條單條件、Ridge Logistic 與深度 2 決策樹。5% 停利的日等權淨勝率達 64.02%，平均仍 -0.20%；新篩選及模型沒有跨年同時改善勝率、期望值與左尾。26 項研究工具測試通過，完整結果兩次重跑一致、來源資料指紋不變；詳見 [研究報告](short-term-research-20261008.md)。歷史區間已重用與名單非 PIT 等限制明列，沒有把探索結果上線或改寫正式成績單。
+
+## 2026-10-13 — 看多名單標的「進榜即補齊三面因子」(Andy:「進入看多名單,就要立刻補上所有的資料,不能有資料不足」)
+
+> 狀態:**完成**(Andy 10/13:「開工 D1 D2,把有問題或漏資料的地方都修好,反覆驗證直到符合正式標準並確保選股策略不會走歪」)。下方根因段為動工前的唯讀實查。
+
+**症狀**:今日看多 6924 / 3617 / 3605 三面都顯示「因子不足」。
+
+**根因(三個缺口,都不是「資料算出來不夠」)**
+
+| # | 缺口 | 證據 |
+|---|---|---|
+| G1 | 計算名單不含候選 | `v_price_factors` 588 列、`v_chip_factors` 183 列,3 檔皆 0;`v_stock_score`(基本面)500 列**已含 3 檔**且 7 項中 6~7 項可算 → 只差名單。`v_stock_rank` 查無列 → 前端 `factors[symbol]` 為 undefined → 顯示「因子不足」 |
+| G2 | 收料時序與回看窗 | `capture_collection_candidates` 18:05/23:05(台北)才收進候選,法人/融資/借券日更 17:00~17:25 已跑完 → 最快隔天 17:00 才抓,且只回看 `current_date-3`;`v_chip_factors` 要 ≥3 日法人、≥3 日融資、2 日借券、2 週持股比 |
+| G3 | 歷史深度 | 6924 `price_daily` 僅 92 筆(非池股 135 日滾動窗)→ 無 MA200;無月營收 → `fund_rev_yoy` 空 |
+
+附帶發現(既有、非本案造成):`universe_dynamic` 50 檔熱股 `v_stock_rank` 有列,但 `chip_count_total>0` 只有 2/50 —— `v_chip_factors` 的 universe 只有 4 個來源,不含熱股池(與 20260828000005 migration 註解的意圖不符)。
+
+**決策點(需 Andy 答)**
+- **D1 排名中立**(建議:候選排在 baseline 之後):候選有因子但**不進** `expected_rank <= 5`,沿用 2026-09-23 ETF 修法(只改排序鍵,不刪列/不改 weighted_score)。若讓候選與 baseline 同序競爭,R2p 突破股會進 M9.4a top5,汙染 paper-track 前向驗證。
+- **D2 熱股池籌碼**(建議:本案不動):修 `v_chip_factors` 納入熱股池會改變 50 檔的 weighted_score 與排名,在 paper-track 進行中改變排名母體;另案處理。
+
+**實作結果(migration 20261013000001~006)**
+- [x] 0. 前置基準:`verify_20261013_before`(rank 590 / verdict / swing / entry / heat 指紋)+ `score_universe_at('2025-06-30'/'2024-06-28')` 指紋;改動前定義存 `schema_rollback_snapshots`,rollback 腳本 `tasks/rollback-20261013.sql`(PGlite 實測可逐字還原)。
+- [x] 1. 001:`v_rank_universe`(排名母體)/ `v_factor_universe`(+ 近 7 日候選),`v_price_factors` 與 `v_chip_factors` 共用 → 兩份手寫名單不再漂移。
+- [x] 2. D1:`v_stock_rank_all`(含候選,`rank_eligible=false` 排最後)+ `v_stock_rank` = 只取排名母體。驗證:原 590 檔 0 遺失、基本 / 技術計數 0 變動、候選只出現在 `_all`;看多 / 回檔波段 / 產業熱度不變;回測兩錨點指紋不變。
+- [x] 3. 003 修正(驗證時發現):籌碼名單改讀因子名單後,63 檔無價格的下市 ETF 產生空列(590→654)→ 籌碼名單排除純 ETF(持有的 ETF 照舊)→ 591(多的 1 檔 = 3617,10/13 11:01 新買進的持股,本來就屬排名母體)。
+- [x] 4. D2:熱股池 38 檔補上籌碼因子;線上 vs `score_universe_at(current_date)` 籌碼不一致 40 → 4 檔(剩 1~2 項差,14 日窗 `>=` vs `>` 既有寫法差),動能 0 差。
+- [x] 5. 002 + 005 即時補料 `request_verdict_backfill()`:收盤資料到齊才動作、進榜即入候選、8 個 dataset「缺或過期」都補(005 修正:3605 10/07 被擠出熱股池後籌碼停收,舊條件只看筆數漏掉)。冷卻:日更類 3 小時、慢變類 7 天。排程 UTC `40 6,7,8,9,14`。
+- [x] 6. 001 `cleanup_market_prices` 135 → 200 天 + 保留曾入候選者;004 一次性全市場日線回補到 120 根(盤中 TWSE 慢到 40 秒/日 → 改收盤後每 5 分鐘補 3 天,補完或 10/20 自動停)。
+- [x] 7. 006 `/scan` 改讀 `mv_scan_verdict` 快照(UTC 6-15 點每 10 分鐘 refresh):即時 view 平均 5.9 秒、最高 7.9 秒,貼著 8 秒逾時,本機驗證時整頁載入失敗。
+- [x] 8. 前端:看多卡「收料中 / 無可評資料 / x/y 通過」三態;個股頁候選顯示「不列入排名」;資料日改讀 `v_stock_rank_all`。
+- [x] 9. 測試:`tests/verdict-coverage.test.mjs` 4 項(PGlite 實跑 migration、冪等、中止條件、rollback、補料冷卻 / 過期 / 權限);全套 98 過、lint、build;本機 `/scan`、`/stocks/3605` 實看。
+
+**Review**:看多 3 檔三面全數有值且到全市場最新日(3617 7/7·4/5·3/5、3605 4/7·3/5·3/5、6834 6/7·3/5·2/5);3605 籌碼由過期的 1/5 修正為 3/5。**6924 用截短的 92 根算套牢 6.6%(過),用規格 120 根是 18.4%(不過)→ 10/12 的 6924 是資料截短造成的誤選**,補齊後名單改為 6834 遞補(Andy 未持有 6924)。熱股池補籌碼後:前 10 名換 3 檔(3264 / 4556 / 5340 籌碼 0/1、1/4、0/4 掉出;3016 4/4 進),進場訊號 66 → 49(18 檔熱股原本因籌碼空白被 `ELSE true` 視為通過)。paper-track 11 筆持倉不受影響。
+
+**未做 / 待決策**
+- 全市場還原權值:R2p 回測用還原價(交易所漲跌價差自建),線上 `adj_factor` 只有靜態池有維護(熱股池 50 檔僅 1 檔有除權息資料)→ 只補部分股會讓同一策略混用兩種價格且盤中改名單,需另案(全市場還原 + R2p 重驗)。
+- R2p 前向帳本 10/12 批含 6924(截短資料誤選),依規則不改寫;引用前向績效需註記。004 補完後量 10/08、10/12 帳本 pick 在 120 根下是否仍成立。
+- `v_entry_signal` 籌碼總數 0 時 `ELSE true`(缺資料視同通過)為既有規則,本案未改。
+
+<details><summary>動工前的原計畫(保留紀錄)</summary>
+
+**步驟**
+- [ ] 0. 前置:存 `v_price_factors` / `v_chip_factors` / `v_stock_rank` 現行定義到 `tasks/rollback-20261013.sql`;記錄 baseline 指紋 = md5(symbol, weighted_score, expected_rank) 與 `score_universe_at('2025-06-30')`/`('2024-06-28')`(錨點 fp_2025=b5b26e82…、fp_2024=0ba8e554…);盤點 `v_stock_rank` 的 8 個下游 view 對列數的假設;量 `refresh materialized view concurrently mv_factor_scores` 秒數。→ verify: 指紋與定義檔存在
+- [ ] 1. migration A(名單):`v_price_factors`、`v_chip_factors` 的 universe CTE 以 `pg_get_viewdef`+replace(L49 機械改寫、冪等)加入 `collection_candidates where signal_date >= current_date-7`。**不動** `score_universe_at`(候選表會被 upsert 覆寫 signal_date,不是 PIT;回測母體維持原樣)。→ verify: 3 檔出現在 `v_stock_rank`,`fund_count_total>=6`
+- [ ] 2. migration B(排名中立,D1):`v_stock_rank.expected_rank` 排序鍵最前加「是否僅候選(不在 baseline universe)」。→ verify: baseline 指紋前後一致;`paper_track_tick` dry-run top5 與改前相同
+- [ ] 3. migration C(即時補料):新增 `backfill_verdict_candidates()`,對 `v_scan_verdict` 當日名單中**缺料**者(price<250 筆、法人/融資近 14 日<3、借券<2、持股比近 60 日<2、無月營收/財報)用 pg_net 呼叫既有 `fetch-finmind-backfill`:price 3 年、fundamentals/monthly_revenue/valuation 同 `scan_hot_stocks`、institutional/margin/lending 回看 30 日、shareholding 回看 60 日;先 `reserve_collection_quota`;只補缺的 → 無缺料時 0 次 FinMind 呼叫。排程 UTC `35 6-10 * * 1-5`(緊接現有 `:50` 的 `mv_factor_scores` refresh,不另開 refresh)。→ verify: `cron.job_run_details` 成功、`api_quota_state` 增量 ≤ 預期
+- [ ] 4. 一次性補今日 3 檔(手動呼叫同一函式),等下一個 `:50` refresh(或手動 refresh 一次)。→ verify: `v_stock_rank` 3 檔 `mom_count_total=5`、`chip_count_total>=4`、`fund_count_total>=6`(6924 補月營收後 7)
+- [ ] 5. UI(`app/scan/VerdictBoard.tsx`):查無列顯示「收料中」,有列但某維全 NULL 顯示具體原因(例:上市未滿 N 日),不再用籠統的「因子不足」。→ verify: 單元測試 + `npm run build` + /scan 桌機與 390px 截圖
+- [ ] 6. 迴歸:既有 147 項測試、build、`score_universe_at` 兩個錨點指紋不變。
+
+**負載評估**:`v_scan_verdict` 有 `LIMIT 3` → 每日最多 3 檔新補料,每檔約 8 dataset × 1 call,≤ 24~30 calls/日,對 600/小時滾動配額可忽略。
+
+**Rollback**:`cron.unschedule`、`drop function backfill_verdict_candidates`、以 `rollback-20261013.sql` 還原三個 view 定義;已補入的資料為純新增,不刪(PIT 紀錄保留)。
+
+**誠實 caveat**:無法保證「永遠有資料」——真正新上市、無歷史或虧損導致 PEG 不適用的標的,該因子本質為 NULL。本案保證的是:**不會再因為沒收料或不在計算名單而缺**,且缺的原因會明示。
+
+</details>

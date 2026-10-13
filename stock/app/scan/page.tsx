@@ -15,15 +15,16 @@ import research from "@/lib/r2p-research.json";
 export const dynamic = "force-dynamic";
 
 // v_scan_verdict 已完成所有判讀(R2p 前 3 檔),頁面只負責呈現。
+// 讀 mv_scan_verdict 快照(價格更新時段每 10 分鐘 refresh):即時 view 要 5~8 秒,貼著 8 秒逾時。
 // Plans, settings and account risk stay fresh.
 const loadVerdict = unstable_cache(async () => {
   const sb = createClient();
   const result = await readAll<VerdictRow>((from, to) => sb
-    .from("v_scan_verdict").select("*")
+    .from("mv_scan_verdict").select("*")
     .order("score_total", { ascending: false }).order("day_pct", { ascending: false })
     .order("symbol").range(from, to));
   return unwrap(result, "今日看多") ?? [];
-}, ["scan:verdict:v3"], { revalidate: 60 });
+}, ["scan:verdict:v4"], { revalidate: 60 });
 
 export default async function ScanPage() {
   const sb = createClient();
@@ -51,10 +52,12 @@ export default async function ScanPage() {
         .select("key,value")
         .in("key", ["verdict_atr_stop_multiple", "plan_slippage_pct"]),
     ]);
-  const date = unwrap(dateR, "價格資料日")?.[0]?.trade_date ?? null;
+  // 名單來自快照:日期跟著名單走,價格剛更新、快照尚未 refresh 時不會顯示「新日期 + 舊名單」
+  const date = rows[0]?.trade_date ?? unwrap(dateR, "價格資料日")?.[0]?.trade_date ?? null;
   const today = taipeiDate();
   const symbols = rows.map(r=>r.symbol).sort();
-  const rankR = symbols.length ? await sb.from("v_stock_rank")
+  // v_stock_rank_all:含尚未進排名母體的看多候選(只供顯示三面因子,不影響排名)
+  const rankR = symbols.length ? await sb.from("v_stock_rank_all")
     .select("symbol,fund_count_pos,fund_count_total,mom_count_pos,mom_count_total,chip_count_pos,chip_count_total")
     .in("symbol",symbols) : {data:[],error:null};
   let dates = {};
