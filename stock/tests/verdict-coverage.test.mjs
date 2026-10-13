@@ -278,6 +278,7 @@ test("R2p supply share uses the validated 90 bars, other callers keep 120", asyn
       create function scan_supply_share(p_symbol text, p_date date, p_price numeric) returns numeric language sql stable as $$
         select round(coalesce(sum(volume) filter (where close > p_price and close <= p_price * 1.2), 0)::numeric / nullif(sum(volume), 0), 3)
         from (select close, volume from public.price_daily where symbol = p_symbol and trade_date <= p_date order by trade_date desc limit 120) d $$;
+      create function cleanup_market_prices() returns integer language sql as $$ select 0 $$;
       create table base_fixture(symbol text, trade_date date, close numeric);
       create view v_scan_verdict as
         with b as (select * from base_fixture),
