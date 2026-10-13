@@ -269,3 +269,33 @@ test("verdict backfill: waits for a complete close, requests only missing datase
     await db.close();
   }
 });
+
+test("R2p supply share uses the validated 90 bars, other callers keep 120", async () => {
+  const db = new PGlite();
+  try {
+    await db.exec(`
+      create table price_daily(symbol text, trade_date date, close numeric, volume bigint, primary key(symbol, trade_date));
+      create function scan_supply_share(p_symbol text, p_date date, p_price numeric) returns numeric language sql stable as $$
+        select round(coalesce(sum(volume) filter (where close > p_price and close <= p_price * 1.2), 0)::numeric / nullif(sum(volume), 0), 3)
+        from (select close, volume from public.price_daily where symbol = p_symbol and trade_date <= p_date order by trade_date desc limit 120) d $$;
+      create table base_fixture(symbol text, trade_date date, close numeric);
+      create view v_scan_verdict as
+        with b as (select * from base_fixture),
+        c as (select b.symbol, b.trade_date, b.close, scan_supply_share(b.symbol, b.trade_date, b.close) as supply_share from b)
+        select * from c where supply_share <= 0.10;
+      create materialized view mv_scan_verdict as select * from v_scan_verdict;
+      create unique index on mv_scan_verdict(symbol);
+      -- latest 90 bars below the price, bars 91-120 inside (p, 1.2p]: 90 bars = 0, 120 bars = 0.25
+      insert into price_daily select 'S', current_date - g, case when g < 90 then 90 else 110 end, 1000 from generate_series(0, 119) g;
+      update price_daily set close = 100 where trade_date = current_date;
+      insert into base_fixture values ('S', current_date, 100);
+      refresh materialized view mv_scan_verdict;`);
+    assert.equal((await db.query("select count(*)::int n from mv_scan_verdict")).rows[0].n, 0);
+    await db.exec(await read("../supabase/migrations/20261013000007_r2p_supply_90_bars.sql"));
+    assert.deepEqual((await db.query("select symbol, supply_share::float s from mv_scan_verdict")).rows, [{ symbol: "S", s: 0 }]);
+    assert.equal((await db.query("select scan_supply_share('S', current_date, 100)::float s")).rows[0].s, 0.25);
+    await db.exec(await read("../supabase/migrations/20261013000007_r2p_supply_90_bars.sql"));
+  } finally {
+    await db.close();
+  }
+});
