@@ -3,3 +3,7 @@ signals.json
 market.json
 *.log
 short-term-output/
+signals_*.json
+adj_events.json
+adj_compare_*.txt
+adj_events_audit.txt

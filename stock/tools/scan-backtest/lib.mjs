@@ -1,5 +1,5 @@
 import fs from "node:fs";
-export const SIG = JSON.parse(fs.readFileSync("signals.json", "utf8"));
+export const SIG = JSON.parse(fs.readFileSync(process.env.SIGNALS ?? "signals.json", "utf8"));
 export const MKT = JSON.parse(fs.readFileSync("market.json", "utf8"));
 export const COST = 0.585; // round-trip % (fees 0.1425%x2 x0.6 discount + 0.3% tax), same as run-backtest
 export const year = (s) => s.d.slice(0, 4);

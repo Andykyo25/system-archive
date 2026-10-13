@@ -3,11 +3,23 @@
 // Adjusted prices: total-return index built from exchange "change" field (ref = close - change),
 // so ex-dividend / capital-reduction days are neutral without any corporate-action table.
 // Output: signals.json (every scan candidate score>=70 or day_pct>=9.5) with features + forward outcomes.
+// 2026-10-13:兩市場除權息日的漲跌是 X / 「除息」文字 → 原寫法(legacy)在除權息日其實沒還原。
+//   ADJ=legacy(預設,原行為)| raw(全不還原,連分割都不還原,僅供對照)
+//      | nodiv(還原分割 / 減資 / 面額變更,不還原股利)| official(全部官方事件)
+//   事件來自 adj_events.json(先跑 adj-events.mjs);OUT=signals 檔名(預設 signals.json)
 import fs from "node:fs";
 
+const MODE = process.env.ADJ ?? "legacy";
+if (!["legacy", "raw", "nodiv", "official"].includes(MODE)) throw new Error(`unknown ADJ=${MODE}`);
+const OUT = process.env.OUT ?? "signals.json";
+const official = new Map(MODE === "official" || MODE === "nodiv"
+  ? JSON.parse(fs.readFileSync("adj_events.json", "utf8"))
+    .filter((e) => MODE === "official" || e[6] !== "exright")
+    .map(([d, sym, , , ratio]) => [`${sym}|${d}`, ratio])
+  : []);
 const DIR = "data";
 const incl = new Set(fs.readFileSync("incl.txt", "utf8").trim().split(","));
-const files = fs.readdirSync(DIR).filter((f) => f.endsWith(".json"));
+const files = fs.readdirSync(DIR).filter((f) => /^(twse|tpex)_\d{8}\.json$/.test(f));
 const byDate = new Map();
 for (const f of files) {
   const [mkt, c] = f.replace(".json", "").split("_");
@@ -38,12 +50,20 @@ for (let i = 0; i < D; i++) {
   }
 }
 // adjusted total-return index
-let nullChg = 0, bars = 0;
-for (const s of S.values()) {
+let nullChg = 0, bars = 0, officialHits = 0;
+for (const [sym, s] of S) {
   const n = s.c.length; s.a = new Float64Array(n);
   for (let k = 0; k < n; k++) {
     bars++;
     if (k === 0) { s.a[k] = s.c[k]; continue; }
+    if (MODE === "raw") { s.a[k] = s.a[k - 1] * (s.c[k] / s.c[k - 1]); continue; }
+    if (MODE === "official" || MODE === "nodiv") {
+      // 比例式:當日報酬 ÷ 官方調整比例(前收不吻合時仍只扣除權息那一段)
+      const ratio = official.get(`${sym}|${dates[s.di[k]]}`);
+      if (ratio) officialHits++;
+      s.a[k] = s.a[k - 1] * (s.c[k] / s.c[k - 1]) / (ratio ?? 1);
+      continue;
+    }
     let ref = s.chg[k] == null ? null : s.c[k] - s.chg[k];
     if (ref == null || !(ref > 0)) { nullChg++; ref = s.c[k - 1]; }
     s.a[k] = s.a[k - 1] * (s.c[k] / ref);
@@ -167,8 +187,8 @@ for (const [sym, s] of S) {
   }
 }
 out.sort((x, y) => (x.d < y.d ? -1 : x.d > y.d ? 1 : x.sym < y.sym ? -1 : 1));
-fs.writeFileSync("signals.json", JSON.stringify(out));
+fs.writeFileSync(OUT, JSON.stringify(out));
 // daily market stats for regime research
 const mkt = dates.map((d, i) => ({ d, idx: idx[i], ma20: r2(ma(idx, i, 20)), ma60: r2(ma(idx, i, 60)) }));
 fs.writeFileSync("market.json", JSON.stringify(mkt));
-console.log({ dates: D, first: dates[0], last: dates[D - 1], symbols: S.size, bars, nullChgPct: r2(100 * nullChg / bars), signals: out.length });
+console.log({ mode: MODE, out: OUT, dates: D, first: dates[0], last: dates[D - 1], symbols: S.size, bars, nullChgPct: r2(100 * nullChg / bars), officialHits, signals: out.length });

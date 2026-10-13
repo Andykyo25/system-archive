@@ -2,7 +2,7 @@
 
 `run-backtest` EF 只能測多因子排名;這裡是「今日看多」(v_breakout_scan → v_scan_verdict)的全市場回測。
 資料直接抓證交所 / 櫃買的按日端點,含期間下市股(無倖存者偏差),不吃 FinMind 配額、不寫正式庫。
-還原報酬用交易所的「漲跌價差」自建(參考價 = 收盤 − 漲跌),除權息日自動中性。
+還原價(2026-10-13 更正):原寫法用「參考價 = 收盤 − 漲跌」,但**兩市場除權息日的漲跌是 X / 「除息」文字**,所以 `legacy` 在除權息日其實沒還原(只有停牌後復牌的分割有還原)。正確還原改用官方除權息計算結果表 / 減資 / 面額變更表(`fetch-exright.mjs` → `adj-events.mjs`),`ADJ=official` 產生;R2p 在三種價格基準下的比較見 `adj-compare.mjs` 與 `tasks/todo.md` 2026-10-13 節。
 
 ## 跑法(Node 24,在本資料夾執行)
 
@@ -15,6 +15,11 @@ node fetch-inst.mjs twse 2022-07-01 2026-09-25   # 法人日報(證交所約 95 
 node fetch-inst.mjs tpex 2022-07-01 2026-09-25
 node inst-pit.mjs                            # 法人條件 PIT 檢驗(需要上面兩個抓完)
 node r2p.mjs                                 # 現行上線規格的回測數字
+node fetch-exright.mjs 2022-07 2026-10       # 官方除權息 / 減資 / 面額變更表(約 10 分鐘,可續抓)
+node adj-events.mjs                          # 調整事件 adj_events.json + 稽核(X 日歸因、未解釋大跳空)
+ADJ=official OUT=signals_official.json node engine.mjs   # 也可 ADJ=nodiv / raw / legacy
+node adj-compare.mjs                         # R2p 在 legacy / nodiv / official 下的比較(按日加權、名單重疊)
+node adj-vs-finmind.mjs                      # 官方事件 vs 正式庫 FinMind 公司行動(唯讀 REST)
 ```
 
 `data/`(約 86 MB)、`signals.json`、`market.json` 不進 git。
@@ -27,7 +32,9 @@ node r2p.mjs                                 # 現行上線規格的回測數字
 | `engine.mjs` | 重現 v_breakout_scan 計分、scan_pattern(A/B/C/D + 套牢量)、v_scan_track_v2 報酬口徑,輸出每筆候選的特徵與前向路徑 |
 | `lib.mjs` | 統計(pooled / 按日加權)、樣本內外切分、正式滾動信心門檻模擬、出場模擬 |
 | `validate.mjs` | 與正式凍結名單比對(2026-09-29:召回 100%、精確 98.6%、型態 134/136) |
-| `r2p.mjs` | **上線規格**:R2p 前 3 檔 + 停損 3×ATR14 + 停利 10% + 最長 20 日 |
+| `r2p.mjs` | **上線規格**:R2p 前 3 檔 + 停損 3×ATR14 + 停利 10% + 最長 20 日;**套牢量是 90 根(`supply90`)**,正式 SQL 以此為準(L84) |
+| `fetch-exright.mjs` / `adj-events.mjs` / `adj-events-lib.mjs` | 官方價格調整事件:證交所 TWT49U / TWTAUU / TWTB8U、櫃買 exDailyQ / revivt,加停牌後復牌的分割(0050 / 0052 等,門檻 \|比例−1\| ≥ 35%)。測試:`node --test adj-events-lib.test.mjs` |
+| `adj-compare.mjs` / `adj-vs-finmind.mjs` | 三種價格基準的 R2p 比較;官方事件與 FinMind 公司行動比對(652 / 652 個同日事件比例差 < 0.2%) |
 | `baseline.mjs` | 型態 A/B/C/D 與正式信心門檻機制的逐年成績 |
 | `research.mjs` / `featscan.mjs` / `combo.mjs` / `exits.mjs` / `robust.mjs` / `prodfeas.mjs` / `h0.mjs` / `tail2.mjs` | 2026-09-29 的研究過程(假設、分位掃描、組合、出場、門檻高原、正式庫可行版、崩跌反彈檢查、停損寬度) |
 | `ambiguity-scan.mjs` / `intraday-lib.mjs` | `sim()` 同日低點碰停損、高點也碰停利時固定先判停損;這支數出受影響的交易比例(2026-10-08:上線規格 R2p = 0 / 2,066,2~3×ATR 停損配 ≥ 8% 停利 ≤ 0.1%,只有 1×ATR 配 3~5% 停利才到 2~4%)。測試:`node --test intraday-lib.test.mjs` |
